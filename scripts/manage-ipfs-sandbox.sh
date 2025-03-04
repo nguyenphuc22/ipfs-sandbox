@@ -1,7 +1,8 @@
 #!/bin/bash
 # manage-ipfs-sandbox.sh
 
-SANDBOX_DIR=~/ipfs-sandbox
+# Use the environment directory or default to home directory
+SANDBOX_DIR=${IPFS_SANDBOX_DIR:-/ipfs-sandbox}
 LOG_DIR=$SANDBOX_DIR/logs
 PID_DIR=$SANDBOX_DIR/pids
 
@@ -13,12 +14,12 @@ start_node() {
   local node_num=$1
   local node_dir="node$node_num"
   local pid_file="$PID_DIR/$node_dir.pid"
-  
+
   if [ -f "$pid_file" ] && ps -p $(cat $pid_file) > /dev/null 2>&1; then
     echo "$node_dir is already running."
     return
   fi
-  
+
   echo "Starting $node_dir..."
   export IPFS_PATH=$SANDBOX_DIR/$node_dir
   ipfs daemon > $LOG_DIR/$node_dir.log 2>&1 &
@@ -31,7 +32,7 @@ stop_node() {
   local node_num=$1
   local node_dir="node$node_num"
   local pid_file="$PID_DIR/$node_dir.pid"
-  
+
   if [ -f "$pid_file" ]; then
     local pid=$(cat $pid_file)
     if ps -p $pid > /dev/null 2>&1; then
@@ -58,7 +59,7 @@ check_status() {
   for i in {1..5}; do
     local node_dir="node$i"
     local pid_file="$PID_DIR/$node_dir.pid"
-    
+
     if [ -f "$pid_file" ]; then
       local pid=$(cat $pid_file)
       if ps -p $pid > /dev/null 2>&1; then
@@ -75,13 +76,22 @@ check_status() {
 
 # Function to clean up sandbox
 clean_sandbox() {
-  echo "WARNING: This will stop all nodes and remove their data."
-  read -p "Are you sure you want to proceed? (y/n) " -n 1 -r
-  echo
-  if [[ $REPLY =~ ^[Yy]$ ]]; then
+  if [ "$1" = "force" ]; then
+    echo "Forcibly cleaning sandbox without confirmation..."
+    DO_CLEAN=true
+  else
+    echo "WARNING: This will stop all nodes and remove their data."
+    read -p "Are you sure you want to proceed? (y/n) " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+      DO_CLEAN=true
+    fi
+  fi
+
+  if [ "$DO_CLEAN" = true ]; then
     for i in {1..5}; do
       stop_node $i
-    fi
+    done
     echo "Removing data..."
     rm -rf $SANDBOX_DIR/node*/blocks/*
     rm -rf $SANDBOX_DIR/node*/datastore/*
@@ -126,7 +136,7 @@ case "$1" in
     check_status
     ;;
   clean)
-    clean_sandbox
+    clean_sandbox $2
     ;;
   *)
     echo "Usage: $0 {start|stop|restart|status|clean} [node_number]"
@@ -135,6 +145,8 @@ case "$1" in
     echo "  $0 start 3     # Start node3 only"
     echo "  $0 stop        # Stop all nodes"
     echo "  $0 status      # Show status of all nodes"
+    echo "  $0 clean       # Clean sandbox with confirmation"
+    echo "  $0 clean force # Clean sandbox without confirmation"
     exit 1
     ;;
 esac

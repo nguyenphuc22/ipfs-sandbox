@@ -1,0 +1,43 @@
+version: '3'
+
+services:
+  ipfs-sandbox:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ipfs-sandbox
+    volumes:
+      - ipfs-data:/ipfs-sandbox
+      - ./test-files:/test-files
+    ports:
+      # API ports for each node
+      - "5001:5001"  # node1
+      - "5101:5101"  # node2
+      - "5201:5201"  # node3
+      - "5301:5301"  # node4
+      - "5401:5401"  # node5
+      # Gateway ports for each node
+      - "8080:8080"  # node1
+      - "8180:8180"  # node2
+      - "8280:8280"  # node3
+      - "8380:8380"  # node4
+      - "8480:8480"  # node5
+      # Swarm ports for each node
+      - "4001:4001"  # node1
+      - "4101:4101"  # node2
+      - "4201:4201"  # node3
+      - "4301:4301"  # node4
+      - "4401:4401"  # node5
+    restart: unless-stopped
+    command: start
+    healthcheck:
+      test: [ "CMD", "ipfs", "id" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    environment:
+      - IPFS_LOGGING=debug
+
+volumes:
+  ipfs-data:
+    driver: local

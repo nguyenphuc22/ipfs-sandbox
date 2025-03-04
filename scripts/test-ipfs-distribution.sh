@@ -1,12 +1,13 @@
 #!/bin/bash
 # test-ipfs-distribution.sh
 
-SANDBOX_DIR=~/ipfs-sandbox
+# Use the environment directory or default to home directory
+SANDBOX_DIR=${IPFS_SANDBOX_DIR:-/ipfs-sandbox}
 
 # Check arguments
 if [ -z "$1" ]; then
     echo "Usage: $0 <path_to_file> [chunk_size]"
-    echo "Example: $0 ~/Documents/test.txt 262144"
+    echo "Example: $0 /test-files/test.txt 262144"
     exit 1
 fi
 
@@ -20,7 +21,8 @@ fi
 
 # Get file info
 FILE_NAME=$(basename "$FILE_PATH")
-FILE_SIZE=$(stat -f%z "$FILE_PATH" 2>/dev/null || stat -c%s "$FILE_PATH")
+# Use Linux stat format
+FILE_SIZE=$(stat -c%s "$FILE_PATH" 2>/dev/null || stat -f%z "$FILE_PATH")
 echo "File: $FILE_NAME"
 echo "Size: $FILE_SIZE bytes"
 echo "Chunk size: $CHUNK_SIZE bytes"
