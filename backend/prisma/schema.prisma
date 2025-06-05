@@ -1,0 +1,55 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema-file
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String        @id @default(uuid())
+  username      String        @unique
+  email         String        @unique
+  passwordHash  String
+  publicKey     String?
+  secretKey     String?
+  role          String        @default("user")
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  files         File[]
+  signatures    Signature[]
+}
+
+model File {
+  id            String        @id @default(uuid())
+  ipfsHash      String        @unique
+  filename      String
+  size          Int
+  mimeType      String?
+  encryptedKey  String?
+  uploaderId    String
+  uploader      User          @relation(fields: [uploaderId], references: [id])
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  signatures    Signature[]
+}
+
+model Signature {
+  id            String        @id @default(uuid())
+  fileId        String
+  file          File          @relation(fields: [fileId], references: [id])
+  signerId      String
+  signer        User          @relation(fields: [signerId], references: [id])
+  ringUserIds   String        // JSON array of user IDs in the ring
+  signature     String        // The ring signature data
+  isOpened      Boolean       @default(false)
+  openingProof  String?       // Proof when signature is opened
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
