@@ -17,26 +17,47 @@ check_docker() {
     fi
 }
 
-# Function to wait for service
+# Function to wait for service with HTTP validation
 wait_for_service() {
     local service=$1
     local port=$2
+    local endpoint="$3"
+    local method="${4:-GET}"
     local max_attempts=30
     local attempt=0
 
     echo -e "${YELLOW}⏳ Waiting for $service on port $port...${NC}"
 
     while [ $attempt -lt $max_attempts ]; do
-        # Try to connect to the port using different methods
+        # First check if port is open
+        local port_open=false
         if command -v nc >/dev/null 2>&1; then
-            # Use netcat if available
             if nc -z localhost $port 2>/dev/null; then
-                echo -e "${GREEN}✅ $service is ready on port $port${NC}"
-                return 0
+                port_open=true
             fi
         else
-            # Fallback to bash TCP connection test
             if timeout 1 bash -c "</dev/tcp/localhost/$port" 2>/dev/null; then
+                port_open=true
+            fi
+        fi
+        
+        if [ "$port_open" = true ]; then
+            # Port is open, now test HTTP endpoint if provided
+            if [ -n "$endpoint" ]; then
+                local response_code
+                if [ "$method" = "POST" ]; then
+                    response_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 --connect-timeout 2 -X POST "http://localhost:${port}${endpoint}" 2>/dev/null || echo "000")
+                else
+                    response_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 --connect-timeout 2 "http://localhost:${port}${endpoint}" 2>/dev/null || echo "000")
+                fi
+                
+                if [[ "$response_code" =~ ^(200|404|405|302)$ ]]; then
+                    echo -e "${GREEN}✅ $service is ready on port $port [HTTP $response_code]${NC}"
+                    return 0
+                else
+                    echo -e "${YELLOW}⏳ $service port open but HTTP not ready [${response_code}]...${NC}"
+                fi
+            else
                 echo -e "${GREEN}✅ $service is ready on port $port${NC}"
                 return 0
             fi
@@ -48,6 +69,45 @@ wait_for_service() {
 
     echo -e "${RED}❌ $service failed to start on port $port after ${max_attempts} attempts${NC}"
     return 1
+}
+
+# Function to verify IPFS peer connectivity
+verify_ipfs_connectivity() {
+    echo -e "\n${YELLOW}🔗 Verifying IPFS network connectivity...${NC}"
+    
+    # Wait a bit for nodes to discover each other
+    sleep 10
+    
+    # Check gateway peers
+    if docker ps --format "{{.Names}}" | grep -q "^ipfs-sandbox-gateway-1$"; then
+        local gateway_peers
+        gateway_peers=$(docker exec ipfs-sandbox-gateway-1 ipfs swarm peers 2>/dev/null | wc -l | tr -d ' ')
+        if [ "$gateway_peers" -gt 0 ]; then
+            echo -e "${GREEN}✅ Gateway connected to $gateway_peers peers${NC}"
+        else
+            echo -e "${YELLOW}⚠️  Gateway has no peers yet${NC}"
+        fi
+    fi
+    
+    # Check individual nodes
+    local total_connections=0
+    for i in 1 2 3; do
+        local container="ipfs-sandbox-ipfs-node-${i}-1"
+        if docker ps --format "{{.Names}}" | grep -q "^${container}$"; then
+            local node_peers
+            node_peers=$(docker exec "$container" ipfs swarm peers 2>/dev/null | wc -l | tr -d ' ')
+            total_connections=$((total_connections + node_peers))
+            echo -e "${GREEN}✅ Node $i connected to $node_peers peers${NC}"
+        fi
+    done
+    
+    if [ $total_connections -gt 0 ]; then
+        echo -e "${GREEN}✅ IPFS network is connected (total: $total_connections connections)${NC}"
+        return 0
+    else
+        echo -e "${YELLOW}⚠️  IPFS nodes not yet connected, may connect shortly${NC}"
+        return 1
+    fi
 }
 
 # Function to check command availability
@@ -84,31 +144,22 @@ docker compose up -d
 # Wait for services to be ready
 echo -e "\n${YELLOW}⏳ Waiting for services to start...${NC}"
 
-# Wait for IPFS nodes
+# Wait for IPFS nodes (TCP only)
 wait_for_service "IPFS Node 1" 4001
 wait_for_service "IPFS Node 2" 4002
 wait_for_service "IPFS Node 3" 4003
 
-# Wait for Gateway services
-wait_for_service "Backend API" 3000
-wait_for_service "IPFS API" 5001
-wait_for_service "IPFS Gateway" 8080
+# Wait for Gateway services with HTTP validation
+wait_for_service "Backend API" 3000 "/health" "GET"
+wait_for_service "IPFS API" 5001 "/api/v0/version" "POST"
+wait_for_service "IPFS Gateway" 8080 "/" "GET"
 
 # Show container status
 echo -e "\n${YELLOW}📦 Container Status:${NC}"
 docker compose ps
 
-# Test IPFS connectivity
-echo -e "\n${YELLOW}🔗 Testing IPFS network...${NC}"
-sleep 5  # Give nodes time to discover each other
-
-# Check peers for gateway node
-PEERS=$(docker exec ipfs-sandbox-gateway-1 ipfs swarm peers 2>/dev/null | wc -l | tr -d ' ')
-if [ "$PEERS" -gt 0 ]; then
-    echo -e "${GREEN}✅ Gateway connected to $PEERS peers${NC}"
-else
-    echo -e "${YELLOW}⚠️  No peers connected yet (they may connect shortly)${NC}"
-fi
+# Verify IPFS connectivity
+verify_ipfs_connectivity
 
 # Test Backend API
 echo -e "\n${YELLOW}🧪 Testing Backend API...${NC}"

@@ -47,32 +47,55 @@ done
 
 # Check services
 echo -e "\n${YELLOW}🌐 Service Status:${NC}"
-services=(
-    "Backend API:3000:/health"
-    "IPFS API:5001:/api/v0/version"  
-    "IPFS Gateway:8080:/ipfs/QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn"
-)
 
-for service in "${services[@]}"; do
-    IFS=':' read -r name port path <<< "$service"
-    if [[ -z "$path" ]]; then
-        path="/"
-    fi
+# Function to test service with retries and better error handling
+test_service() {
+    local name="$1"
+    local port="$2"
+    local path="$3"
+    local method="$4"
+    local max_retries=3
+    local retry=0
     
-    # Use different timeout and method for different services
-    if [[ "$name" == "IPFS API" ]]; then
-        response_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 -X POST "http://localhost:${port}${path}" 2>/dev/null || echo "000")
-    elif [[ "$name" == "IPFS Gateway" ]]; then
-        response_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 "http://localhost:${port}" 2>/dev/null || echo "000")
-    else
-        response_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 "http://localhost:${port}${path}" 2>/dev/null || echo "000")
-    fi
-    if [[ "$response_code" =~ ^(200|404|405)$ ]]; then
-        echo -e "  ${name}: ${GREEN}✓ Active${NC} (port ${port})"
-    else
-        echo -e "  ${name}: ${RED}✗ Inactive${NC} (port ${port}) [${response_code}]"
-    fi
-done
+    while [ $retry -lt $max_retries ]; do
+        if [[ "$method" == "POST" ]]; then
+            response_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 --connect-timeout 3 -X POST "http://localhost:${port}${path}" 2>/dev/null || echo "000")
+        else
+            response_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 --connect-timeout 3 "http://localhost:${port}${path}" 2>/dev/null || echo "000")
+        fi
+        
+        # Check if we got a valid response
+        if [[ "$response_code" =~ ^(200|404|405|302)$ ]]; then
+            echo -e "  ${name}: ${GREEN}✓ Active${NC} (port ${port}) [${response_code}]"
+            return 0
+        elif [[ "$response_code" == "000" ]]; then
+            # Connection failed, check if port is open
+            if command -v nc >/dev/null 2>&1; then
+                if nc -z localhost $port 2>/dev/null; then
+                    echo -e "  ${name}: ${YELLOW}⚠ Port open but HTTP not responding${NC} (port ${port})"
+                    return 1
+                fi
+            fi
+        fi
+        
+        retry=$((retry + 1))
+        if [ $retry -lt $max_retries ]; then
+            sleep 1
+        fi
+    done
+    
+    echo -e "  ${name}: ${RED}✗ Inactive${NC} (port ${port}) [${response_code}]"
+    return 1
+}
+
+# Test Backend API
+test_service "Backend API" "3000" "/health" "GET"
+
+# Test IPFS API with proper endpoint
+test_service "IPFS API" "5001" "/api/v0/version" "POST"
+
+# Test IPFS Gateway
+test_service "IPFS Gateway" "8080" "/" "GET"
 
 # Check API endpoints
 echo -e "\n${YELLOW}🔌 API Endpoints:${NC}"

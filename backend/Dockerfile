@@ -1,7 +1,9 @@
 FROM node:20-alpine
 
+# Install dependencies including OpenSSL
+RUN apk add --no-cache wget tar openssl openssl-dev
+
 # Install IPFS - ARM64 version for M1
-RUN apk add --no-cache wget tar
 RUN wget https://dist.ipfs.tech/kubo/v0.24.0/kubo_v0.24.0_linux-arm64.tar.gz
 RUN tar -xzf kubo_v0.24.0_linux-arm64.tar.gz
 RUN mv kubo/ipfs /usr/local/bin/
