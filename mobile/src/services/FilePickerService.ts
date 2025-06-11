@@ -1,8 +1,4 @@
-import DocumentPicker, {
-  DocumentPickerResponse,
-  DirectoryPickerResponse,
-  types,
-} from '@react-native-documents/picker';
+import {launchImageLibrary, ImagePickerResponse, MediaType} from 'react-native-image-picker';
 import {Platform} from 'react-native';
 import {
   FilePickerOptions,
@@ -22,175 +18,115 @@ export class FilePickerService {
     return FilePickerService.instance;
   }
 
-  private getDocumentPickerTypes(fileTypes?: FileType[]): any[] {
+  private getMediaType(fileTypes?: FileType[]): MediaType {
     if (!fileTypes || fileTypes.length === 0) {
-      return [types.allFiles];
+      return 'mixed';
     }
 
-    const typeMap: Record<FileType, any> = {
-      allFiles: types.allFiles,
-      images: types.images,
-      plainText: types.plainText,
-      audio: types.audio,
-      video: types.video,
-      pdf: types.pdf,
-      zip: types.zip,
-      csv: types.csv,
-      doc: types.doc,
-      docx: types.docx,
-      ppt: types.ppt,
-      pptx: types.pptx,
-      xls: types.xls,
-      xlsx: types.xlsx,
-    };
+    const hasImages = fileTypes.includes('images');
+    const hasVideo = fileTypes.includes('video');
 
-    return fileTypes.map(type => typeMap[type]).filter(Boolean);
+    if (hasImages && hasVideo) {
+      return 'mixed';
+    } else if (hasImages) {
+      return 'photo';
+    } else if (hasVideo) {
+      return 'video';
+    }
+
+    return 'mixed';
   }
 
-  private createPickedFile(
-    response: DocumentPickerResponse | DirectoryPickerResponse,
-  ): PickedFile {
-    const docResponse = response as DocumentPickerResponse;
+  private createPickedFile(asset: any): PickedFile {
     return {
       id: generateRandomId(),
-      uri: response.uri,
-      name: docResponse.name || null,
+      uri: asset.uri,
+      name: asset.fileName || asset.originalFileName || 'file',
       error: null,
-      type: docResponse.type || null,
-      nativeType: (docResponse as any).nativeType || null,
-      size: docResponse.size || null,
-      isVirtual: (docResponse as any).isVirtual || null,
-      convertibleToMimeTypes: (docResponse as any).convertibleToMimeTypes || null,
-      hasRequestedType: (docResponse as any).hasRequestedType || false,
+      type: asset.type || null,
+      nativeType: null,
+      size: asset.fileSize || null,
+      isVirtual: null,
+      convertibleToMimeTypes: null,
+      hasRequestedType: false,
       uploadTime: new Date(),
       status: 'uploading',
       progress: 0,
     };
   }
 
-  private handleDocumentPickerError(error: any): FilePickerError {
+  private handleImagePickerError(error: any): FilePickerError {
     // Check for user cancellation
-    if (error?.code === 'DOCUMENT_PICKER_CANCELED' ||
-        error?.message?.includes('canceled') ||
-        error?.message?.includes('cancelled')) {
+    if (error?.code === 'camera_unavailable' || error?.code === 'permission') {
       return {
-        code: 'DOCUMENT_PICKER_CANCELED',
+        code: 'PERMISSION_ERROR',
+        message: 'Camera or photo library permission required',
+      };
+    }
+
+    if (error?.didCancel) {
+      return {
+        code: 'USER_CANCELED',
         message: 'User canceled file selection',
       };
     }
 
-    // Check for in progress error
-    if (error?.code === 'DOCUMENT_PICKER_IN_PROGRESS' ||
-        error?.message?.includes('in progress')) {
-      return {
-        code: 'DOCUMENT_PICKER_IN_PROGRESS',
-        message: 'Document picker is already in progress',
-      };
-    }
-
     return {
-      code: 'DOCUMENT_PICKER_ERROR',
-      message: error?.message || 'Unknown error occurred while picking files',
+      code: 'IMAGE_PICKER_ERROR',
+      message: error?.errorMessage || error?.message || 'Unknown error occurred while picking files',
       userInfo: error,
     };
   }
 
   async pickFiles(options: FilePickerOptions = {}): Promise<PickedFile[]> {
-    try {
-      // Check if DocumentPicker is available
-      if (!DocumentPicker || typeof DocumentPicker.pick !== 'function') {
-        throw new Error('DocumentPicker is not available or not properly installed');
-      }
-
-      const {
-        allowMultiSelection = false,
-        type = ['allFiles'],
-        copyTo,
-        presentationStyle = 'fullScreen',
-        transitionStyle = 'coverVertical',
-      } = options;
-
-      console.log('Starting file picker with options:', options);
-      console.log('Platform:', Platform.OS);
-      console.log('DocumentPicker available:', !!DocumentPicker);
-
-      let results;
-
-      if (Platform.OS === 'android') {
-        // Android-specific implementation with multiple fallbacks
-        console.log('Android detected - using Android-specific approach');
+    return new Promise((resolve, reject) => {
+      try {
+        console.log('Starting image picker with options:', options);
         
-        try {
-          // First attempt: Most basic Android configuration
-          console.log('Attempting basic Android DocumentPicker...');
-          results = await DocumentPicker.pick({
-            type: [types.allFiles],
-            allowMultiSelection: false, // Start with single selection for compatibility
-          });
-          console.log('Basic Android picker succeeded');
-        } catch (basicError) {
-          console.log('Basic Android picker failed, trying with specified types...');
-          console.error('Basic error:', basicError);
-          
-          try {
-            // Second attempt: With specified file types
-            results = await DocumentPicker.pick({
-              type: this.getDocumentPickerTypes(type),
-              allowMultiSelection,
-            });
-            console.log('Typed Android picker succeeded');
-          } catch (typedError) {
-            console.log('Typed Android picker failed, trying absolute minimal...');
-            console.error('Typed error:', typedError);
-            
-            // Third attempt: Absolute minimal configuration
-            results = await DocumentPicker.pick({});
-            console.log('Minimal Android picker succeeded');
-          }
-        }
-      } else {
-        // iOS implementation
-        console.log('iOS detected - using iOS configuration');
-        const pickerOptions: any = {
-          allowMultiSelection,
-          type: this.getDocumentPickerTypes(type),
+        const {
+          allowMultiSelection = false,
+          type = ['images'],
+        } = options;
+
+        const pickerOptions = {
+          mediaType: this.getMediaType(type),
+          includeBase64: false,
+          maxHeight: 2000,
+          maxWidth: 2000,
+          quality: 0.8,
+          selectionLimit: allowMultiSelection ? 10 : 1,
         };
 
-        // Add optional parameters only if they exist
-        if (copyTo) {
-          pickerOptions.copyTo = copyTo;
-        }
-        if (presentationStyle) {
-          pickerOptions.presentationStyle = presentationStyle;
-        }
-        if (transitionStyle) {
-          pickerOptions.transitionStyle = transitionStyle;
-        }
+        console.log('Image picker options:', pickerOptions);
 
-        console.log('iOS DocumentPicker options:', pickerOptions);
-        results = await DocumentPicker.pick(pickerOptions);
+        launchImageLibrary(pickerOptions, (response: ImagePickerResponse) => {
+          console.log('Image picker response:', response);
+
+          if (response.didCancel) {
+            resolve([]);
+            return;
+          }
+
+          if (response.errorMessage) {
+            reject(this.handleImagePickerError({
+              errorMessage: response.errorMessage
+            }));
+            return;
+          }
+
+          if (response.assets && response.assets.length > 0) {
+            const pickedFiles = response.assets.map(asset => this.createPickedFile(asset));
+            console.log('Picked files:', pickedFiles);
+            resolve(pickedFiles);
+          } else {
+            resolve([]);
+          }
+        });
+      } catch (error) {
+        console.error('Image picker error:', error);
+        reject(this.handleImagePickerError(error));
       }
-
-      console.log('DocumentPicker results:', results);
-
-      // DocumentPicker.pick returns an array when allowMultiSelection is true
-      // and a single object when false, but we always want an array
-      const resultsArray = Array.isArray(results) ? results : [results];
-      
-      console.log('Processed results array:', resultsArray);
-
-      return resultsArray.map(result => this.createPickedFile(result));
-    } catch (error) {
-      console.error('DocumentPicker error:', error);
-      console.error('Error details:', {
-        message: (error as any)?.message,
-        code: (error as any)?.code,
-        stack: (error as any)?.stack,
-        name: (error as any)?.name,
-        toString: (error as any)?.toString?.(),
-      });
-      throw this.handleDocumentPickerError(error);
-    }
+    });
   }
 
   async pickSingleFile(

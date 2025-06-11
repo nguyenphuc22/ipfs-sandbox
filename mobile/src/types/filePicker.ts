@@ -1,7 +1,16 @@
-import {DocumentPickerResponse} from '@react-native-documents/picker';
+// Using image picker types instead of document picker
 
-export interface PickedFile extends DocumentPickerResponse {
+export interface PickedFile {
   id: string;
+  uri: string;
+  name: string | null;
+  error: string | null;
+  type: string | null;
+  nativeType: string | null;
+  size: number | null;
+  isVirtual: boolean | null;
+  convertibleToMimeTypes: string[] | null;
+  hasRequestedType: boolean;
   uploadTime: Date;
   status: 'uploading' | 'completed' | 'error';
   ipfsHash?: string;
