@@ -39,7 +39,9 @@ export type FileType =
   | 'ppt'
   | 'pptx'
   | 'xls'
-  | 'xlsx';
+  | 'xlsx'
+  | 'rtf'
+  | 'txt';
 
 export interface FilePickerError {
   code: string;
@@ -70,6 +72,9 @@ export interface FilePickerState {
 export interface UseFilePickerReturn {
   pickFiles: (options?: FilePickerOptions) => Promise<PickedFile[]>;
   pickSingleFile: (options?: Omit<FilePickerOptions, 'allowMultiSelection'>) => Promise<PickedFile | null>;
+  pickMixedFiles: (options?: FilePickerOptions) => Promise<PickedFile[]>;
+  pickDocuments: (options?: Omit<FilePickerOptions, 'type'>) => Promise<PickedFile[]>;
+  pickMedia: (options?: Omit<FilePickerOptions, 'type'>) => Promise<PickedFile[]>;
   clearFiles: () => void;
   removeFile: (fileId: string) => void;
   state: FilePickerState;

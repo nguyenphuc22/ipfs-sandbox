@@ -11,6 +11,10 @@ import {PermissionStatus, PermissionResult} from '../types/filePicker';
 export class PermissionService {
   private static instance: PermissionService;
 
+  constructor() {
+    // Public constructor for direct instantiation
+  }
+
   static getInstance(): PermissionService {
     if (!PermissionService.instance) {
       PermissionService.instance = new PermissionService();

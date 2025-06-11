@@ -1,5 +1,4 @@
 import {launchImageLibrary, ImagePickerResponse, MediaType} from 'react-native-image-picker';
-import {Platform} from 'react-native';
 import {
   FilePickerOptions,
   FileType,
@@ -10,6 +9,10 @@ import {generateRandomId} from '../utils';
 
 export class FilePickerService {
   private static instance: FilePickerService;
+
+  constructor() {
+    // Public constructor for direct instantiation
+  }
 
   static getInstance(): FilePickerService {
     if (!FilePickerService.instance) {
@@ -37,11 +40,11 @@ export class FilePickerService {
     return 'mixed';
   }
 
-  private createPickedFile(asset: any): PickedFile {
+  private createPickedFileFromImageAsset(asset: any): PickedFile {
     return {
       id: generateRandomId(),
       uri: asset.uri,
-      name: asset.fileName || asset.originalFileName || 'file',
+      name: asset.fileName || asset.originalFileName || 'image.jpg',
       error: null,
       type: asset.type || null,
       nativeType: null,
@@ -61,6 +64,7 @@ export class FilePickerService {
       return {
         code: 'PERMISSION_ERROR',
         message: 'Camera or photo library permission required',
+        userInfo: error,
       };
     }
 
@@ -68,6 +72,7 @@ export class FilePickerService {
       return {
         code: 'USER_CANCELED',
         message: 'User canceled file selection',
+        userInfo: error,
       };
     }
 
@@ -78,11 +83,11 @@ export class FilePickerService {
     };
   }
 
-  async pickFiles(options: FilePickerOptions = {}): Promise<PickedFile[]> {
+  private async pickWithImagePicker(options: FilePickerOptions): Promise<PickedFile[]> {
     return new Promise((resolve, reject) => {
       try {
         console.log('Starting image picker with options:', options);
-        
+
         const {
           allowMultiSelection = false,
           type = ['images'],
@@ -93,7 +98,7 @@ export class FilePickerService {
           includeBase64: false,
           maxHeight: 2000,
           maxWidth: 2000,
-          quality: 0.8,
+          quality: 0.8 as const,
           selectionLimit: allowMultiSelection ? 10 : 1,
         };
 
@@ -109,13 +114,13 @@ export class FilePickerService {
 
           if (response.errorMessage) {
             reject(this.handleImagePickerError({
-              errorMessage: response.errorMessage
+              errorMessage: response.errorMessage,
             }));
             return;
           }
 
           if (response.assets && response.assets.length > 0) {
-            const pickedFiles = response.assets.map(asset => this.createPickedFile(asset));
+            const pickedFiles = response.assets.map(asset => this.createPickedFileFromImageAsset(asset));
             console.log('Picked files:', pickedFiles);
             resolve(pickedFiles);
           } else {
@@ -129,6 +134,11 @@ export class FilePickerService {
     });
   }
 
+  async pickFiles(options: FilePickerOptions = {}): Promise<PickedFile[]> {
+    // For now, only support image/video picking until document picker is fixed
+    return this.pickWithImagePicker(options);
+  }
+
   async pickSingleFile(
     options: Omit<FilePickerOptions, 'allowMultiSelection'> = {},
   ): Promise<PickedFile | null> {
@@ -138,8 +148,9 @@ export class FilePickerService {
         allowMultiSelection: false,
       });
       return files.length > 0 ? files[0] : null;
-    } catch (error) {
-      if (this.handleDocumentPickerError(error).code === 'DOCUMENT_PICKER_CANCELED') {
+    } catch (error: any) {
+      // Handle cancellation gracefully
+      if (error?.code === 'USER_CANCELED') {
         return null;
       }
       throw error;
@@ -155,22 +166,64 @@ export class FilePickerService {
     });
   }
 
+  // Simplified methods for testing
+  async pickMixedFiles(options: FilePickerOptions = {}): Promise<PickedFile[]> {
+    return this.pickFiles(options);
+  }
+
+  async pickDocuments(options: Omit<FilePickerOptions, 'type'> = {}): Promise<PickedFile[]> {
+    console.warn('Document picker not available - falling back to image picker');
+    return this.pickFiles({ ...options, type: ['images'] });
+  }
+
+  async pickMedia(options: Omit<FilePickerOptions, 'type'> = {}): Promise<PickedFile[]> {
+    return this.pickFiles({ ...options, type: ['images', 'video'] });
+  }
+
   getFileTypeFromMimeType(mimeType: string): FileType {
-    if (mimeType.startsWith('image/')) {return 'images';}
-    if (mimeType.startsWith('video/')) {return 'video';}
-    if (mimeType.startsWith('audio/')) {return 'audio';}
-    if (mimeType === 'application/pdf') {return 'pdf';}
-    if (mimeType === 'text/csv') {return 'csv';}
-    if (mimeType === 'application/msword') {return 'doc';}
-    if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {return 'docx';}
-    if (mimeType === 'application/vnd.ms-powerpoint') {return 'ppt';}
-    if (mimeType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation') {return 'pptx';}
-    if (mimeType === 'application/vnd.ms-excel') {return 'xls';}
-    if (mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {return 'xlsx';}
-    if (mimeType.includes('zip') || mimeType.includes('compressed')) {return 'zip';}
-    if (mimeType.startsWith('text/')) {return 'plainText';}
+    // Image types
+    if (mimeType.startsWith('image/')) return 'images';
+
+    // Video types
+    if (mimeType.startsWith('video/')) return 'video';
+
+    // Audio types
+    if (mimeType.startsWith('audio/')) return 'audio';
 
     return 'allFiles';
+  }
+
+  /**
+   * Get file extension from filename
+   */
+  getFileExtension(fileName: string): string {
+    const lastDot = fileName.lastIndexOf('.');
+    return lastDot !== -1 ? fileName.substring(lastDot + 1).toLowerCase() : '';
+  }
+
+  /**
+   * Check if file is a document type
+   */
+  isDocumentFile(file: PickedFile): boolean {
+    return false; // For now, no document support
+  }
+
+  /**
+   * Check if file is a media type (image/video/audio)
+   */
+  isMediaFile(file: PickedFile): boolean {
+    if (file.type) {
+      const fileType = this.getFileTypeFromMimeType(file.type);
+      return ['images', 'video', 'audio'].includes(fileType);
+    }
+
+    if (file.name) {
+      const extension = this.getFileExtension(file.name);
+      const mediaExtensions = ['jpg', 'jpeg', 'png', 'gif', 'svg', 'bmp', 'webp', 'mp4', 'avi', 'mov', 'mkv', 'wmv', 'flv', 'mp3', 'wav', 'flac', 'aac', 'm4a'];
+      return mediaExtensions.includes(extension);
+    }
+
+    return false;
   }
 
   getDisplayName(file: PickedFile): string {

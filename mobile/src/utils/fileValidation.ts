@@ -236,6 +236,6 @@ export class FileValidationService {
       }
     });
 
-    return [...new Set(extensions)]; // Remove duplicates
+    return Array.from(new Set(extensions)); // Remove duplicates
   }
 }

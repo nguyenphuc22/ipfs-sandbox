@@ -20,8 +20,8 @@ export const useFilePicker = (
     pickedFiles: [],
   });
 
-  const filePickerService = FilePickerService.getInstance();
-  const permissionService = PermissionService.getInstance();
+  const filePickerService = new FilePickerService();
+  const permissionService = new PermissionService();
 
   const setLoading = useCallback((isLoading: boolean) => {
     setState(prev => ({...prev, isLoading}));
@@ -73,7 +73,7 @@ export const useFilePicker = (
 
   const handleFilePickerError = useCallback((error: any) => {
     console.error('File picker error in useFilePicker:', error);
-    
+
     const filePickerError: FilePickerError = {
       code: error.code || 'UNKNOWN_ERROR',
       message: error.message || 'An unknown error occurred',
@@ -91,12 +91,12 @@ export const useFilePicker = (
         [
           {text: 'OK'},
           {
-            text: 'Debug Info', 
+            text: 'Debug Info',
             onPress: () => {
               console.log('Full error object:', error);
               Alert.alert('Debug Info', JSON.stringify(error, null, 2));
-            }
-          }
+            },
+          },
         ],
       );
     }
@@ -152,6 +152,114 @@ export const useFilePicker = (
       return files.length > 0 ? files[0] : null;
     },
     [pickFiles],
+  );
+
+  const pickMixedFiles = useCallback(
+    async (options: FilePickerOptions = {}): Promise<PickedFile[]> => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const files = await filePickerService.pickMixedFiles(options);
+
+        if (files.length === 0) {
+          return [];
+        }
+
+        // Validate files
+        const {valid, invalid} = validateFiles(files);
+
+        if (valid.length > 0) {
+          addPickedFiles(valid);
+        }
+
+        if (invalid.length > 0) {
+          console.warn(`${invalid.length} files were rejected due to validation errors`);
+        }
+
+        return valid;
+      } catch (error) {
+        handleFilePickerError(error);
+        return [];
+      } finally {
+        setLoading(false);
+      }
+    },
+    [setLoading, setError, addPickedFiles, validateFiles, handleFilePickerError, filePickerService],
+  );
+
+  const pickDocuments = useCallback(
+    async (options: Omit<FilePickerOptions, 'type'> = {}): Promise<PickedFile[]> => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const files = await filePickerService.pickDocuments(options);
+
+        if (files.length === 0) {
+          return [];
+        }
+
+        // Validate files
+        const {valid, invalid} = validateFiles(files);
+
+        if (valid.length > 0) {
+          addPickedFiles(valid);
+        }
+
+        if (invalid.length > 0) {
+          console.warn(`${invalid.length} files were rejected due to validation errors`);
+        }
+
+        return valid;
+      } catch (error) {
+        handleFilePickerError(error);
+        return [];
+      } finally {
+        setLoading(false);
+      }
+    },
+    [setLoading, setError, addPickedFiles, validateFiles, handleFilePickerError, filePickerService],
+  );
+
+  const pickMedia = useCallback(
+    async (options: Omit<FilePickerOptions, 'type'> = {}): Promise<PickedFile[]> => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        // Check permissions for media files
+        const hasPermission = await permissionService.ensureImagePickerPermissions();
+        if (!hasPermission) {
+          throw new Error('Photo library permission is required to select media files');
+        }
+
+        const files = await filePickerService.pickMedia(options);
+
+        if (files.length === 0) {
+          return [];
+        }
+
+        // Validate files
+        const {valid, invalid} = validateFiles(files);
+
+        if (valid.length > 0) {
+          addPickedFiles(valid);
+        }
+
+        if (invalid.length > 0) {
+          console.warn(`${invalid.length} files were rejected due to validation errors`);
+        }
+
+        return valid;
+      } catch (error) {
+        handleFilePickerError(error);
+        return [];
+      } finally {
+        setLoading(false);
+      }
+    },
+    [setLoading, setError, addPickedFiles, validateFiles, handleFilePickerError, permissionService, filePickerService],
   );
 
   const clearFiles = useCallback(() => {
@@ -211,6 +319,9 @@ export const useFilePicker = (
   return {
     pickFiles,
     pickSingleFile,
+    pickMixedFiles,
+    pickDocuments,
+    pickMedia,
     clearFiles,
     removeFile,
     state,
@@ -221,6 +332,9 @@ export const useFilePicker = (
     hasFiles,
     isUploading,
   } as UseFilePickerReturn & {
+    pickMixedFiles: (options?: FilePickerOptions) => Promise<PickedFile[]>;
+    pickDocuments: (options?: Omit<FilePickerOptions, 'type'>) => Promise<PickedFile[]>;
+    pickMedia: (options?: Omit<FilePickerOptions, 'type'>) => Promise<PickedFile[]>;
     updateFileStatus: (fileId: string, status: PickedFile['status'], progress?: number, ipfsHash?: string) => void;
     getFilesByStatus: (status: PickedFile['status']) => PickedFile[];
     getTotalFileSize: () => number;
