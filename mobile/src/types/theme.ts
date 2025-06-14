@@ -5,7 +5,9 @@ export interface Theme {
     surface: string;
     text: string;
     textSecondary: string;
+    textTertiary: string;
     border: string;
+    errorBackground: string;
     success: string;
     warning: string;
     error: string;

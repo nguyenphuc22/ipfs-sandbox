@@ -8,12 +8,12 @@
 import React from 'react';
 import {SafeAreaView, StatusBar, StyleSheet, Text, View} from 'react-native';
 import {ThemeProvider, useTheme} from './src/styles';
-import {FileUploadButton, FileList} from './src/components';
-import {useFiles} from './src/hooks';
+import {FileList, SimpleFilePicker} from './src/components';
+import {useSimpleFiles} from './src/hooks';
 
 const AppContent: React.FC = () => {
   const {theme, isDarkMode} = useTheme();
-  const {files, uploadFile, deleteFile, isLoading} = useFiles();
+  const {files, addFiles, deleteFile} = useSimpleFiles();
 
   const backgroundStyle = {
     backgroundColor: theme.colors.background,
@@ -39,7 +39,7 @@ const AppContent: React.FC = () => {
       </View>
 
       <View style={styles.content}>
-        <FileUploadButton onPress={uploadFile} loading={isLoading} />
+        <SimpleFilePicker onFilesSelected={addFiles} />
         <View style={styles.fileSection}>
           <Text style={[styles.sectionTitle, {color: theme.colors.text}]}>
             My Files ({files.length})

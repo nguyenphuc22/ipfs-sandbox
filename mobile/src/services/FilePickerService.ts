@@ -1,4 +1,5 @@
 import {launchImageLibrary, ImagePickerResponse, MediaType} from 'react-native-image-picker';
+import { pick, types, errorCodes, isErrorWithCode } from '@react-native-documents/picker';
 import {
   FilePickerOptions,
   FileType,
@@ -40,6 +41,71 @@ export class FilePickerService {
     return 'mixed';
   }
 
+  private getDocumentPickerTypes(fileTypes?: FileType[]): string[] {
+    if (!fileTypes || fileTypes.length === 0) {
+      return [types.allFiles];
+    }
+
+    const pickerTypes: string[] = [];
+    
+    fileTypes.forEach(type => {
+      switch (type) {
+        case 'pdf':
+          pickerTypes.push(types.pdf);
+          break;
+        case 'doc':
+        case 'docx':
+          pickerTypes.push(types.doc);
+          break;
+        case 'xls':
+        case 'xlsx':
+          pickerTypes.push(types.xls);
+          break;
+        case 'ppt':
+        case 'pptx':
+          pickerTypes.push(types.ppt);
+          break;
+        case 'images':
+          pickerTypes.push(types.images);
+          break;
+        case 'video':
+          pickerTypes.push(types.video);
+          break;
+        case 'audio':
+          pickerTypes.push(types.audio);
+          break;
+        case 'plainText':
+        case 'txt':
+          pickerTypes.push(types.plainText);
+          break;
+        case 'zip':
+          pickerTypes.push(types.zip);
+          break;
+        case 'csv':
+          pickerTypes.push(types.csv);
+          break;
+        case 'allFiles':
+        default:
+          pickerTypes.push(types.allFiles);
+          break;
+      }
+    });
+
+    return pickerTypes.length > 0 ? pickerTypes : [types.allFiles];
+  }
+
+  private shouldUseDocumentPicker(fileTypes?: FileType[]): boolean {
+    if (!fileTypes || fileTypes.length === 0) {
+      return true;
+    }
+
+    const documentTypes = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv', 'zip', 'plainText', 'allFiles'];
+    const hasDocuments = fileTypes.some(type => documentTypes.includes(type));
+    const hasOnlyMedia = fileTypes.every(type => ['images', 'video', 'audio'].includes(type));
+    
+    return hasDocuments || !hasOnlyMedia;
+  }
+
   private createPickedFileFromImageAsset(asset: any): PickedFile {
     return {
       id: generateRandomId(),
@@ -49,6 +115,24 @@ export class FilePickerService {
       type: asset.type || null,
       nativeType: null,
       size: asset.fileSize || null,
+      isVirtual: null,
+      convertibleToMimeTypes: null,
+      hasRequestedType: false,
+      uploadTime: new Date(),
+      status: 'uploading',
+      progress: 0,
+    };
+  }
+
+  private createPickedFileFromDocumentAsset(asset: any): PickedFile {
+    return {
+      id: generateRandomId(),
+      uri: asset.uri,
+      name: asset.name || 'document',
+      error: null,
+      type: asset.type || null,
+      nativeType: null,
+      size: asset.size || null,
       isVirtual: null,
       convertibleToMimeTypes: null,
       hasRequestedType: false,
@@ -79,6 +163,31 @@ export class FilePickerService {
     return {
       code: 'IMAGE_PICKER_ERROR',
       message: error?.errorMessage || error?.message || 'Unknown error occurred while picking files',
+      userInfo: error,
+    };
+  }
+
+  private handleDocumentPickerError(error: any): FilePickerError {
+    // Check for user cancellation
+    if (isErrorWithCode(error) && error.code === errorCodes.OPERATION_CANCELED) {
+      return {
+        code: 'USER_CANCELED',
+        message: 'User canceled file selection',
+        userInfo: error,
+      };
+    }
+
+    if (error?.code === 'PERMISSION_ERROR') {
+      return {
+        code: 'PERMISSION_ERROR',
+        message: 'File access permission required',
+        userInfo: error,
+      };
+    }
+
+    return {
+      code: 'DOCUMENT_PICKER_ERROR',
+      message: error?.message || 'Unknown error occurred while picking documents',
       userInfo: error,
     };
   }
@@ -134,9 +243,56 @@ export class FilePickerService {
     });
   }
 
+  private async pickWithDocumentPicker(options: FilePickerOptions): Promise<PickedFile[]> {
+    try {
+      console.log('Starting document picker with options:', options);
+
+      const {
+        allowMultiSelection = false,
+        type = ['allFiles'],
+      } = options;
+
+      const documentTypes = this.getDocumentPickerTypes(type);
+      console.log('Document picker types:', documentTypes);
+
+      const pickerOptions = {
+        mode: 'import' as const,
+        type: documentTypes,
+        allowMultiSelection,
+      };
+
+      console.log('Document picker options:', pickerOptions);
+
+      const results = await pick(pickerOptions);
+      console.log('Document picker results:', results);
+
+      if (!results || results.length === 0) {
+        return [];
+      }
+
+      const pickedFiles = results.map(result => this.createPickedFileFromDocumentAsset(result));
+      console.log('Picked files:', pickedFiles);
+      return pickedFiles;
+    } catch (error) {
+      console.error('Document picker error:', error);
+      if (isErrorWithCode(error) && error.code === errorCodes.OPERATION_CANCELED) {
+        return [];
+      }
+      throw this.handleDocumentPickerError(error);
+    }
+  }
+
   async pickFiles(options: FilePickerOptions = {}): Promise<PickedFile[]> {
-    // For now, only support image/video picking until document picker is fixed
-    return this.pickWithImagePicker(options);
+    console.log('pickFiles called with options:', options);
+    
+    // Determine which picker to use based on file types
+    if (this.shouldUseDocumentPicker(options.type)) {
+      console.log('Using document picker');
+      return this.pickWithDocumentPicker(options);
+    } else {
+      console.log('Using image picker');
+      return this.pickWithImagePicker(options);
+    }
   }
 
   async pickSingleFile(
@@ -166,14 +322,15 @@ export class FilePickerService {
     });
   }
 
-  // Simplified methods for testing
+  // Specialized methods
   async pickMixedFiles(options: FilePickerOptions = {}): Promise<PickedFile[]> {
-    return this.pickFiles(options);
+    console.log('pickMixedFiles called - using document picker for maximum compatibility');
+    return this.pickWithDocumentPicker({ ...options, type: ['allFiles'] });
   }
 
   async pickDocuments(options: Omit<FilePickerOptions, 'type'> = {}): Promise<PickedFile[]> {
-    console.warn('Document picker not available - falling back to image picker');
-    return this.pickFiles({ ...options, type: ['images'] });
+    console.log('pickDocuments called');
+    return this.pickWithDocumentPicker({ ...options, type: ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv'] });
   }
 
   async pickMedia(options: Omit<FilePickerOptions, 'type'> = {}): Promise<PickedFile[]> {
@@ -190,6 +347,24 @@ export class FilePickerService {
     // Audio types
     if (mimeType.startsWith('audio/')) return 'audio';
 
+    // Document types
+    if (mimeType === 'application/pdf') return 'pdf';
+    if (mimeType === 'application/msword' || 
+        mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+      return 'docx';
+    }
+    if (mimeType === 'application/vnd.ms-excel' ||
+        mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
+      return 'xlsx';
+    }
+    if (mimeType === 'application/vnd.ms-powerpoint' ||
+        mimeType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation') {
+      return 'pptx';
+    }
+    if (mimeType === 'text/plain') return 'txt';
+    if (mimeType === 'text/csv') return 'csv';
+    if (mimeType === 'application/zip') return 'zip';
+
     return 'allFiles';
   }
 
@@ -205,7 +380,18 @@ export class FilePickerService {
    * Check if file is a document type
    */
   isDocumentFile(file: PickedFile): boolean {
-    return false; // For now, no document support
+    if (file.type) {
+      const fileType = this.getFileTypeFromMimeType(file.type);
+      return ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv', 'zip'].includes(fileType);
+    }
+
+    if (file.name) {
+      const extension = this.getFileExtension(file.name);
+      const documentExtensions = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv', 'zip', 'rtf'];
+      return documentExtensions.includes(extension);
+    }
+
+    return false;
   }
 
   /**

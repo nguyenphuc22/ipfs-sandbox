@@ -3,3 +3,4 @@ export * from './FileItem';
 export * from './FileList';
 export * from './DocumentPickerDemo';
 export * from './SimpleFilePickerDemo';
+export * from './SimpleFilePicker';
