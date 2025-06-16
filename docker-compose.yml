@@ -21,6 +21,7 @@ services:
     environment:
       - NODE_ENV=development
       - DATABASE_URL=file:/app/data/database.db
+      - IPFS_PATH=/data/ipfs
       - IPFS_SWARM_KEY_FILE=/data/ipfs/swarm.key
       - LIBP2P_FORCE_PNET=1
     networks:
@@ -31,12 +32,13 @@ services:
       timeout: 10s
       retries: 3
 
-  # IPFS Storage Node 1
+  # IPFS Storage Node 1 - Internal only, no external ports
   ipfs-node-1:
     image: ipfs/go-ipfs:v0.24.0
     platform: linux/arm64
-    ports:
-      - "4001:4001"
+    # Remove external port mapping - only internal communication
+    expose:
+      - "4001"
     volumes:
       - ./swarm.key:/swarm.key:ro
       - node1_data:/data/ipfs
@@ -51,21 +53,25 @@ services:
         cp /swarm.key /data/ipfs/swarm.key
         if [ ! -f /data/ipfs/config ]; then
           ipfs init
-          # Configure for private network
+          # Configure for private network storage node
           ipfs config Routing.Type dht
-          ipfs config --json Discovery.MDNS.Enabled false
+          ipfs config --json Discovery.MDNS.Enabled true
           ipfs config --json Discovery.webRTCStar.Enabled false
-          ipfs bootstrap rm --all
+          ipfs config bootstrap rm --all
+          # Configure to listen on all interfaces within container network
+          ipfs config Addresses.Swarm "[\"/ip4/0.0.0.0/tcp/4001\"]"
+          ipfs config --json API.HTTPHeaders.Access-Control-Allow-Origin "[\"*\"]"
         fi
         exec ipfs daemon --migrate=true
       '
 
-  # IPFS Storage Node 2
+  # IPFS Storage Node 2 - Internal only, no external ports
   ipfs-node-2:
     image: ipfs/go-ipfs:v0.24.0
     platform: linux/arm64
-    ports:
-      - "4002:4001"
+    # Remove external port mapping - only internal communication
+    expose:
+      - "4001"
     volumes:
       - ./swarm.key:/swarm.key:ro
       - node2_data:/data/ipfs
@@ -80,21 +86,25 @@ services:
         cp /swarm.key /data/ipfs/swarm.key
         if [ ! -f /data/ipfs/config ]; then
           ipfs init
-          # Configure for private network
+          # Configure for private network storage node
           ipfs config Routing.Type dht
-          ipfs config --json Discovery.MDNS.Enabled false
+          ipfs config --json Discovery.MDNS.Enabled true
           ipfs config --json Discovery.webRTCStar.Enabled false
           ipfs bootstrap rm --all
+          # Configure to listen on all interfaces within container network
+          ipfs config Addresses.Swarm "[\"/ip4/0.0.0.0/tcp/4001\"]"
+          ipfs config --json API.HTTPHeaders.Access-Control-Allow-Origin "[\"*\"]"
         fi
         exec ipfs daemon --migrate=true
       '
 
-  # IPFS Storage Node 3
+  # IPFS Storage Node 3 - Internal only, no external ports
   ipfs-node-3:
     image: ipfs/go-ipfs:v0.24.0
     platform: linux/arm64
-    ports:
-      - "4003:4001"
+    # Remove external port mapping - only internal communication
+    expose:
+      - "4001"
     volumes:
       - ./swarm.key:/swarm.key:ro
       - node3_data:/data/ipfs
@@ -109,11 +119,14 @@ services:
         cp /swarm.key /data/ipfs/swarm.key
         if [ ! -f /data/ipfs/config ]; then
           ipfs init
-          # Configure for private network
+          # Configure for private network storage node
           ipfs config Routing.Type dht
-          ipfs config --json Discovery.MDNS.Enabled false
+          ipfs config --json Discovery.MDNS.Enabled true
           ipfs config --json Discovery.webRTCStar.Enabled false
           ipfs bootstrap rm --all
+          # Configure to listen on all interfaces within container network
+          ipfs config Addresses.Swarm "[\"/ip4/0.0.0.0/tcp/4001\"]"
+          ipfs config --json API.HTTPHeaders.Access-Control-Allow-Origin "[\"*\"]"
         fi
         exec ipfs daemon --migrate=true
       '

@@ -12,16 +12,40 @@ class IPFSService {
                 host: 'localhost',
                 port: 5001,
                 protocol: 'http',
-                timeout: 10000  // 10s timeout
+                timeout: 15000,  // Increased timeout for private network
+                headers: {
+                    'Access-Control-Allow-Origin': '*'
+                }
             });
 
-            // Test connection
-            await this.client.id();
-            console.log('✅ Connected to IPFS');
+            // Test connection with retry logic
+            let retries = 0;
+            const maxRetries = 5;
+            
+            while (retries < maxRetries) {
+                try {
+                    const id = await this.client.id();
+                    console.log('✅ Connected to IPFS Gateway:', id.id);
+                    
+                    // Get network info
+                    const peers = await this.client.swarm.peers();
+                    console.log(`🔗 Connected to ${peers.length} peers in private network`);
+                    
+                    return; // Success
+                } catch (err) {
+                    retries++;
+                    console.log(`🔄 IPFS connection attempt ${retries}/${maxRetries} failed:`, err.message);
+                    if (retries < maxRetries) {
+                        await new Promise(resolve => setTimeout(resolve, 3000));
+                    }
+                }
+            }
+            
+            throw new Error(`Failed to connect after ${maxRetries} attempts`);
         } catch (error) {
-            console.error('❌ Failed to connect to IPFS:', error);
-            // Retry after 5 seconds
-            setTimeout(() => this.initClient(), 5000);
+            console.error('❌ Failed to connect to IPFS:', error.message);
+            // Retry after 10 seconds
+            setTimeout(() => this.initClient(), 10000);
         }
     }
 
