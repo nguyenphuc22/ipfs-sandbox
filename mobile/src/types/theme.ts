@@ -11,6 +11,12 @@ export interface Theme {
     success: string;
     warning: string;
     error: string;
+    info: string;
+    secondary: string;
+    onPrimary: string;
+    onSecondary: string;
+    onError: string;
+    disabled: string;
     white: string;
     black: string;
   };
@@ -49,6 +55,7 @@ export interface Theme {
 
 export interface ThemeContextValue {
   theme: Theme;
+  colors: Theme['colors'];
   isDarkMode: boolean;
   toggleTheme?: () => void;
 }

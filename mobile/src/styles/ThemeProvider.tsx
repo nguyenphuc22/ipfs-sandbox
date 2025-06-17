@@ -16,6 +16,7 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({children}) => {
 
   const value: ThemeContextValue = {
     theme,
+    colors: theme.colors,
     isDarkMode,
   };
 

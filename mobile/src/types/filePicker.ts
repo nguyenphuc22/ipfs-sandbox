@@ -19,7 +19,9 @@ export interface PickedFile {
 
 export interface FilePickerOptions {
   allowMultiSelection?: boolean;
+  multiple?: boolean;
   type?: FileType[];
+  allowedTypes?: string[];
   copyTo?: 'cachesDirectory' | 'documentDirectory';
   presentationStyle?: 'fullScreen' | 'pageSheet' | 'formSheet' | 'overFullScreen';
   transitionStyle?: 'coverVertical' | 'flipHorizontal' | 'crossDissolve' | 'partialCurl';
@@ -69,8 +71,14 @@ export interface FilePickerState {
   pickedFiles: PickedFile[];
 }
 
+export interface FilePickerResult {
+  success: boolean;
+  files?: PickedFile[];
+  error?: string;
+}
+
 export interface UseFilePickerReturn {
-  pickFiles: (options?: FilePickerOptions) => Promise<PickedFile[]>;
+  pickFiles: (options?: FilePickerOptions) => Promise<FilePickerResult>;
   pickSingleFile: (options?: Omit<FilePickerOptions, 'allowMultiSelection'>) => Promise<PickedFile | null>;
   pickMixedFiles: (options?: FilePickerOptions) => Promise<PickedFile[]>;
   pickDocuments: (options?: Omit<FilePickerOptions, 'type'>) => Promise<PickedFile[]>;

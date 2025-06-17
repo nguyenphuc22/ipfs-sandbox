@@ -7,6 +7,7 @@ import {
   PickedFile,
   FilePickerError,
   FileValidationRules,
+  FilePickerResult,
 } from '../types/filePicker';
 import {FilePickerService, PermissionService} from '../services';
 import {FileValidationService} from '../utils/fileValidation';
@@ -103,23 +104,17 @@ export const useFilePicker = (
   }, [setError]);
 
   const pickFiles = useCallback(
-    async (options: FilePickerOptions = {}): Promise<PickedFile[]> => {
+    async (options: FilePickerOptions = {}): Promise<FilePickerResult> => {
       try {
         setLoading(true);
         setError(null);
 
-        // Check permissions if needed
-        if (options.type?.includes('images')) {
-          const hasPermission = await permissionService.ensureImagePickerPermissions();
-          if (!hasPermission) {
-            throw new Error('Photo library permission is required to select images');
-          }
-        }
+        // No permission check needed for document picker
 
         const files = await filePickerService.pickFiles(options);
 
         if (files.length === 0) {
-          return [];
+          return { success: true, files: [] };
         }
 
         // Validate files
@@ -133,10 +128,13 @@ export const useFilePicker = (
           console.warn(`${invalid.length} files were rejected due to validation errors`);
         }
 
-        return valid;
+        return { success: true, files: valid };
       } catch (error) {
         handleFilePickerError(error);
-        return [];
+        return { 
+          success: false, 
+          error: error instanceof Error ? error.message : 'File picker failed' 
+        };
       } finally {
         setLoading(false);
       }
