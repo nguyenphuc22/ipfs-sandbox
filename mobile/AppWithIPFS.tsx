@@ -29,6 +29,7 @@ const IPFSDemo: React.FC = () => {
 
   const handleUploadComplete = (files: FileData[]) => {
     console.log('Upload completed:', files);
+    // Add uploaded files to main list
     setAllFiles(prev => [...files, ...prev]);
   };
 
@@ -167,6 +168,7 @@ const IPFSDemo: React.FC = () => {
           <IPFSFileList
             onFileDeleted={handleFileDeleted}
             onFilesLoaded={handleFilesLoaded}
+            externalFiles={allFiles}
           />
         </View>
 

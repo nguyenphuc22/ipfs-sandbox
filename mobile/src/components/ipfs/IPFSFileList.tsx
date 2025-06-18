@@ -7,11 +7,13 @@ import { FileData } from '../../types';
 interface IPFSFileListProps {
   onFileDeleted?: (fileId: string) => void;
   onFilesLoaded?: (files: FileData[]) => void;
+  externalFiles?: FileData[];
 }
 
 export const IPFSFileList: React.FC<IPFSFileListProps> = ({
   onFileDeleted,
   onFilesLoaded,
+  externalFiles = [],
 }) => {
   const { colors } = useTheme();
   const { 
@@ -21,9 +23,12 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
     clearMockData 
   } = useIPFS();
   
-  const [files, setFiles] = useState<FileData[]>([]);
+  const [apiFiles, setApiFiles] = useState<FileData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  
+  // Combine API files with external files (uploaded)
+  const allFiles = [...externalFiles, ...apiFiles];
 
   // Auto-load files on component mount
   useEffect(() => {
@@ -37,15 +42,15 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
       if (result.success && result.files) {
         // Ensure files is always an array
         const filesList = Array.isArray(result.files) ? result.files : [];
-        setFiles(filesList);
+        setApiFiles(filesList);
         onFilesLoaded?.(filesList);
       } else {
         console.warn('Failed to load files:', result.error);
-        setFiles([]); // Set empty array on failure
+        setApiFiles([]); // Set empty array on failure
       }
     } catch (error) {
       console.error('Error loading files:', error);
-      setFiles([]); // Set empty array on error
+      setApiFiles([]); // Set empty array on error
     } finally {
       if (showLoading) setIsLoading(false);
     }
@@ -76,8 +81,8 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
               const result = await deleteFile(file.ipfsHash!);
               if (result.success) {
                 // Remove from local state
-                const updatedFiles = files.filter(f => f.ipfsHash !== file.ipfsHash);
-                setFiles(updatedFiles);
+                const updatedApiFiles = apiFiles.filter(f => f.ipfsHash !== file.ipfsHash);
+                setApiFiles(updatedApiFiles);
                 onFileDeleted?.(file.id);
                 
                 Alert.alert('Success', 'File deleted successfully');
@@ -111,7 +116,7 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
           onPress: () => {
             const cleared = clearMockData();
             if (cleared) {
-              setFiles([]);
+              setApiFiles([]);
               Alert.alert('Success', 'All mock data cleared');
             } else {
               Alert.alert('Error', 'Failed to clear mock data');
@@ -284,7 +289,7 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Files ({files.length})</Text>
+        <Text style={styles.title}>Files ({allFiles.length})</Text>
         <View style={styles.actionButtons}>
           <TouchableOpacity 
             style={styles.refreshButton} 
@@ -296,7 +301,7 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
             </Text>
           </TouchableOpacity>
           
-          {connectionState.isMockMode && files.length > 0 && (
+          {connectionState.isMockMode && allFiles.length > 0 && (
             <TouchableOpacity 
               style={[styles.actionButton, styles.clearButton]} 
               onPress={handleClearAllFiles}
@@ -307,7 +312,7 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
         </View>
       </View>
 
-      {files.length === 0 ? (
+      {allFiles.length === 0 ? (
         <View style={styles.emptyState}>
           <Text style={styles.emptyIcon}>📁</Text>
           <Text style={styles.emptyText}>No files found</Text>
@@ -322,7 +327,7 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
             <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
           }
         >
-          {(files || []).map((file) => (
+          {(allFiles || []).map((file) => (
             <View key={file.id} style={styles.fileItem}>
               <View style={styles.fileHeader}>
                 <Text style={styles.fileIcon}>{getFileIcon(file.name)}</Text>

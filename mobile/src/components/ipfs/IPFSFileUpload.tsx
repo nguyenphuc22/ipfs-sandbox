@@ -248,33 +248,7 @@ export const IPFSFileUpload: React.FC<IPFSFileUploadProps> = ({
         </View>
       )}
 
-      {uploadedFiles.length > 0 && (
-        <View style={styles.fileList}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text style={styles.fileListTitle}>
-              Uploaded Files ({uploadedFiles.length})
-            </Text>
-            <TouchableOpacity style={styles.clearButton} onPress={clearUploadedFiles}>
-              <Text style={styles.clearButtonText}>Clear</Text>
-            </TouchableOpacity>
-          </View>
-          
-          {uploadedFiles.map((file) => (
-            <View key={file.id} style={styles.fileItem}>
-              <Text style={styles.fileName}>{file.name}</Text>
-              <Text style={styles.fileDetails}>
-                Size: {(file.size / 1024).toFixed(1)} KB • 
-                Uploaded: {file.uploadTime.toLocaleTimeString()}
-              </Text>
-              {file.ipfsHash && (
-                <Text style={styles.fileHash}>
-                  IPFS: {file.ipfsHash}
-                </Text>
-              )}
-            </View>
-          ))}
-        </View>
-      )}
+      {/* Uploaded files section removed - files will appear in main file list below */}
     </View>
   );
 };
