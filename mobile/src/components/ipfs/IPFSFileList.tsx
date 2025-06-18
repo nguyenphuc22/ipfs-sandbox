@@ -12,7 +12,7 @@ interface IPFSFileListProps {
 
 export const IPFSFileList: React.FC<IPFSFileListProps> = ({
   onFileDeleted,
-  onFilesLoaded,
+  onFilesLoaded, // No longer used but kept for compatibility
   externalFiles = [],
 }) => {
   const { colors } = useTheme();
@@ -27,8 +27,10 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   
-  // Combine API files with external files (uploaded)
-  const allFiles = [...externalFiles, ...apiFiles];
+  // Combine API files with external files (uploaded) and sort by upload time (newest first)
+  const allFiles = [...externalFiles, ...apiFiles].sort((a, b) => 
+    new Date(b.uploadTime).getTime() - new Date(a.uploadTime).getTime()
+  );
 
   // Auto-load files on component mount
   useEffect(() => {
@@ -43,7 +45,8 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
         // Ensure files is always an array
         const filesList = Array.isArray(result.files) ? result.files : [];
         setApiFiles(filesList);
-        onFilesLoaded?.(filesList);
+        // Don't call onFilesLoaded to avoid overwriting uploaded files
+        // onFilesLoaded?.(filesList);
       } else {
         console.warn('Failed to load files:', result.error);
         setApiFiles([]); // Set empty array on failure

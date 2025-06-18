@@ -37,9 +37,7 @@ const IPFSDemo: React.FC = () => {
     console.error('Upload error:', error);
   };
 
-  const handleFilesLoaded = (files: FileData[]) => {
-    setAllFiles(files);
-  };
+  // Removed handleFilesLoaded - no longer needed since IPFSFileList manages its own state
 
   const handleFileDeleted = (fileId: string) => {
     setAllFiles(prev => prev.filter(f => f.id !== fileId));
@@ -167,7 +165,6 @@ const IPFSDemo: React.FC = () => {
         <View style={styles.section}>
           <IPFSFileList
             onFileDeleted={handleFileDeleted}
-            onFilesLoaded={handleFilesLoaded}
             externalFiles={allFiles}
           />
         </View>
