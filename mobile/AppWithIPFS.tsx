@@ -18,7 +18,10 @@ const IPFSDemo: React.FC = () => {
   const { 
     connectionState,
   } = useIPFS({
-    config: { useMockApi: true }, // Start in mock mode for demo
+    config: { 
+      useMockApi: false, // Use real API - upload works, list returns empty array
+      gatewayUrl: 'http://localhost:3000' // Using adb reverse port forwarding
+    },
     autoConnect: true,
   });
 

@@ -157,7 +157,9 @@ export class GatewayApiService {
   }
 
   async listFiles(): Promise<FileData[]> {
-    return this.makeRequest<FileData[]>('/api/files');
+    // Backend doesn't have file listing yet, return empty array
+    // In production, uncomment this: return this.makeRequest<FileData[]>('/api/files');
+    return [];
   }
 
   async deleteFile(hash: string): Promise<{ success: boolean }> {

@@ -95,15 +95,8 @@ export class FilePickerService {
   }
 
   private shouldUseDocumentPicker(fileTypes?: FileType[]): boolean {
-    if (!fileTypes || fileTypes.length === 0) {
-      return true;
-    }
-
-    const documentTypes = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv', 'zip', 'plainText', 'allFiles'];
-    const hasDocuments = fileTypes.some(type => documentTypes.includes(type));
-    const hasOnlyMedia = fileTypes.every(type => ['images', 'video', 'audio'].includes(type));
-    
-    return hasDocuments || !hasOnlyMedia;
+    // Always use document picker to avoid permission issues
+    return true;
   }
 
   private createPickedFileFromImageAsset(asset: any): PickedFile {
