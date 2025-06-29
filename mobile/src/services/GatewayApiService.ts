@@ -1,4 +1,5 @@
 import { FileData, PickedFile } from '../types';
+import { API_CONFIG } from '../config/api';
 
 export interface GatewayApiConfig {
   baseUrl: string;
@@ -188,12 +189,9 @@ export class GatewayApiService {
   }
 }
 
-// Default configuration for localhost development
+// Default configuration using auto-detected API config
 export const createDefaultGatewayService = () => {
-  return new GatewayApiService({
-    baseUrl: 'http://localhost:3000',
-    timeout: 30000,
-  });
+  return new GatewayApiService(API_CONFIG);
 };
 
 // Configuration for production or custom endpoints

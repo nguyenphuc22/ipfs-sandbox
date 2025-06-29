@@ -30,35 +30,71 @@ This project implements a complete IPFS private network with the following compo
   - iOS: Xcode, CocoaPods
   - Android: Android Studio, Android SDK
 
-### 1. Clone and Start System
+### 1. Clone and Start Backend System
 ```bash
 git clone <repository-url>
 cd ipfs-sandbox
 
-# Start entire IPFS system
-docker compose up -d
+# Start entire IPFS system (backend + storage nodes)
+./start-system.sh
 ```
 
-### 2. Verify System Status
+### 2. Setup Mobile Development
+
+#### 📱 For Android Development
+
+**Step 1: Get Your Machine's IP Address**
 ```bash
-# Check all services
-docker compose ps
+# macOS/Linux
+ifconfig | grep "inet " | grep -v "127.0.0.1"
+# Output example: inet 192.168.1.69 netmask 0xffffff00
 
-# Test system health
-curl http://localhost:3000/health
+# Windows  
+ipconfig
+# Look for IPv4 Address under your active network adapter
 ```
 
-### 3. Start Mobile App
+**Step 2: Update Mobile App Configuration**
+```bash
+cd mobile/src/config/api.ts
+```
+
+Edit line 17 and replace with your IP:
+```typescript
+const HOST_MACHINE_IP = '192.168.1.69'; // 👈 CHANGE THIS TO YOUR IP
+```
+
+**Step 3: Install Dependencies**
 ```bash
 cd mobile/
-
-# Install dependencies
 npm install
-cd ios && pod install && cd ..  # iOS only
 
-# Run app
-npm run ios      # iOS simulator
-npm run android  # Android emulator
+# For iOS (macOS only)
+cd ios && pod install && cd ..
+```
+
+**Step 4: Run Mobile App**
+```bash
+# Start Metro bundler (keep running)
+npm start
+
+# In another terminal - Run Android app
+npm run android
+
+# Or run iOS app (macOS only)
+npm run ios
+```
+
+### 3. Verify System Status
+```bash
+# Check backend services
+docker compose ps
+
+# Test backend health
+curl http://localhost:3000/health
+
+# Test from your IP (replace with your IP)
+curl http://192.168.1.69:3000/health
 ```
 
 ### 4. Test CRUD Operations
@@ -324,6 +360,71 @@ const mockConfig = {
 ```
 
 ## 🚨 Troubleshooting
+
+### Mobile App Connection Issues
+
+**"IPFS Gateway: Disconnected" in Android App:**
+
+1. **Get Your Machine's IP Address:**
+   ```bash
+   # macOS/Linux
+   ifconfig | grep "inet " | grep -v "127.0.0.1"
+   # Example output: inet 192.168.1.69 netmask 0xffffff00
+   
+   # Windows
+   ipconfig
+   # Look for IPv4 Address under your active WiFi/Ethernet adapter
+   ```
+
+2. **Update Mobile App Configuration:**
+   ```bash
+   # Edit this file:
+   mobile/src/config/api.ts
+   
+   # Update line 17 with your IP:
+   const HOST_MACHINE_IP = '192.168.1.69'; // 👈 CHANGE THIS
+   ```
+
+3. **Reload Mobile App:**
+   - Android: Press `R` twice in Metro console, or `Ctrl+M` -> Reload
+   - iOS: `Cmd+R` in simulator
+
+4. **Verify Backend is Accessible:**
+   ```bash
+   # Test from your IP (replace with your actual IP)
+   curl http://192.168.1.69:3000/health
+   # Should return: {"status":"OK",...}
+   ```
+
+**Common IP Configuration Issues:**
+- **WiFi Changes**: Your IP changes when switching networks
+- **VPN Active**: VPN may change your network configuration  
+- **Firewall**: Ensure port 3000 is not blocked
+- **Network Type**: Ensure both host and emulator are on same network
+
+### Quick Reference Commands
+
+**Get Your IP for Mobile Setup:**
+```bash
+# macOS/Linux - Copy the IP from this command
+ifconfig | grep "inet " | grep -v "127.0.0.1" | awk '{print $2}'
+
+# Windows - Look for IPv4 Address
+ipconfig | findstr "IPv4"
+```
+
+**Development Workflow:**
+```bash
+# 1. Start backend
+./start-system.sh
+
+# 2. Get your IP and update mobile/src/config/api.ts
+ifconfig | grep "inet " | grep -v "127.0.0.1"
+
+# 3. Start mobile app
+cd mobile && npm start
+cd mobile && npm run android  # In another terminal
+```
 
 ### Backend Issues
 

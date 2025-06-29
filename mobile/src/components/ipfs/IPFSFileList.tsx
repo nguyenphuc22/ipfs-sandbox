@@ -27,10 +27,31 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   
-  // Combine API files with external files (uploaded) and sort by upload time (newest first)
-  const allFiles = [...externalFiles, ...apiFiles].sort((a, b) => 
-    new Date(b.uploadTime).getTime() - new Date(a.uploadTime).getTime()
-  );
+  // Combine API files with external files (uploaded), deduplicate by IPFS hash, and sort by upload time (newest first)
+  const allFiles = React.useMemo(() => {
+    const combined = [...externalFiles, ...apiFiles];
+    
+    // Deduplicate by IPFS hash or file ID
+    const uniqueFiles = combined.reduce((acc: FileData[], current) => {
+      const existingFile = acc.find(file => 
+        // First try to match by IPFS hash (most reliable)
+        (file.ipfsHash && current.ipfsHash && file.ipfsHash === current.ipfsHash) ||
+        // Fallback to file ID
+        file.id === current.id
+      );
+      
+      if (!existingFile) {
+        acc.push(current);
+      }
+      
+      return acc;
+    }, []);
+    
+    // Sort by upload time (newest first)
+    return uniqueFiles.sort((a, b) => 
+      new Date(b.uploadTime).getTime() - new Date(a.uploadTime).getTime()
+    );
+  }, [externalFiles, apiFiles]);
 
   // Auto-load files on component mount
   useEffect(() => {

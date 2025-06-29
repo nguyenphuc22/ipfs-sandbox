@@ -1,6 +1,7 @@
 import { FileData, PickedFile } from '../types';
 import { GatewayApiService, createDefaultGatewayService } from './GatewayApiService';
 import { MockApiService, createMockGatewayService } from './MockApiService';
+import { API_CONFIG } from '../config/api';
 
 export interface IPFSServiceConfig {
   useMockApi?: boolean;
@@ -16,9 +17,9 @@ export class IPFSService {
   constructor(config: IPFSServiceConfig = {}) {
     this.config = {
       useMockApi: false,
-      gatewayUrl: 'http://localhost:3000',
+      gatewayUrl: API_CONFIG.baseUrl,
       mockDelay: 1000,
-      timeout: 30000,
+      timeout: API_CONFIG.timeout || 30000,
       ...config,
     };
 
@@ -26,7 +27,7 @@ export class IPFSService {
     if (this.config.useMockApi) {
       this.apiService = createMockGatewayService(this.config.mockDelay);
     } else {
-      this.apiService = this.config.gatewayUrl === 'http://localhost:3000' 
+      this.apiService = this.config.gatewayUrl === API_CONFIG.baseUrl 
         ? createDefaultGatewayService()
         : new GatewayApiService({
             baseUrl: this.config.gatewayUrl!,
@@ -48,7 +49,7 @@ export class IPFSService {
       this.config.gatewayUrl = gatewayUrl;
     }
     
-    this.apiService = this.config.gatewayUrl === 'http://localhost:3000' 
+    this.apiService = this.config.gatewayUrl === API_CONFIG.baseUrl 
       ? createDefaultGatewayService()
       : new GatewayApiService({
           baseUrl: this.config.gatewayUrl!,
@@ -293,6 +294,6 @@ export const createOfflineIPFSService = () => {
   return new IPFSService({ useMockApi: true, mockDelay: 500 });
 };
 
-export const createOnlineIPFSService = (gatewayUrl: string = 'http://localhost:3000') => {
+export const createOnlineIPFSService = (gatewayUrl: string = API_CONFIG.baseUrl) => {
   return new IPFSService({ useMockApi: false, gatewayUrl });
 };

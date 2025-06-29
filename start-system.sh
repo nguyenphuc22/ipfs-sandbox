@@ -144,10 +144,21 @@ docker compose up -d
 # Wait for services to be ready
 echo -e "\n${YELLOW}⏳ Waiting for services to start...${NC}"
 
-# Wait for IPFS nodes (TCP only)
-wait_for_service "IPFS Node 1" 4001
-wait_for_service "IPFS Node 2" 4002
-wait_for_service "IPFS Node 3" 4003
+# IPFS storage nodes run internally without exposed ports
+# Check if containers are running and healthy instead
+echo -e "${YELLOW}⏳ Checking IPFS storage nodes status...${NC}"
+for i in 1 2 3; do
+    container="ipfs-sandbox-ipfs-node-${i}-1"
+    if docker ps --format "{{.Names}}" | grep -q "^${container}$"; then
+        if docker inspect "$container" --format='{{.State.Health.Status}}' 2>/dev/null | grep -q "healthy"; then
+            echo -e "${GREEN}✅ IPFS Node $i is healthy${NC}"
+        else
+            echo -e "${YELLOW}⏳ IPFS Node $i is starting...${NC}"
+        fi
+    else
+        echo -e "${RED}❌ IPFS Node $i is not running${NC}"
+    fi
+done
 
 # Wait for Gateway services with HTTP validation
 wait_for_service "Backend API" 3000 "/health" "GET"
