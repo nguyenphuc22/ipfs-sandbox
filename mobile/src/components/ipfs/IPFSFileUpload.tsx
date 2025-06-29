@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
-import { useIPFS } from '../../hooks';
+import { useIPFS, useEnhancedStorage } from '../../hooks';
 import { useFilePicker } from '../../hooks';
 import { useTheme } from '../../styles';
 import { FileData } from '../../types';
@@ -18,6 +18,7 @@ export const IPFSFileUpload: React.FC<IPFSFileUploadProps> = ({
 }) => {
   const { uploadFile, uploadMultipleFiles, isUploading, uploadProgress, connectionState } = useIPFS();
   const { pickFiles } = useFilePicker();
+  const { saveFile } = useEnhancedStorage();
   const { colors } = useTheme();
   const [uploadedFiles, setUploadedFiles] = useState<FileData[]>([]);
 
@@ -47,6 +48,9 @@ export const IPFSFileUpload: React.FC<IPFSFileUploadProps> = ({
       const result = await uploadFile(file);
       
       if (result.success && result.data) {
+        // Save to AsyncStorage for persistence
+        await saveFile(result.data);
+        
         const newUploadedFiles = [result.data, ...uploadedFiles];
         setUploadedFiles(newUploadedFiles);
         onUploadComplete?.(newUploadedFiles);
@@ -74,6 +78,11 @@ export const IPFSFileUpload: React.FC<IPFSFileUploadProps> = ({
         const successfulFiles = result.results
           .filter(r => r.data)
           .map(r => r.data!);
+        
+        // Save all successful files to AsyncStorage for persistence
+        for (const file of successfulFiles) {
+          await saveFile(file);
+        }
         
         const newUploadedFiles = [...successfulFiles, ...uploadedFiles];
         setUploadedFiles(newUploadedFiles);

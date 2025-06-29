@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView, RefreshControl } from 'react-native';
-import { useIPFS } from '../../hooks';
+import { useIPFS, useEnhancedStorage } from '../../hooks';
 import { useTheme } from '../../styles';
 import { FileData } from '../../types';
 
@@ -23,13 +23,24 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
     clearMockData 
   } = useIPFS();
   
+  // Add enhanced storage hook for persistence
+  const { 
+    storedFiles, 
+    saveFile, 
+    removeFile, 
+    clearAllFiles: clearStoredFiles,
+    isLoading: isStorageLoading,
+    error: storageError,
+    metadata
+  } = useEnhancedStorage();
+  
   const [apiFiles, setApiFiles] = useState<FileData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   
-  // Combine API files with external files (uploaded), deduplicate by IPFS hash, and sort by upload time (newest first)
+  // Combine API files, external files, and stored files, deduplicate by IPFS hash, and sort by upload time (newest first)
   const allFiles = React.useMemo(() => {
-    const combined = [...externalFiles, ...apiFiles];
+    const combined = [...externalFiles, ...apiFiles, ...storedFiles];
     
     // Deduplicate by IPFS hash or file ID
     const uniqueFiles = combined.reduce((acc: FileData[], current) => {
@@ -51,7 +62,7 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
     return uniqueFiles.sort((a, b) => 
       new Date(b.uploadTime).getTime() - new Date(a.uploadTime).getTime()
     );
-  }, [externalFiles, apiFiles]);
+  }, [externalFiles, apiFiles, storedFiles]);
 
   // Auto-load files on component mount
   useEffect(() => {
@@ -87,11 +98,6 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
   };
 
   const handleDeleteFile = async (file: FileData) => {
-    if (!file.ipfsHash) {
-      Alert.alert('Error', 'Cannot delete file without IPFS hash');
-      return;
-    }
-
     Alert.alert(
       'Delete File',
       `Are you sure you want to delete "${file.name}"?`,
@@ -102,17 +108,21 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
           style: 'destructive',
           onPress: async () => {
             try {
-              const result = await deleteFile(file.ipfsHash!);
-              if (result.success) {
-                // Remove from local state
-                const updatedApiFiles = apiFiles.filter(f => f.ipfsHash !== file.ipfsHash);
-                setApiFiles(updatedApiFiles);
-                onFileDeleted?.(file.id);
-                
-                Alert.alert('Success', 'File deleted successfully');
-              } else {
-                Alert.alert('Error', result.error || 'Failed to delete file');
+              // Delete from server if IPFS hash exists
+              if (file.ipfsHash) {
+                const result = await deleteFile(file.ipfsHash);
+                if (result.success) {
+                  // Remove from API files state
+                  const updatedApiFiles = apiFiles.filter(f => f.ipfsHash !== file.ipfsHash);
+                  setApiFiles(updatedApiFiles);
+                }
               }
+              
+              // Always remove from local storage
+              await removeFile(file.id);
+              onFileDeleted?.(file.id);
+              
+              Alert.alert('Success', 'File deleted successfully');
             } catch (error) {
               const errorMessage = error instanceof Error ? error.message : 'Failed to delete file';
               Alert.alert('Error', errorMessage);
@@ -123,27 +133,30 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
     );
   };
 
-  const handleClearAllFiles = () => {
-    if (!connectionState.isMockMode) {
-      Alert.alert('Info', 'Clear all is only available in mock mode');
-      return;
-    }
-
+  const handleClearAllFiles = async () => {
     Alert.alert(
       'Clear All Files',
-      'Are you sure you want to clear all mock data? This action cannot be undone.',
+      'Are you sure you want to clear all files? This action cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Clear All',
           style: 'destructive',
-          onPress: () => {
-            const cleared = clearMockData();
-            if (cleared) {
-              setApiFiles([]);
-              Alert.alert('Success', 'All mock data cleared');
-            } else {
-              Alert.alert('Error', 'Failed to clear mock data');
+          onPress: async () => {
+            try {
+              // Clear mock data if in mock mode
+              if (connectionState.isMockMode) {
+                clearMockData();
+                setApiFiles([]);
+              }
+              
+              // Always clear local storage
+              await clearStoredFiles();
+              
+              Alert.alert('Success', 'All files cleared');
+            } catch (error) {
+              const errorMessage = error instanceof Error ? error.message : 'Failed to clear files';
+              Alert.alert('Error', errorMessage);
             }
           },
         },
@@ -297,15 +310,27 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
       textAlign: 'center',
       padding: 20,
     },
+    migrationText: {
+      color: colors.info,
+      fontSize: 12,
+      textAlign: 'center',
+      paddingHorizontal: 20,
+      marginTop: 8,
+    },
   });
 
-  if (isLoading) {
+  if (isLoading || isStorageLoading) {
     return (
       <View style={styles.container}>
         <View style={styles.header}>
           <Text style={styles.title}>Files (Loading...)</Text>
         </View>
         <Text style={styles.loadingText}>Loading files...</Text>
+        {metadata && (
+          <Text style={styles.migrationText}>
+            {metadata.totalFiles} files • Enhanced storage v{metadata.version}
+          </Text>
+        )}
       </View>
     );
   }
