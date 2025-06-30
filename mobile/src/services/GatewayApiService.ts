@@ -34,6 +34,22 @@ export interface IPFSTestResponse {
   };
 }
 
+export interface FileViewResponse {
+  success: boolean;
+  content: string | ArrayBuffer;
+  contentType: string;
+  contentLength: number;
+  filename: string;
+}
+
+export interface FileMetadataResponse {
+  success: boolean;
+  hash: string;
+  metadata: {
+    [key: string]: string;
+  };
+}
+
 export class GatewayApiService {
   private config: GatewayApiConfig;
 
@@ -133,7 +149,7 @@ export class GatewayApiService {
     const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
 
     try {
-      const response = await fetch(`${this.config.baseUrl}/api/files/${hash}`, {
+      const response = await fetch(`${this.config.baseUrl}/api/files/${hash}?download=true`, {
         signal: controller.signal,
       });
 
@@ -153,8 +169,57 @@ export class GatewayApiService {
     }
   }
 
-  async getFileMetadata(hash: string): Promise<any> {
-    return this.makeRequest<any>(`/api/files/${hash}/metadata`);
+  async viewFile(hash: string, filename?: string): Promise<FileViewResponse> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
+
+    try {
+      // Use query parameter instead of route parameter (works around routing issue)
+      let url = `${this.config.baseUrl}/api/files/${hash}?view=true`;
+      if (filename) {
+        const encodedFilename = encodeURIComponent(filename);
+        url += `&filename=${encodedFilename}`;
+      }
+
+      const response = await fetch(url, {
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`View failed with status: ${response.status}`);
+      }
+
+      const contentType = response.headers.get('content-type') || 'application/octet-stream';
+      const contentLength = parseInt(response.headers.get('content-length') || '0');
+
+      // Handle different content types
+      let content: string | ArrayBuffer;
+      if (contentType.startsWith('text/') || contentType === 'application/json') {
+        content = await response.text();
+      } else {
+        content = await response.arrayBuffer();
+      }
+
+      return {
+        success: true,
+        content,
+        contentType,
+        contentLength,
+        filename: filename || hash,
+      };
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error('File view failed');
+    }
+  }
+
+  async getFileMetadata(hash: string): Promise<FileMetadataResponse> {
+    return this.makeRequest<FileMetadataResponse>(`/api/files/metadata/${hash}`);
   }
 
   async listFiles(): Promise<FileData[]> {

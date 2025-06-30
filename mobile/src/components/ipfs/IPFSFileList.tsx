@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView, RefreshCon
 import { useIPFS, useEnhancedStorage } from '../../hooks';
 import { useTheme } from '../../styles';
 import { FileData } from '../../types';
+import { FileViewer } from './FileViewer';
 
 interface IPFSFileListProps {
   onFileDeleted?: (fileId: string) => void;
@@ -37,6 +38,10 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
   const [apiFiles, setApiFiles] = useState<FileData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  
+  // File viewer state
+  const [viewerVisible, setViewerVisible] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<FileData | null>(null);
   
   // Combine API files, external files, and stored files, deduplicate by IPFS hash, and sort by upload time (newest first)
   const allFiles = React.useMemo(() => {
@@ -95,6 +100,20 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
     setIsRefreshing(true);
     await loadFiles(false);
     setIsRefreshing(false);
+  };
+
+  const handleViewFile = (file: FileData) => {
+    if (!file.ipfsHash) {
+      Alert.alert('Error', 'Cannot view file: No IPFS hash available');
+      return;
+    }
+    setSelectedFile(file);
+    setViewerVisible(true);
+  };
+
+  const handleCloseViewer = () => {
+    setViewerVisible(false);
+    setSelectedFile(null);
   };
 
   const handleDeleteFile = async (file: FileData) => {
@@ -262,6 +281,18 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
       color: colors.text,
       flex: 1,
     },
+    viewButton: {
+      backgroundColor: colors.primary,
+      paddingVertical: 4,
+      paddingHorizontal: 8,
+      borderRadius: 4,
+      marginRight: 8,
+    },
+    viewButtonText: {
+      color: colors.onPrimary,
+      fontSize: 10,
+      fontWeight: '500',
+    },
     deleteButton: {
       backgroundColor: colors.error,
       paddingVertical: 4,
@@ -381,12 +412,20 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
               <View style={styles.fileHeader}>
                 <Text style={styles.fileIcon}>{getFileIcon(file.name)}</Text>
                 <Text style={styles.fileName}>{file.name}</Text>
-                <TouchableOpacity
-                  style={styles.deleteButton}
-                  onPress={() => handleDeleteFile(file)}
-                >
-                  <Text style={styles.deleteButtonText}>Delete</Text>
-                </TouchableOpacity>
+                <View style={styles.actionButtons}>
+                  <TouchableOpacity
+                    style={styles.viewButton}
+                    onPress={() => handleViewFile(file)}
+                  >
+                    <Text style={styles.viewButtonText}>View</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.deleteButton}
+                    onPress={() => handleDeleteFile(file)}
+                  >
+                    <Text style={styles.deleteButtonText}>Delete</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
               
               <Text style={styles.fileDetails}>
@@ -403,6 +442,15 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
             </View>
           ))}
         </ScrollView>
+      )}
+
+      {/* File Viewer Modal */}
+      {selectedFile && (
+        <FileViewer
+          file={selectedFile}
+          visible={viewerVisible}
+          onClose={handleCloseViewer}
+        />
       )}
     </View>
   );
