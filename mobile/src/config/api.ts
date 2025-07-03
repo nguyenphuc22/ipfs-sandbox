@@ -14,7 +14,7 @@
 // Windows: Run `ipconfig` and look for IPv4 Address
 //
 // UPDATE THE IP BELOW TO MATCH YOUR MACHINE'S IP:
-const HOST_MACHINE_IP = '192.168.1.40'; // 👈 CHANGE THIS TO YOUR IP
+const HOST_MACHINE_IP = '192.168.1.28'; // 👈 CHANGE THIS TO YOUR IP
 // =============================================================================
 
 // Development configurations
