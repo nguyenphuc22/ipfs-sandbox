@@ -5,25 +5,13 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
-  Alert,
 } from 'react-native';
 import { ThemeProvider, useTheme } from './src/styles';
 import { IPFSConnectionStatus, IPFSFileUpload, IPFSFileList } from './src/components';
-import { useIPFS } from './src/hooks';
 import { FileData } from './src/types';
 
 const IPFSDemo: React.FC = () => {
   const { colors } = useTheme();
-  const { 
-    connectionState,
-  } = useIPFS({
-    config: { 
-      useMockApi: false, // Use real API - upload works, list returns empty array
-      gatewayUrl: 'http://localhost:3000' // Using adb reverse port forwarding
-    },
-    autoConnect: true,
-  });
 
   const [allFiles, setAllFiles] = useState<FileData[]>([]);
 

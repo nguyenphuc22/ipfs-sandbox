@@ -4,20 +4,26 @@ import { useIPFS } from '../../hooks';
 import { useTheme } from '../../styles';
 
 export const IPFSConnectionStatus: React.FC = () => {
-  const { connectionState, checkConnection, switchToMockMode, switchToOnlineMode } = useIPFS();
+  const { connectionState, checkConnection } = useIPFS();
   const { colors } = useTheme();
 
   const getStatusColor = () => {
-    if (connectionState.isConnecting) return colors.warning;
-    if (connectionState.isMockMode) return colors.info;
-    if (connectionState.isHealthy && connectionState.isConnected) return colors.success;
+    if (connectionState.isConnecting) {
+      return colors.warning;
+    }
+    if (connectionState.isHealthy && connectionState.isConnected) {
+      return colors.success;
+    }
     return colors.error;
   };
 
   const getStatusText = () => {
-    if (connectionState.isConnecting) return 'Connecting...';
-    if (connectionState.isMockMode) return 'Mock Mode';
-    if (connectionState.isHealthy && connectionState.isConnected) return 'Connected';
+    if (connectionState.isConnecting) {
+      return 'Connecting...';
+    }
+    if (connectionState.isHealthy && connectionState.isConnected) {
+      return 'Connected';
+    }
     return 'Disconnected';
   };
 
@@ -52,11 +58,19 @@ export const IPFSConnectionStatus: React.FC = () => {
       color: colors.text,
       flex: 1,
     },
+    statusRowLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flex: 1,
+    },
     refreshButton: {
       paddingHorizontal: 12,
       paddingVertical: 6,
       backgroundColor: colors.primary,
       borderRadius: 4,
+    },
+    refreshButtonDisabled: {
+      opacity: 0.5,
     },
     refreshButtonText: {
       color: colors.onPrimary,
@@ -68,18 +82,6 @@ export const IPFSConnectionStatus: React.FC = () => {
       justifyContent: 'space-between',
       alignItems: 'center',
       marginTop: 8,
-    },
-    modeButton: {
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      backgroundColor: connectionState.isMockMode ? colors.secondary : colors.info,
-      borderRadius: 4,
-      marginRight: 8,
-    },
-    modeButtonText: {
-      color: colors.onPrimary,
-      fontSize: 12,
-      fontWeight: '500',
     },
     lastChecked: {
       fontSize: 12,
@@ -98,14 +100,17 @@ export const IPFSConnectionStatus: React.FC = () => {
   return (
     <View style={styles.container}>
       <View style={styles.statusRow}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+        <View style={styles.statusRowLeft}>
           <View style={styles.statusIndicator} />
           <Text style={styles.statusText}>
             IPFS Gateway: {getStatusText()}
           </Text>
         </View>
         <TouchableOpacity
-          style={[styles.refreshButton, connectionState.isConnecting && { opacity: 0.5 }]}
+          style={[
+            styles.refreshButton,
+            connectionState.isConnecting && styles.refreshButtonDisabled,
+          ]}
           onPress={checkConnection}
           disabled={connectionState.isConnecting}
         >
@@ -116,17 +121,6 @@ export const IPFSConnectionStatus: React.FC = () => {
       </View>
 
       <View style={styles.detailsRow}>
-        <View style={{ flexDirection: 'row' }}>
-          <TouchableOpacity
-            style={styles.modeButton}
-            onPress={() => connectionState.isMockMode ? switchToOnlineMode() : switchToMockMode()}
-          >
-            <Text style={styles.modeButtonText}>
-              {connectionState.isMockMode ? 'Switch to Online' : 'Switch to Mock'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
         {connectionState.lastChecked && (
           <Text style={styles.lastChecked}>
             Last checked: {connectionState.lastChecked.toLocaleTimeString()}

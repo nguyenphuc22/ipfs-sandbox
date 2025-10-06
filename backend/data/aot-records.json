@@ -1,0 +1,9 @@
+{
+  "users": [],
+  "files": [],
+  "revocations": [],
+  "config": {
+    "adjudicatorPublicKey": null,
+    "ringMemberPublicKeys": []
+  }
+}

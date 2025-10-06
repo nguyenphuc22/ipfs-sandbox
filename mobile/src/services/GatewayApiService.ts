@@ -16,6 +16,52 @@ export interface UploadResponse {
   error?: string;
 }
 
+export interface AOTUploadPayload {
+  file: PickedFile;
+  metadataHash: string;
+  ownershipPublicKey: string;
+  ringSignature?: string;
+  escrowedIdentity?: string;
+  schnorr: {
+    R: string;
+    s: string;
+    message: string;
+    publicKey?: string;
+  };
+}
+
+export interface AOTUploadResponse {
+  success: boolean;
+  fileId?: string;
+  cid?: string;
+  name?: string;
+  size?: number;
+  metadataHash?: string;
+  ownershipPublicKey?: string;
+  error?: string;
+}
+
+export interface AnonymousRevocationPayload {
+  fileId: string;
+  message: string;
+  targetUserId?: string;
+  ringSignature?: string;
+  ownershipProof: {
+    R: string;
+    s: string;
+    message: string;
+    publicKey: string;
+  };
+}
+
+export interface AnonymousRevocationResponse {
+  success: boolean;
+  revocationId?: string;
+  chunksToReencrypt?: number[];
+  note?: string;
+  error?: string;
+}
+
 export interface HealthResponse {
   status: string;
   timestamp: string;
@@ -144,6 +190,63 @@ export class GatewayApiService {
     }
   }
 
+  async uploadFileWithAOT(payload: AOTUploadPayload): Promise<AOTUploadResponse> {
+    const { file, metadataHash, ownershipPublicKey, ringSignature, escrowedIdentity, schnorr } = payload;
+
+    const formData = new FormData();
+    const fileData = {
+      uri: file.uri,
+      type: file.type || 'application/octet-stream',
+      name: file.name || 'unknown',
+    } as any;
+
+    formData.append('file', fileData);
+    formData.append('metadataHash', metadataHash);
+    formData.append('ownershipPublicKey', ownershipPublicKey);
+
+    if (ringSignature) {
+      formData.append('ringSignature', ringSignature);
+    }
+
+    if (escrowedIdentity) {
+      formData.append('escrowedIdentity', escrowedIdentity);
+    }
+
+    formData.append('ownershipProofR', schnorr.R);
+    formData.append('ownershipProofS', schnorr.s);
+    formData.append('ownershipProofMessage', schnorr.message);
+    formData.append('ownershipProofPublicKey', schnorr.publicKey || ownershipPublicKey);
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
+
+    try {
+      const response = await fetch(`${this.config.baseUrl}/api/files/aot-upload`, {
+        method: 'POST',
+        body: formData,
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      clearTimeout(timeoutId);
+
+      const json = await response.json();
+      if (!response.ok) {
+        throw new Error(json?.error || `Upload failed with status: ${response.status}`);
+      }
+
+      return json;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error('AOT upload failed');
+    }
+  }
+
   async downloadFile(hash: string): Promise<Blob> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
@@ -251,6 +354,15 @@ export class GatewayApiService {
 
   async verifySignature(signatureId: string): Promise<any> {
     return this.makeRequest<any>(`/api/signatures/${signatureId}/verify`);
+  }
+
+  async submitAnonymousRevocation(
+    payload: AnonymousRevocationPayload
+  ): Promise<AnonymousRevocationResponse> {
+    return this.makeRequest<AnonymousRevocationResponse>('/api/files/aot/revoke', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
   }
 }
 

@@ -3,6 +3,17 @@ const multer = require('multer');
 const axios = require('axios');
 const FormData = require('form-data');
 const { spawn } = require('child_process');
+const crypto = require('crypto');
+const {
+    addFileRecord,
+    getFileRecord,
+    addRevocationRecord,
+    listFileRecords,
+    updateFileRecord,
+    getRingContext,
+    getUserByPublicKey,
+} = require('../utils/aotStorage');
+const { verifyLsagRingSignature } = require('../utils/ringSignature');
 const router = express.Router();
 
 // Configure multer for file uploads
@@ -13,6 +24,91 @@ const upload = multer({
 
 // IPFS API endpoint - use internal container address
 const IPFS_API_URL = process.env.IPFS_API_URL || 'http://127.0.0.1:5001';
+
+let schnorrModulePromise;
+
+async function getSchnorrModule() {
+    if (!schnorrModulePromise) {
+        schnorrModulePromise = import('@noble/secp256k1');
+    }
+    return schnorrModulePromise;
+}
+
+function normalizeHex(hex) {
+    if (typeof hex !== 'string') {
+        return '';
+    }
+    const trimmed = hex.trim().toLowerCase();
+    return trimmed.startsWith('0x') ? trimmed.slice(2) : trimmed;
+}
+
+function toMessageHex(message) {
+    if (typeof message !== 'string') {
+        return null;
+    }
+
+    const normalized = normalizeHex(message);
+    const isHex = /^[0-9a-f]+$/i.test(normalized);
+    if (isHex && normalized.length === 64) {
+        return normalized;
+    }
+
+    const buffer = Buffer.from(message, 'utf-8');
+    const hash = crypto.createHash('sha256').update(buffer).digest('hex');
+    return hash;
+}
+
+async function verifySchnorrProof({
+    R,
+    s,
+    message,
+    publicKey,
+}, expectedPublicKey) {
+    const { schnorr } = await getSchnorrModule();
+
+    const normalizedR = normalizeHex(R);
+    const normalizedS = normalizeHex(s);
+    const normalizedMessage = toMessageHex(message);
+    const proofPublicKey = normalizeHex(publicKey);
+    const storedPublicKey = normalizeHex(expectedPublicKey);
+
+    if (!normalizedR || !normalizedS || !normalizedMessage) {
+        throw new Error('Incomplete Schnorr proof payload');
+    }
+
+    if (!proofPublicKey || proofPublicKey !== storedPublicKey) {
+        throw new Error('Ownership public key mismatch');
+    }
+
+    if (normalizedR.length !== 64 || normalizedS.length !== 64) {
+        throw new Error('Schnorr proof components must be 32-byte hex values');
+    }
+
+    const signatureHex = `${normalizedR}${normalizedS}`;
+    const isValid = await schnorr.verify(signatureHex, normalizedMessage, storedPublicKey);
+    if (!isValid) {
+        throw new Error('Invalid Schnorr ownership proof');
+    }
+    return true;
+}
+
+function tryParseJson(value) {
+    if (!value || typeof value !== 'string') {
+        return null;
+    }
+    try {
+        return JSON.parse(value);
+    } catch (error) {
+        return null;
+    }
+}
+
+function normalizePublicKey(value) {
+    if (typeof value !== 'string') {
+        return '';
+    }
+    return value.trim().toLowerCase().replace(/^0x/, '');
+}
 
 // Upload file to IPFS
 router.post('/upload', upload.single('file'), async (req, res) => {
@@ -55,6 +151,116 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     }
 });
 
+router.post('/aot-upload', upload.single('file'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: 'File is required' });
+        }
+
+        const metadataHash = (req.body.metadataHash || '').trim();
+        const ringSignature = (req.body.ringSignature || '').trim();
+        const escrowedIdentity = (req.body.escrowedIdentity || '').trim();
+        const ownershipPublicKey = (req.body.ownershipPublicKey || '').trim();
+        const ownershipProof = {
+            R: req.body.ownershipProofR || req.body['ownershipProof[R]'],
+            s: req.body.ownershipProofS || req.body['ownershipProof[s]'],
+            message: req.body.ownershipProofMessage || req.body['ownershipProof[message]'],
+            publicKey: req.body.ownershipProofPublicKey || ownershipPublicKey,
+        };
+
+        if (!metadataHash || !ownershipPublicKey) {
+            return res.status(400).json({ error: 'metadataHash and ownershipPublicKey are required' });
+        }
+
+        await verifySchnorrProof(ownershipProof, ownershipPublicKey);
+
+        const ringContext = getRingContext();
+        const ringMembers = ringContext.ringMemberPublicKeys || [];
+        const normalizedOwnerKey = normalizePublicKey(ownershipPublicKey);
+
+        if (ringMembers.length >= 2) {
+            const ringIncludesOwner = ringMembers
+                .map((member) => normalizePublicKey(member))
+                .includes(normalizedOwnerKey);
+            if (!ringIncludesOwner) {
+                return res.status(400).json({
+                    error: 'Ownership public key is not part of the registered ring',
+                });
+            }
+
+            if (!ringSignature) {
+                return res.status(400).json({
+                    error: 'ringSignature is required when a ring is configured',
+                });
+            }
+
+            await verifyLsagRingSignature({
+                message: metadataHash,
+                ringSignature,
+                expectedRingPublicKeys: ringMembers,
+            });
+        }
+
+        const parsedRingSignature = ringSignature
+            ? tryParseJson(ringSignature) || { raw: ringSignature }
+            : null;
+        const ownerRecord = getUserByPublicKey(ownershipPublicKey);
+
+        const formData = new FormData();
+        formData.append('file', req.file.buffer, {
+            filename: req.file.originalname,
+            contentType: req.file.mimetype,
+        });
+
+        const response = await axios.post(`${IPFS_API_URL}/api/v0/add`, formData, {
+            headers: {
+                ...formData.getHeaders(),
+            },
+            maxContentLength: Infinity,
+            maxBodyLength: Infinity,
+        });
+
+        const ipfsResponse = response.data;
+        const hash = ipfsResponse.Hash;
+
+        const record = addFileRecord({
+            fileId: crypto.randomUUID(),
+            cid: hash,
+            name: req.file.originalname,
+            size: req.file.size,
+            metadataHash,
+            ownershipPublicKey,
+            ringSignature,
+            storedRingSignature: parsedRingSignature,
+            escrowedIdentity,
+            ownerUserId: ownerRecord?.userId || null,
+            ownerIdentifier: ownerRecord?.identifier || null,
+            ringContextSnapshot: {
+                adjudicatorPublicKey: ringContext.adjudicatorPublicKey,
+                ringMemberPublicKeys: ringMembers,
+            },
+            createdAt: new Date().toISOString(),
+        });
+
+        res.status(201).json({
+            success: true,
+            fileId: record.fileId,
+            cid: record.cid,
+            name: record.name,
+            size: record.size,
+            metadataHash: record.metadataHash,
+            ownershipPublicKey: record.ownershipPublicKey,
+        });
+    } catch (error) {
+        console.error('AOT upload error:', error);
+        const message = error instanceof Error ? error.message : 'Failed to process AOT upload';
+        const statusCode = message.includes('Schnorr') || message.includes('mismatch')
+            ? 400
+            : 500;
+        res.status(statusCode).json({ success: false, error: message });
+    }
+});
+
 // Simple test route for debugging
 router.get('/viewtest', (req, res) => {
     res.json({ message: 'View test route works' });
@@ -63,6 +269,92 @@ router.get('/viewtest', (req, res) => {
 // Test route to verify view pattern works
 router.get('/view/test', (req, res) => {
     res.json({ message: 'View pattern works!' });
+});
+
+router.get('/aot/files', (req, res) => {
+    const files = listFileRecords();
+    res.json({ success: true, files });
+});
+
+router.post('/aot/revoke', async (req, res) => {
+    try {
+        const {
+            fileId,
+            targetUserId,
+            ringSignature,
+            message,
+            ownershipProof = {},
+        } = req.body || {};
+
+        if (!fileId || !message) {
+            return res.status(400).json({ error: 'fileId and message are required' });
+        }
+
+        const record = getFileRecord(fileId);
+        if (!record) {
+            return res.status(404).json({ error: 'File record not found for provided fileId' });
+        }
+
+        const ringContext = getRingContext();
+        const ringMembers = ringContext.ringMemberPublicKeys || [];
+
+        if (ringMembers.length >= 2) {
+            if (!ringSignature) {
+                return res.status(400).json({
+                    error: 'ringSignature is required for anonymous revocation',
+                });
+            }
+
+            await verifyLsagRingSignature({
+                message,
+                ringSignature,
+                expectedRingPublicKeys: ringMembers,
+            });
+        }
+
+        await verifySchnorrProof({
+            R: ownershipProof.R,
+            s: ownershipProof.s,
+            message: ownershipProof.message || message,
+            publicKey: ownershipProof.publicKey || record.ownershipPublicKey,
+        }, record.ownershipPublicKey);
+
+        const revocation = addRevocationRecord({
+            revocationId: crypto.randomUUID(),
+            fileId,
+            targetUserId: targetUserId || null,
+            ringSignature: ringSignature || null,
+            storedRingSignature: ringSignature
+                ? tryParseJson(ringSignature) || { raw: ringSignature }
+                : null,
+            message,
+            ownershipProof: {
+                R: ownershipProof.R,
+                s: ownershipProof.s,
+                publicKey: ownershipProof.publicKey || record.ownershipPublicKey,
+            },
+            createdAt: new Date().toISOString(),
+        });
+
+        updateFileRecord(fileId, {
+            lastRevocationId: revocation.revocationId,
+            lastRevocationAt: revocation.createdAt,
+        });
+
+        res.json({
+            success: true,
+            revocationId: revocation.revocationId,
+            chunksToReencrypt: [],
+            note: 'Partial re-encryption is skipped in the demo implementation.',
+        });
+    } catch (error) {
+        console.error('AOT revocation error:', error);
+        const message = error instanceof Error ? error.message : 'Failed to process revocation request';
+        const statusCode = message.includes('Schnorr') || message.includes('mismatch')
+            ? 400
+            : 500;
+        res.status(statusCode).json({ success: false, error: message });
+    }
 });
 
 // Test IPFS API connectivity

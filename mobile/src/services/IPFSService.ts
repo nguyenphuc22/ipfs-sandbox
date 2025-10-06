@@ -1,12 +1,16 @@
 import { FileData, PickedFile } from '../types';
-import { GatewayApiService, createDefaultGatewayService } from './GatewayApiService';
-import { MockApiService, createMockGatewayService } from './MockApiService';
+import {
+  GatewayApiService,
+  createDefaultGatewayService,
+  AOTUploadPayload,
+  AOTUploadResponse,
+  AnonymousRevocationPayload,
+  AnonymousRevocationResponse,
+} from './GatewayApiService';
 import { API_CONFIG } from '../config/api';
 
 export interface IPFSServiceConfig {
-  useMockApi?: boolean;
   gatewayUrl?: string;
-  mockDelay?: number;
   timeout?: number;
 }
 
@@ -16,49 +20,17 @@ export class IPFSService {
 
   constructor(config: IPFSServiceConfig = {}) {
     this.config = {
-      useMockApi: false,
       gatewayUrl: API_CONFIG.baseUrl,
-      mockDelay: 1000,
       timeout: API_CONFIG.timeout || 30000,
       ...config,
     };
 
-    // Initialize appropriate service based on configuration
-    if (this.config.useMockApi) {
-      this.apiService = createMockGatewayService(this.config.mockDelay);
-    } else {
-      this.apiService = this.config.gatewayUrl === API_CONFIG.baseUrl 
-        ? createDefaultGatewayService()
-        : new GatewayApiService({
-            baseUrl: this.config.gatewayUrl!,
-            timeout: this.config.timeout,
-          });
-    }
-  }
-
-  // Switch between mock and real API
-  switchToMockApi(delay: number = 1000): void {
-    this.config.useMockApi = true;
-    this.config.mockDelay = delay;
-    this.apiService = createMockGatewayService(delay);
-  }
-
-  switchToRealApi(gatewayUrl?: string): void {
-    this.config.useMockApi = false;
-    if (gatewayUrl) {
-      this.config.gatewayUrl = gatewayUrl;
-    }
-    
-    this.apiService = this.config.gatewayUrl === API_CONFIG.baseUrl 
+    this.apiService = this.config.gatewayUrl === API_CONFIG.baseUrl
       ? createDefaultGatewayService()
       : new GatewayApiService({
           baseUrl: this.config.gatewayUrl!,
           timeout: this.config.timeout,
         });
-  }
-
-  isMockMode(): boolean {
-    return this.config.useMockApi || false;
   }
 
   // Health and connectivity
@@ -108,7 +80,24 @@ export class IPFSService {
     } catch (error) {
       return { 
         success: false, 
-        error: error instanceof Error ? error.message : 'Upload failed' 
+      error: error instanceof Error ? error.message : 'Upload failed' 
+      };
+    }
+  }
+
+  async uploadFileWithAOT(
+    payload: AOTUploadPayload
+  ): Promise<{ success: boolean; response?: AOTUploadResponse; error?: string }> {
+    try {
+      const response = await this.apiService.uploadFileWithAOT(payload);
+      if (!response.success) {
+        return { success: false, error: response.error || 'AOT upload failed' };
+      }
+      return { success: true, response };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'AOT upload failed',
       };
     }
   }
@@ -194,7 +183,24 @@ export class IPFSService {
     } catch (error) {
       return { 
         success: false, 
-        error: error instanceof Error ? error.message : 'Failed to create signature' 
+      error: error instanceof Error ? error.message : 'Failed to create signature' 
+      };
+    }
+  }
+
+  async submitAnonymousRevocation(
+    payload: AnonymousRevocationPayload
+  ): Promise<{ success: boolean; response?: AnonymousRevocationResponse; error?: string }> {
+    try {
+      const response = await this.apiService.submitAnonymousRevocation(payload);
+      if (!response.success) {
+        return { success: false, error: response.error || 'Revocation failed' };
+      }
+      return { success: true, response };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Revocation failed',
       };
     }
   }
@@ -256,31 +262,12 @@ export class IPFSService {
 
   updateConfig(newConfig: Partial<IPFSServiceConfig>): void {
     this.config = { ...this.config, ...newConfig };
-    
-    // Reinitialize service if API type changed
-    if (newConfig.useMockApi !== undefined) {
-      if (newConfig.useMockApi) {
-        this.switchToMockApi(this.config.mockDelay);
-      } else {
-        this.switchToRealApi(this.config.gatewayUrl);
-      }
-    }
-  }
-
-  // Mock-specific methods (only available in mock mode)
-  clearMockData(): boolean {
-    if (this.apiService instanceof MockApiService) {
-      this.apiService.clearMockFiles();
-      return true;
-    }
-    return false;
-  }
-
-  getMockData(): FileData[] | null {
-    if (this.apiService instanceof MockApiService) {
-      return this.apiService.getMockFiles();
-    }
-    return null;
+    this.apiService = this.config.gatewayUrl === API_CONFIG.baseUrl
+      ? createDefaultGatewayService()
+      : new GatewayApiService({
+          baseUrl: this.config.gatewayUrl!,
+          timeout: this.config.timeout,
+        });
   }
 }
 
@@ -289,11 +276,6 @@ export const createIPFSService = (config?: IPFSServiceConfig) => {
   return new IPFSService(config);
 };
 
-// Predefined configurations
-export const createOfflineIPFSService = () => {
-  return new IPFSService({ useMockApi: true, mockDelay: 500 });
-};
-
 export const createOnlineIPFSService = (gatewayUrl: string = API_CONFIG.baseUrl) => {
-  return new IPFSService({ useMockApi: false, gatewayUrl });
+  return new IPFSService({ gatewayUrl });
 };

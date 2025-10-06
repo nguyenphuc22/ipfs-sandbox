@@ -16,7 +16,7 @@ export const IPFSFileUpload: React.FC<IPFSFileUploadProps> = ({
   onUploadError,
   multiple = false,
 }) => {
-  const { uploadFile, uploadMultipleFiles, isUploading, uploadProgress, connectionState } = useIPFS();
+  const { uploadFile, uploadMultipleFiles, isUploading, uploadProgress } = useIPFS();
   const { pickFiles } = useFilePicker();
   const { saveFile } = useEnhancedStorage();
   const { colors } = useTheme();
@@ -103,10 +103,6 @@ export const IPFSFileUpload: React.FC<IPFSFileUploadProps> = ({
       onUploadError?.(errorMessage);
       Alert.alert('Upload Error', errorMessage);
     }
-  };
-
-  const clearUploadedFiles = () => {
-    setUploadedFiles([]);
   };
 
   const styles = StyleSheet.create({

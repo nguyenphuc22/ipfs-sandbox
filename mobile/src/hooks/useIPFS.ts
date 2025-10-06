@@ -10,7 +10,6 @@ export interface UseIPFSOptions {
 export interface IPFSConnectionState {
   isConnected: boolean;
   isHealthy: boolean;
-  isMockMode: boolean;
   isConnecting: boolean;
   error: string | null;
   lastChecked: Date | null;
@@ -21,12 +20,12 @@ export const useIPFS = (options: UseIPFSOptions = {}) => {
   
   // Service instance
   const serviceRef = useRef<IPFSService | null>(null);
+  const autoConnectInitiated = useRef(false);
   
   // Connection state
   const [connectionState, setConnectionState] = useState<IPFSConnectionState>({
     isConnected: false,
     isHealthy: false,
-    isMockMode: config?.useMockApi || false,
     isConnecting: false,
     error: null,
     lastChecked: null,
@@ -37,24 +36,6 @@ export const useIPFS = (options: UseIPFSOptions = {}) => {
   const [isDownloading, setIsDownloading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   
-  // Initialize service
-  useEffect(() => {
-    if (!serviceRef.current) {
-      serviceRef.current = createIPFSService(config);
-      setConnectionState(prev => ({
-        ...prev,
-        isMockMode: serviceRef.current?.isMockMode() || false,
-      }));
-    }
-  }, [config]);
-
-  // Auto-connect on mount
-  useEffect(() => {
-    if (autoConnect && serviceRef.current && !connectionState.isConnecting) {
-      checkConnection();
-    }
-  }, [autoConnect]);
-
   // Check connection and health
   const checkConnection = useCallback(async () => {
     if (!serviceRef.current) return;
@@ -99,6 +80,18 @@ export const useIPFS = (options: UseIPFSOptions = {}) => {
       };
     }
   }, []);
+
+  // Initialize service and trigger initial connection when requested
+  useEffect(() => {
+    if (!serviceRef.current) {
+      serviceRef.current = createIPFSService(config);
+    }
+
+    if (autoConnect && serviceRef.current && !autoConnectInitiated.current) {
+      autoConnectInitiated.current = true;
+      checkConnection();
+    }
+  }, [config, autoConnect, checkConnection]);
 
   // Upload file
   const uploadFile = useCallback(async (file: PickedFile): Promise<{
@@ -257,50 +250,6 @@ export const useIPFS = (options: UseIPFSOptions = {}) => {
     return serviceRef.current.verifySignature(signatureId);
   }, []);
 
-  // Mode switching
-  const switchToMockMode = useCallback((delay: number = 1000) => {
-    if (serviceRef.current) {
-      serviceRef.current.switchToMockApi(delay);
-      setConnectionState(prev => ({
-        ...prev,
-        isMockMode: true,
-        isConnected: true,
-        isHealthy: true,
-        error: null,
-      }));
-    }
-  }, []);
-
-  const switchToOnlineMode = useCallback((gatewayUrl?: string) => {
-    if (serviceRef.current) {
-      serviceRef.current.switchToRealApi(gatewayUrl);
-      setConnectionState(prev => ({
-        ...prev,
-        isMockMode: false,
-        isConnected: false,
-        isHealthy: false,
-        error: null,
-      }));
-      // Auto-check connection after switching
-      setTimeout(checkConnection, 100);
-    }
-  }, [checkConnection]);
-
-  // Mock data management (only in mock mode)
-  const clearMockData = useCallback(() => {
-    if (serviceRef.current && connectionState.isMockMode) {
-      return serviceRef.current.clearMockData();
-    }
-    return false;
-  }, [connectionState.isMockMode]);
-
-  const getMockData = useCallback(() => {
-    if (serviceRef.current && connectionState.isMockMode) {
-      return serviceRef.current.getMockData();
-    }
-    return null;
-  }, [connectionState.isMockMode]);
-
   // Get current config
   const getConfig = useCallback(() => {
     return serviceRef.current?.getConfig() || null;
@@ -310,10 +259,6 @@ export const useIPFS = (options: UseIPFSOptions = {}) => {
   const updateConfig = useCallback((newConfig: Partial<IPFSServiceConfig>) => {
     if (serviceRef.current) {
       serviceRef.current.updateConfig(newConfig);
-      setConnectionState(prev => ({
-        ...prev,
-        isMockMode: serviceRef.current?.isMockMode() || false,
-      }));
     }
   }, []);
 
@@ -337,14 +282,6 @@ export const useIPFS = (options: UseIPFSOptions = {}) => {
     
     // Connection management
     checkConnection,
-    
-    // Mode switching
-    switchToMockMode,
-    switchToOnlineMode,
-    
-    // Mock data management
-    clearMockData,
-    getMockData,
     
     // Config management
     getConfig,

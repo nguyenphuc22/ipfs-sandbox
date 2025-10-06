@@ -7,32 +7,23 @@ import { FileViewer } from './FileViewer';
 
 interface IPFSFileListProps {
   onFileDeleted?: (fileId: string) => void;
-  onFilesLoaded?: (files: FileData[]) => void;
   externalFiles?: FileData[];
 }
 
 export const IPFSFileList: React.FC<IPFSFileListProps> = ({
   onFileDeleted,
-  onFilesLoaded, // No longer used but kept for compatibility
   externalFiles = [],
 }) => {
   const { colors } = useTheme();
-  const { 
-    listFiles, 
-    deleteFile, 
-    connectionState,
-    clearMockData 
-  } = useIPFS();
+  const { listFiles, deleteFile } = useIPFS();
   
   // Add enhanced storage hook for persistence
-  const { 
-    storedFiles, 
-    saveFile, 
-    removeFile, 
+  const {
+    storedFiles,
+    removeFile,
     clearAllFiles: clearStoredFiles,
     isLoading: isStorageLoading,
-    error: storageError,
-    metadata
+    metadata,
   } = useEnhancedStorage();
   
   const [apiFiles, setApiFiles] = useState<FileData[]>([]);
@@ -69,12 +60,7 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
     );
   }, [externalFiles, apiFiles, storedFiles]);
 
-  // Auto-load files on component mount
-  useEffect(() => {
-    loadFiles();
-  }, []);
-
-  const loadFiles = async (showLoading = true) => {
+  const loadFiles = React.useCallback(async (showLoading = true) => {
     if (showLoading) setIsLoading(true);
     try {
       const result = await listFiles();
@@ -82,8 +68,6 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
         // Ensure files is always an array
         const filesList = Array.isArray(result.files) ? result.files : [];
         setApiFiles(filesList);
-        // Don't call onFilesLoaded to avoid overwriting uploaded files
-        // onFilesLoaded?.(filesList);
       } else {
         console.warn('Failed to load files:', result.error);
         setApiFiles([]); // Set empty array on failure
@@ -94,7 +78,12 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
     } finally {
       if (showLoading) setIsLoading(false);
     }
-  };
+  }, [listFiles]);
+
+  // Auto-load files on component mount
+  useEffect(() => {
+    loadFiles();
+  }, [loadFiles]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -163,15 +152,8 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
           style: 'destructive',
           onPress: async () => {
             try {
-              // Clear mock data if in mock mode
-              if (connectionState.isMockMode) {
-                clearMockData();
-                setApiFiles([]);
-              }
-              
-              // Always clear local storage
               await clearStoredFiles();
-              
+              setApiFiles([]);
               Alert.alert('Success', 'All files cleared');
             } catch (error) {
               const errorMessage = error instanceof Error ? error.message : 'Failed to clear files';
@@ -381,7 +363,7 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
             </Text>
           </TouchableOpacity>
           
-          {connectionState.isMockMode && allFiles.length > 0 && (
+          {allFiles.length > 0 && (
             <TouchableOpacity 
               style={[styles.actionButton, styles.clearButton]} 
               onPress={handleClearAllFiles}

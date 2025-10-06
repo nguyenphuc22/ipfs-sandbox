@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { useFilePicker } from '../../hooks/useFilePicker';
 import { PickedFile } from '../../types/filePicker';
+import { AOTDemoCard } from '../ipfs';
 
 export const DocumentPickerDemo: React.FC = () => {
   const {
@@ -169,6 +170,10 @@ export const DocumentPickerDemo: React.FC = () => {
         </View>
       )}
 
+      <View style={styles.demoSection}>
+        <AOTDemoCard />
+      </View>
+
       <View style={styles.buttonContainer}>
         <TouchableOpacity
           style={styles.button}
@@ -307,6 +312,9 @@ const styles = StyleSheet.create({
   },
   filesContainer: {
     marginTop: 20,
+  },
+  demoSection: {
+    marginTop: 24,
   },
   fileItem: {
     flexDirection: 'row',

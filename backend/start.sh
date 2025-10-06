@@ -119,7 +119,7 @@ if [ ! -f "/data/ipfs/config" ]; then
     ipfs config --json Swarm.RelayClient.Enabled true
     
     # Configure swarm addresses to listen on all interfaces
-    ipfs config Addresses.Swarm "[\"/ip4/0.0.0.0/tcp/4001\", \"/ip6/::/tcp/4001\"]"
+    ipfs config --json Addresses.Swarm "[\"/ip4/0.0.0.0/tcp/4001\", \"/ip6/::/tcp/4001\"]"
     
     # Enable CORS for API access
     ipfs config --json API.HTTPHeaders.Access-Control-Allow-Origin "[\"*\"]"

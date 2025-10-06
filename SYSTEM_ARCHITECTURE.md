@@ -162,7 +162,7 @@ graph TB
 ```mermaid
 graph TB
     UI[UI Components<br/>File Upload/List]
-    H[Custom Hooks<br/>useIPFS, useFiles]
+    H[Custom Hooks<br/>useIPFS]
     S[Services<br/>GatewayApiService]
     AS[AsyncStorage<br/>Local Persistence]
     
@@ -279,7 +279,7 @@ graph TB
         - useIPFS
         - useFilePicker
         - useEnhancedStorage
-        - useFiles`"]
+        - useFileStorage`"]
         
         Storage["`**Local Storage**
         - AsyncStorage

@@ -47,10 +47,6 @@ export const getFileIcon = (fileName: string): string => {
   return iconMap[extension] || '📄';
 };
 
-export const generateMockIPFSHash = (): string => {
-  return `Qm${Math.random().toString(36).substring(2, 46)}`;
-};
-
 export const generateRandomId = (): string => {
   return Date.now().toString() + Math.random().toString(36).substring(2, 11);
 };
