@@ -3,3 +3,4 @@ export * from './IPFSFileUpload';
 export * from './IPFSFileList';
 export * from './FileViewer';
 export * from './AOTDemoCard';
+export * from './AOTUploadModal';

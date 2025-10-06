@@ -5,6 +5,10 @@ export interface FileData {
   uploadTime: Date;
   status: FileStatus;
   ipfsHash?: string;
+  metadataHash?: string;
+  ownershipPublicKey?: string;
+  masterKey?: string;
+  ringMembers?: string[];
 }
 
 export type FileStatus = 'uploading' | 'completed' | 'error';

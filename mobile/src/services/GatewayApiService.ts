@@ -22,6 +22,7 @@ export interface AOTUploadPayload {
   ownershipPublicKey: string;
   ringSignature?: string;
   escrowedIdentity?: string;
+  ringMembers?: string[];
   schnorr: {
     R: string;
     s: string;
@@ -191,7 +192,7 @@ export class GatewayApiService {
   }
 
   async uploadFileWithAOT(payload: AOTUploadPayload): Promise<AOTUploadResponse> {
-    const { file, metadataHash, ownershipPublicKey, ringSignature, escrowedIdentity, schnorr } = payload;
+    const { file, metadataHash, ownershipPublicKey, ringSignature, escrowedIdentity, ringMembers, schnorr } = payload;
 
     const formData = new FormData();
     const fileData = {
@@ -210,6 +211,10 @@ export class GatewayApiService {
 
     if (escrowedIdentity) {
       formData.append('escrowedIdentity', escrowedIdentity);
+    }
+
+    if (ringMembers && ringMembers.length > 0) {
+      formData.append('ringMembers', JSON.stringify(ringMembers));
     }
 
     formData.append('ownershipProofR', schnorr.R);

@@ -29,7 +29,7 @@ let schnorrModulePromise;
 
 async function getSchnorrModule() {
     if (!schnorrModulePromise) {
-        schnorrModulePromise = import('@noble/secp256k1');
+        schnorrModulePromise = import('@noble/curves/secp256k1.js').then(m => m.schnorr);
     }
     return schnorrModulePromise;
 }
@@ -64,7 +64,7 @@ async function verifySchnorrProof({
     message,
     publicKey,
 }, expectedPublicKey) {
-    const { schnorr } = await getSchnorrModule();
+    const schnorr = await getSchnorrModule();
 
     const normalizedR = normalizeHex(R);
     const normalizedS = normalizeHex(s);
@@ -85,7 +85,19 @@ async function verifySchnorrProof({
     }
 
     const signatureHex = `${normalizedR}${normalizedS}`;
-    const isValid = await schnorr.verify(signatureHex, normalizedMessage, storedPublicKey);
+    const signatureBytes = Buffer.from(signatureHex, 'hex');
+    const messageBytes = Buffer.from(normalizedMessage, 'hex');
+
+    // Convert 33-byte compressed public key to 32-byte x-only public key if needed
+    let publicKeyBytes = Buffer.from(storedPublicKey, 'hex');
+    if (publicKeyBytes.length === 33) {
+        // Remove the first byte (02 or 03 prefix) to get x-only public key
+        publicKeyBytes = publicKeyBytes.slice(1);
+    } else if (publicKeyBytes.length !== 32) {
+        throw new Error(`Invalid public key length: expected 32 or 33 bytes, got ${publicKeyBytes.length}`);
+    }
+
+    const isValid = schnorr.verify(signatureBytes, messageBytes, publicKeyBytes);
     if (!isValid) {
         throw new Error('Invalid Schnorr ownership proof');
     }
@@ -175,8 +187,43 @@ router.post('/aot-upload', upload.single('file'), async (req, res) => {
         await verifySchnorrProof(ownershipProof, ownershipPublicKey);
 
         const ringContext = getRingContext();
-        const ringMembers = ringContext.ringMemberPublicKeys || [];
+        let ringMembers = ringContext.ringMemberPublicKeys || [];
         const normalizedOwnerKey = normalizePublicKey(ownershipPublicKey);
+
+        const availableRingMap = new Map(
+            (ringContext.ringMemberPublicKeys || []).map((key) => [normalizePublicKey(key), key])
+        );
+
+        const requestedRingMembersRaw = req.body.ringMembers || req.body['ringMembers[]'];
+        if (requestedRingMembersRaw) {
+            let parsedRingMembers;
+            if (typeof requestedRingMembersRaw === 'string') {
+                try {
+                    parsedRingMembers = JSON.parse(requestedRingMembersRaw);
+                } catch (error) {
+                    parsedRingMembers = [requestedRingMembersRaw];
+                }
+            } else if (Array.isArray(requestedRingMembersRaw)) {
+                parsedRingMembers = requestedRingMembersRaw;
+            }
+
+            if (Array.isArray(parsedRingMembers) && parsedRingMembers.length > 0) {
+                const normalizedSet = new Set();
+                parsedRingMembers.forEach((value) => {
+                    if (typeof value === 'string') {
+                        normalizedSet.add(normalizePublicKey(value));
+                    }
+                });
+
+                if (!normalizedSet.has(normalizedOwnerKey)) {
+                    normalizedSet.add(normalizedOwnerKey);
+                }
+
+                ringMembers = Array.from(normalizedSet).map(
+                    (key) => availableRingMap.get(key) || key,
+                );
+            }
+        }
 
         if (ringMembers.length >= 2) {
             const ringIncludesOwner = ringMembers
@@ -235,6 +282,7 @@ router.post('/aot-upload', upload.single('file'), async (req, res) => {
             escrowedIdentity,
             ownerUserId: ownerRecord?.userId || null,
             ownerIdentifier: ownerRecord?.identifier || null,
+            ringMembersUsed: ringMembers,
             ringContextSnapshot: {
                 adjudicatorPublicKey: ringContext.adjudicatorPublicKey,
                 ringMemberPublicKeys: ringMembers,
@@ -250,6 +298,7 @@ router.post('/aot-upload', upload.single('file'), async (req, res) => {
             size: record.size,
             metadataHash: record.metadataHash,
             ownershipPublicKey: record.ownershipPublicKey,
+            ringMembers: record.ringMembersUsed,
         });
     } catch (error) {
         console.error('AOT upload error:', error);

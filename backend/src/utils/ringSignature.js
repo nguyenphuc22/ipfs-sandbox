@@ -1,11 +1,20 @@
 const crypto = require('crypto');
 
 let secpModulePromise;
+let sha256Promise;
+
 async function loadSecpModule() {
     if (!secpModulePromise) {
         secpModulePromise = import('@noble/secp256k1');
     }
     return secpModulePromise;
+}
+
+async function loadSha256() {
+    if (!sha256Promise) {
+        sha256Promise = import('@noble/hashes/sha2.js').then(m => m.sha256);
+    }
+    return sha256Promise;
 }
 
 function ensureBuffer(input, encodingHint = 'auto') {
@@ -50,19 +59,21 @@ async function randomScalar() {
 }
 
 async function hashToScalar(...parts) {
-    const { utils, CURVE } = await loadSecpModule();
+    const { CURVE } = await loadSecpModule();
+    const sha256 = await loadSha256();
     const buffer = Buffer.concat(parts.map((part) => ensureBuffer(part)));
-    const digest = Buffer.from(await utils.sha256(buffer));
+    const digest = Buffer.from(sha256(buffer));
     return mod(BigInt('0x' + digest.toString('hex')), CURVE.n);
 }
 
 async function hashToPoint(publicKeyHex) {
-    const { Point, CURVE, utils } = await loadSecpModule();
+    const { Point, CURVE } = await loadSecpModule();
+    const sha256 = await loadSha256();
     const normalized = ensureBuffer(normalizeHex(publicKeyHex), 'hex');
     for (let counter = 0; counter < 256; counter += 1) {
         const counterBuffer = Buffer.alloc(4);
         counterBuffer.writeUInt32BE(counter, 0);
-        const digest = Buffer.from(await utils.sha256(Buffer.concat([normalized, counterBuffer])));
+        const digest = Buffer.from(sha256(Buffer.concat([normalized, counterBuffer])));
         const scalar = mod(BigInt('0x' + digest.toString('hex')), CURVE.n);
         if (scalar === 0n) {
             continue;
@@ -93,7 +104,8 @@ async function createLsagRingSignature({
         throw new Error('Ring signature requires at least two public keys');
     }
 
-    const { Point, CURVE, utils } = await loadSecpModule();
+    const { Point, CURVE } = await loadSecpModule();
+    const sha256 = await loadSha256();
     const normalizedRing = ringPublicKeys.map((key) => normalizeHex(String(key)));
 
     if (signerIndex < 0 || signerIndex >= normalizedRing.length) {
@@ -119,7 +131,7 @@ async function createLsagRingSignature({
     const c = new Array(ringSize).fill(0n);
 
     const messageBuffer = ensureBuffer(message);
-    const messageDigest = Buffer.from(await utils.sha256(messageBuffer)).toString('hex');
+    const messageDigest = Buffer.from(sha256(messageBuffer)).toString('hex');
 
     const u = await randomScalar();
     const LSigner = Point.BASE.multiply(u);
@@ -180,7 +192,8 @@ async function verifyLsagRingSignature({
     expectedRingPublicKeys = [],
 }) {
     const signature = parseRingSignature(ringSignature);
-    const { Point, CURVE, utils } = await loadSecpModule();
+    const { Point, CURVE } = await loadSecpModule();
+    const sha256 = await loadSha256();
 
     if (signature.scheme !== 'lsag-secp256k1') {
         throw new Error('Unsupported ring signature scheme');
@@ -208,7 +221,7 @@ async function verifyLsagRingSignature({
     }
 
     const messageBuffer = ensureBuffer(message, signature.messageEncoding || 'auto');
-    const digest = Buffer.from(await utils.sha256(messageBuffer)).toString('hex');
+    const digest = Buffer.from(sha256(messageBuffer)).toString('hex');
     if (signature.messageDigest && signature.messageDigest !== digest) {
         throw new Error('Ring signature message digest mismatch');
     }

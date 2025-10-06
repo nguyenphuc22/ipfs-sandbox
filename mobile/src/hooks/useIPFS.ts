@@ -1,6 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { FileData, PickedFile } from '../types';
-import { IPFSService, createIPFSService, IPFSServiceConfig } from '../services';
+import {
+  IPFSService,
+  createIPFSService,
+  IPFSServiceConfig,
+} from '../services';
+import { AOTUploadPayload, AOTUploadResponse } from '../services/GatewayApiService';
 
 export interface UseIPFSOptions {
   config?: IPFSServiceConfig;
@@ -132,6 +137,39 @@ export const useIPFS = (options: UseIPFSOptions = {}) => {
       };
     }
   }, []);
+
+  const uploadFileWithAOT = useCallback(
+    async (payload: AOTUploadPayload): Promise<{
+      success: boolean;
+      response?: AOTUploadResponse;
+      error?: string;
+    }> => {
+      if (!serviceRef.current) {
+        return { success: false, error: 'IPFS service not initialized' };
+      }
+
+      setIsUploading(true);
+      setUploadProgress(0);
+
+      try {
+        const response = await serviceRef.current.uploadFileWithAOT(payload);
+        setUploadProgress(100);
+        setTimeout(() => {
+          setUploadProgress(0);
+          setIsUploading(false);
+        }, 500);
+        return { success: response.success, response };
+      } catch (error) {
+        setIsUploading(false);
+        setUploadProgress(0);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'AOT upload failed',
+        };
+      }
+    },
+    [],
+  );
 
   // Upload multiple files
   const uploadMultipleFiles = useCallback(async (files: PickedFile[]) => {
@@ -286,10 +324,13 @@ export const useIPFS = (options: UseIPFSOptions = {}) => {
     // Config management
     getConfig,
     updateConfig,
-    
+
     // Operation states
     isUploading,
     isDownloading,
     uploadProgress,
+
+    // Specialized operations
+    uploadFileWithAOT,
   };
 };

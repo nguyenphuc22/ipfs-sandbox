@@ -143,7 +143,6 @@ const IPFSDemo: React.FC = () => {
         {/* File Upload */}
         <View style={styles.section}>
           <IPFSFileUpload
-            multiple={true}
             onUploadComplete={handleUploadComplete}
             onUploadError={handleUploadError}
           />

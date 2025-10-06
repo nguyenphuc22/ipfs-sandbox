@@ -296,6 +296,18 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
       color: colors.info,
       fontFamily: 'monospace',
     },
+    fileKey: {
+      fontSize: 11,
+      color: colors.success,
+      fontFamily: 'monospace',
+      marginTop: 2,
+    },
+    fileMeta: {
+      fontSize: 11,
+      color: colors.textSecondary,
+      fontFamily: 'monospace',
+      marginTop: 2,
+    },
     emptyState: {
       padding: 40,
       alignItems: 'center',
@@ -419,6 +431,24 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
               {file.ipfsHash && (
                 <Text style={styles.fileHash}>
                   IPFS: {file.ipfsHash}
+                </Text>
+              )}
+
+              {file.masterKey && (
+                <Text style={styles.fileKey}>
+                  Master Key: {file.masterKey}
+                </Text>
+              )}
+
+              {file.metadataHash && (
+                <Text style={styles.fileMeta}>
+                  Metadata Hash: {file.metadataHash}
+                </Text>
+              )}
+
+              {file.ownershipPublicKey && (
+                <Text style={styles.fileMeta}>
+                  Owner Key: {file.ownershipPublicKey}
                 </Text>
               )}
             </View>

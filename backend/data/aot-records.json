@@ -1,9 +1,112 @@
 {
-  "users": [],
-  "files": [],
+  "users": [
+    {
+      "userId": "sample-user-1",
+      "identifier": "alice",
+      "displayName": "Alice (Demo)",
+      "publicKey": "02d5391e1c3926bc48a31235614d614f71f8b00da84041f92aa35ca8a40008ac3d",
+      "escrowedIdentity": null,
+      "createdAt": "2024-01-01T00:00:00.000Z"
+    },
+    {
+      "userId": "sample-user-2",
+      "identifier": "bob",
+      "displayName": "Bob (Demo)",
+      "publicKey": "02917370ea1f516c57b0a1430664d966554c3221b6dab7a1299ad21c80c88a85c4",
+      "escrowedIdentity": null,
+      "createdAt": "2024-01-02T00:00:00.000Z"
+    },
+    {
+      "userId": "sample-user-3",
+      "identifier": "carol",
+      "displayName": "Carol (Demo)",
+      "publicKey": "02e43fdfcbbf9fb62eddb746122d5e70fa4e5ac47d44b128528ab43085d74f950f",
+      "escrowedIdentity": null,
+      "createdAt": "2024-01-03T00:00:00.000Z"
+    },
+    {
+      "userId": "sample-user-4",
+      "identifier": "dave",
+      "displayName": "Dave (Demo)",
+      "publicKey": "024fe936e790f54644f8bb365490409bc51561c018758f200ad3df5187913a8229",
+      "escrowedIdentity": null,
+      "createdAt": "2024-01-04T00:00:00.000Z"
+    },
+    {
+      "userId": "sample-user-5",
+      "identifier": "erin",
+      "displayName": "Erin (Demo)",
+      "publicKey": "03c80105d9e2fc11b2acd07dd5459a684c1d9af41d66afa1fba29fef78504e9996",
+      "escrowedIdentity": null,
+      "createdAt": "2024-01-05T00:00:00.000Z"
+    }
+  ],
+  "files": [
+    {
+      "fileId": "b31e1a3e-53ab-41d4-afba-77d763105692",
+      "cid": "QmQGJK49h7yZfut63TXyB2UtASe38RmRzTP14HiPFLYxjL",
+      "name": "Signage%20Document.pdf",
+      "size": 44809,
+      "metadataHash": "81a2b08cefc29ae6dcd41cbd60b10969ccddcb6b8f846b0dd1da793fc004f174",
+      "ownershipPublicKey": "03c011c34fd50a3229e300c2290ba8fbd078d7f8ef10e3658237d4f44d6095f278",
+      "ringSignature": "{\"scheme\":\"lsag-secp256k1\",\"ringMembers\":[\"03c011c34fd50a3229e300c2290ba8fbd078d7f8ef10e3658237d4f44d6095f278\",\"02d5391e1c3926bc48a31235614d614f71f8b00da84041f92aa35ca8a40008ac3d\",\"02917370ea1f516c57b0a1430664d966554c3221b6dab7a1299ad21c80c88a85c4\",\"02e43fdfcbbf9fb62eddb746122d5e70fa4e5ac47d44b128528ab43085d74f950f\",\"024fe936e790f54644f8bb365490409bc51561c018758f200ad3df5187913a8229\",\"03c80105d9e2fc11b2acd07dd5459a684c1d9af41d66afa1fba29fef78504e9996\"],\"keyImage\":\"02817224951f6e42a8a0ec32e3cdca094ab1b49ca9b99e870209e5c66a054b048c\",\"c0\":\"cfd64010b18b2339a0757d6bb78cf5e6e61046fdcb38a5e465eed3851c5ba6ce\",\"s\":[\"e798c8652ad6edee62cbe1bc5f26e4c16b32e0e0de93142d1f4aa6fcbd35cab3\",\"0607ecdae38d964ae7d32ba47076b0f99d70a790d2a8846c9933773864dd516e\",\"9fcc4defa2f09dccfca57a3471dcf9ebb6b8d146e8d4aafde150f228affad29b\",\"5e87db92c4461cf4ca1a51004cf012c24db46effc274c4fce12b1cd65fc6e897\",\"66edf9a3f9fc82356d33d74450d738181f7cc0b8aebfdcf8d9a33f54a9cc930b\",\"70ef9befab55be379b4bad0feeb7d7bd024512f08e19bba0b89436d15d18101d\"],\"messageDigest\":\"4cdfd3ffc4135fb0482bc4f8c3f992a45a9410ffa89196931688b6a887fb2521\",\"messageEncoding\":\"hex\"}",
+      "storedRingSignature": {
+        "scheme": "lsag-secp256k1",
+        "ringMembers": [
+          "03c011c34fd50a3229e300c2290ba8fbd078d7f8ef10e3658237d4f44d6095f278",
+          "02d5391e1c3926bc48a31235614d614f71f8b00da84041f92aa35ca8a40008ac3d",
+          "02917370ea1f516c57b0a1430664d966554c3221b6dab7a1299ad21c80c88a85c4",
+          "02e43fdfcbbf9fb62eddb746122d5e70fa4e5ac47d44b128528ab43085d74f950f",
+          "024fe936e790f54644f8bb365490409bc51561c018758f200ad3df5187913a8229",
+          "03c80105d9e2fc11b2acd07dd5459a684c1d9af41d66afa1fba29fef78504e9996"
+        ],
+        "keyImage": "02817224951f6e42a8a0ec32e3cdca094ab1b49ca9b99e870209e5c66a054b048c",
+        "c0": "cfd64010b18b2339a0757d6bb78cf5e6e61046fdcb38a5e465eed3851c5ba6ce",
+        "s": [
+          "e798c8652ad6edee62cbe1bc5f26e4c16b32e0e0de93142d1f4aa6fcbd35cab3",
+          "0607ecdae38d964ae7d32ba47076b0f99d70a790d2a8846c9933773864dd516e",
+          "9fcc4defa2f09dccfca57a3471dcf9ebb6b8d146e8d4aafde150f228affad29b",
+          "5e87db92c4461cf4ca1a51004cf012c24db46effc274c4fce12b1cd65fc6e897",
+          "66edf9a3f9fc82356d33d74450d738181f7cc0b8aebfdcf8d9a33f54a9cc930b",
+          "70ef9befab55be379b4bad0feeb7d7bd024512f08e19bba0b89436d15d18101d"
+        ],
+        "messageDigest": "4cdfd3ffc4135fb0482bc4f8c3f992a45a9410ffa89196931688b6a887fb2521",
+        "messageEncoding": "hex"
+      },
+      "escrowedIdentity": "escrow:user-mgexq6i4-jt46rj",
+      "ownerUserId": null,
+      "ownerIdentifier": null,
+      "ringMembersUsed": [
+        "03c011c34fd50a3229e300c2290ba8fbd078d7f8ef10e3658237d4f44d6095f278",
+        "02d5391e1c3926bc48a31235614d614f71f8b00da84041f92aa35ca8a40008ac3d",
+        "02917370ea1f516c57b0a1430664d966554c3221b6dab7a1299ad21c80c88a85c4",
+        "02e43fdfcbbf9fb62eddb746122d5e70fa4e5ac47d44b128528ab43085d74f950f",
+        "024fe936e790f54644f8bb365490409bc51561c018758f200ad3df5187913a8229",
+        "03c80105d9e2fc11b2acd07dd5459a684c1d9af41d66afa1fba29fef78504e9996"
+      ],
+      "ringContextSnapshot": {
+        "adjudicatorPublicKey": null,
+        "ringMemberPublicKeys": [
+          "03c011c34fd50a3229e300c2290ba8fbd078d7f8ef10e3658237d4f44d6095f278",
+          "02d5391e1c3926bc48a31235614d614f71f8b00da84041f92aa35ca8a40008ac3d",
+          "02917370ea1f516c57b0a1430664d966554c3221b6dab7a1299ad21c80c88a85c4",
+          "02e43fdfcbbf9fb62eddb746122d5e70fa4e5ac47d44b128528ab43085d74f950f",
+          "024fe936e790f54644f8bb365490409bc51561c018758f200ad3df5187913a8229",
+          "03c80105d9e2fc11b2acd07dd5459a684c1d9af41d66afa1fba29fef78504e9996"
+        ]
+      },
+      "createdAt": "2025-10-06T12:47:01.661Z"
+    }
+  ],
   "revocations": [],
   "config": {
     "adjudicatorPublicKey": null,
-    "ringMemberPublicKeys": []
+    "ringMemberPublicKeys": [
+      "02d5391e1c3926bc48a31235614d614f71f8b00da84041f92aa35ca8a40008ac3d",
+      "02917370ea1f516c57b0a1430664d966554c3221b6dab7a1299ad21c80c88a85c4",
+      "02e43fdfcbbf9fb62eddb746122d5e70fa4e5ac47d44b128528ab43085d74f950f",
+      "024fe936e790f54644f8bb365490409bc51561c018758f200ad3df5187913a8229",
+      "03c80105d9e2fc11b2acd07dd5459a684c1d9af41d66afa1fba29fef78504e9996"
+    ]
   }
 }

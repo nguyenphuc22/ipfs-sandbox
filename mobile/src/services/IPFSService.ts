@@ -85,20 +85,11 @@ export class IPFSService {
     }
   }
 
-  async uploadFileWithAOT(
-    payload: AOTUploadPayload
-  ): Promise<{ success: boolean; response?: AOTUploadResponse; error?: string }> {
+  async uploadFileWithAOT(payload: AOTUploadPayload): Promise<AOTUploadResponse> {
     try {
-      const response = await this.apiService.uploadFileWithAOT(payload);
-      if (!response.success) {
-        return { success: false, error: response.error || 'AOT upload failed' };
-      }
-      return { success: true, response };
+      return await this.apiService.uploadFileWithAOT(payload);
     } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'AOT upload failed',
-      };
+      throw error instanceof Error ? error : new Error('AOT upload failed');
     }
   }
 
