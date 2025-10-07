@@ -1,6 +1,6 @@
 # Current Demo Status
 
-- Backend: Registration, ring-context, LSAG ring signature (create/verify), AOT upload, and anonymous revocation flows now fully enforced with Schnorr + ring validation; download/view APIs unchanged.
-- Mobile: `AOTDemoCard` continues to drive manual uploads and revocations against the hardened endpoints; mobile services now target the live gateway exclusively.
-- Dependencies: `@noble/secp256k1` powers both Schnorr and LSAG flows—run `npm install` in `backend/` if dependencies drift.
-- Pending: Production-grade storage, adjudicator identity escrow processing, and automated chunk re-encryption are still outside the current prototype scope.
+- Backend: Upload pipeline (AOT generation, chunk encryption, anonymous revocation) complete; download access plan now includes manifest delivery, integrity alerts, and audit logging endpoints to implement next (`GET /api/files/:id/access`, `POST /api/files/:id/integrity-alert`, `POST /api/files/:id/audit`).
+- Mobile: Upload demo solid; next sprint adds `DownloadFlowScreen`, `ChunkProgressCard`, and `useDownloadFlow` hook driving key orchestration, chunk progress, and telemetry submission.
+- Dependencies: `@noble/secp256k1` remains the crypto backbone; monitor for updates before hardening the download proof-of-concept.
+- Pending (Demo Roadmap): wire download manifest API, integrity retry UX, audit timeline modal, and optional encrypted offline cache toggle for presentation.

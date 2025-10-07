@@ -125,14 +125,27 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant M as Mobile
-    participant B as Backend
-    participant I as IPFS
-    
-    M->>B: Request File (hash)
-    B->>I: Retrieve File
-    I-->>B: File Content
-    B-->>M: Downloaded File
+    participant M as Mobile App
+    participant B as Backend API
+    participant D as Database
+    participant I as IPFS Gateway
+    participant L as Audit Log
+
+    M->>B: Request access (fileId)
+    B->>D: Fetch manifest + policy
+    B->>L: Record access intent
+    B-->>M: {encMasterKey, chunkManifest}
+    loop For each chunk
+        M->>I: Fetch CID
+        I-->>M: Encrypted chunk
+        M->>M: Decrypt + hash verify
+        alt Hash fail
+            M->>B: Report anomaly
+            B->>L: Mark integrity alert
+        end
+    end
+    M->>M: Reconstruct & cache file
+    M->>L: Optional usage telemetry
 ```
 
 ### 4. IPFS Network Structure (Slide Version)
@@ -265,21 +278,25 @@ graph LR
 ```mermaid
 graph TB
     subgraph "React Native Mobile App"
-        UI["`**UI Components**
-        - IPFSFileUpload
-        - IPFSFileList
-        - DocumentPickerDemo`"]
+    UI["`**UI Components**
+    - IPFSFileUpload
+    - IPFSFileList
+    - DownloadFlowScreen
+    - ChunkProgressCard`"]
         
-        Services["`**Services**
-        - GatewayApiService
-        - FilePickerService
-        - IPFSService`"]
+    Services["`**Services**
+    - GatewayApiService
+    - FilePickerService
+    - DownloadOrchestrator
+    - IntegrityAuditService
+    - IPFSService`"]
         
-        Hooks["`**Custom Hooks**
-        - useIPFS
-        - useFilePicker
-        - useEnhancedStorage
-        - useFileStorage`"]
+    Hooks["`**Custom Hooks**
+    - useIPFS
+    - useFilePicker
+    - useDownloadFlow
+    - useEnhancedStorage
+    - useFileStorage`"]
         
         Storage["`**Local Storage**
         - AsyncStorage
@@ -385,31 +402,95 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant M as Mobile App
-    participant UI as File List Component
+    participant UI as Download Screen
     participant S as GatewayApiService
     participant B as Backend API  
+    participant D as Database
     participant I as IPFS Gateway
     participant N as Storage Nodes
-    participant D as Database
+    participant L as Audit Logger
 
-    M->>UI: Request file list
-    UI->>M: Load from AsyncStorage
-    M->>UI: Display cached files
-    
-    UI->>M: User requests file download
-    M->>S: downloadFile(hash)
-    S->>B: GET /api/files/{hash}
-    
-    Note over B: Use ipfs cat command
-    B->>I: ipfs cat {hash}
-    I->>N: Retrieve from storage nodes
-    N-->>I: Return file content
-    I-->>B: Stream file data
-    B-->>S: File blob/stream
-    S-->>M: Downloaded file
-    
-    Note over M: File available for viewing
+    M->>UI: Render file list (with revocation badges)
+    UI->>M: Load cached metadata
+    M->>S: syncFileMetadata()
+    S->>B: GET /api/files/:id/manifest
+    B->>D: Read chunkManifest + ownershipPolicy
+    B->>L: Log access intent
+    B-->>S: {encMasterKey, chunkManifest, accessWindow}
+    S-->>M: Deliver manifest package
+
+    Note over M: **Phase 1 – Key orchestration**
+    M->>M: Decrypt master key (device private key)
+    M->>M: Decrypt chunk key bundle
+    M->>UI: Update state → "Resolving Keys"
+
+    loop Phase 2 – Chunk retrieval
+        UI->>S: fetchChunk(cid)
+        S->>B: GET /api/files/:id/chunks/:index
+        B->>I: ipfs cat {cid}
+        I->>N: Retrieve encrypted chunk
+        N-->>I: Chunk stream
+        I-->>B: Stream chunk
+        B-->>S: Forward chunk
+        S-->>UI: Deliver encrypted chunk
+        UI->>M: Decrypt with chunkKey[index]
+        M->>M: Compute SHA-256, compare manifest hash
+        alt Hash mismatch
+            M->>S: reportIntegrityAlert(index)
+            S->>B: POST /api/files/:id/integrity-alert
+            B->>L: Record anomaly + retry count
+        else Integrity ok
+            M->>UI: Mark chunk[index] ✅
+        end
+    end
+
+    Note over M: **Phase 3 – Reconstruction & UX**
+    M->>M: Concatenate decrypted chunks
+    M->>M: Encrypt cached copy (AES-256) with device key
+    M->>UI: Present actions (View | Share internal | Remove cache)
+    UI->>S: Optional telemetry (view/share/delete)
+    S->>B: POST /api/files/:id/audit
+    B->>L: Append usage event
+
+    Note over M: File ready for demo consumption
 ```
+
+**Download Screen UX Highlights (Demo):**
+
+- Timeline stepper đồng bộ với ba pha chính và trạng thái cuối `Ready`.  
+- Danh sách chunk thể hiện tiến độ, hash SHA-256 và thông báo retry khi phát hiện lỗi.  
+- Badge “AOT Integrity Verified” được kích hoạt khi toàn bộ chunk đạt chuẩn.  
+- Telemetry buttons (View / Share nội bộ / Remove cache) minh họa audit trail gửi về backend.
+
+| View | Thành phần chính | Lưu đồ UX | Tín hiệu thị giác |
+|------|------------------|-----------|-------------------|
+| **Secure Library** | List item với tên file, kích thước, badge `Active/Revoked`, icon AOT | Tap → mở Access Negotiation Sheet, option “Open Secure Download” | Badge xanh cho file hợp lệ, cam cho revoked |
+| **Access Negotiation Sheet** | Bottom sheet gồm policy summary, adjudicator note, nút `Continue` | On confirm → trigger API access, close sheet, state chuyển `Resolving Keys`; nếu thiếu `user_file_access` entry → hiển thị lỗi | Icon ổ khóa xoay, text “Verifying anonymous ownership…” |
+| **Download Detail Screen** | Stepper 4 bước, progress bar, accordion chunk list, policy card | Auto-scroll theo chunk, hiển thị retries, trigger integrity alert khi cần | Màu xanh dương cho completed, đỏ cam cho lỗi, tooltip cho hash mismatch |
+| **Integrity Badge** | Chip màu xanh + icon shield, timestamp hoàn tất | Bật khi mọi chunk pass, cung cấp nút mở audit timeline | Glow animation 600ms để nhấn mạnh |
+| **Audit Timeline Modal** | Timeline dọc, icon cho download/view/share/delete | Ghi nhận từng hành động, gửi POST audit khi nhấn nút | Icon xanh cho hành động bình thường, cam cho cảnh báo |
+| **Secure Viewer Overlay** | Toolbar tối giản, nút `Share internal`, `Delete cache`, badge TTL | Khi file mở, overlay hiển thị và ẩn nếu người dùng cuộn | Banner vàng ghi “Encrypted cache expires in 24h” |
+
+**Microcopy & States:**
+
+- `Resolving Keys`: “Đang giải mã Master Key bằng khóa thiết bị – đảm bảo chỉ bạn có thể truy cập.”  
+- `Integrity Alert`: “Chunk #5 không khớp hash. Đang thử lại… (lần 2/3)”  
+- `Ready`: “Mọi chunk đã được xác thực. Bạn có thể xem file hoặc chia sẻ nội bộ.”  
+- Empty state khi không có quyền: “Tài liệu này đang bị thu hồi quyền truy cập. Liên hệ adjudicator để được cấp lại.”
+
+**Thông điệp quyền truy cập trong UI:**
+
+- Badge “Access requires Master Key grant” hiển thị khi user chỉ có CID nhưng chưa được cấp master key.  
+- Dialog chia sẻ yêu cầu chủ sở hữu chứng thực bằng AOT; nút `Confirm Share` chỉ bật khi backend trả về `newEncryptedMasterKey` dành cho người nhận.  
+- Nếu policy trả về `ownershipPolicy.revoked === true`, stepper bị khóa cùng thông báo “Owner chưa cấp lại quyền truy cập sau revocation”.
+- Trong quá trình download, người dùng không phải nhập `encryptedMasterKey`. Ứng dụng tự đọc dữ liệu trả về từ API, giải mã bằng khóa cục bộ, và cập nhật trạng thái “Resolving Keys” → “Downloading Chunks”.
+- Manifest nhiều CID được trình bày dạng danh sách; người dùng chỉ quan sát tiến trình, hệ thống tự động gọi tới gateway để lấy từng chunk.
+
+**Animation cues:**
+
+- Stepper: animation slide-in từ trái qua phải để nhấn mạnh tiến trình.  
+- Chunk retry: rung nhẹ (haptic feedback) + viền cam nhấp nháy 300ms.  
+- Audit modal: bật lên với effect fade + scale để dễ trình chiếu trong buổi demo.
 
 ### File Listing Operation (READ)
 
@@ -650,8 +731,10 @@ graph TB
         Upload["`**Upload Flow**
         Mobile → Backend → IPFS`"]
         
-        Download["`**Download Flow**
-        IPFS → Backend → Mobile`"]
+    Download["`**Download Flow**
+    Manifest + keys ↔ Backend
+    Chunks from IPFS → Mobile
+    Integrity alerts → Backend`"]
         
         Metadata["`**Metadata Flow**
         Database ↔ Backend ↔ Mobile`"]

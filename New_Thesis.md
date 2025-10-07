@@ -506,31 +506,104 @@ sequenceDiagram
     end
 ```
 
-### **C. Download và Truy cập File (Unchanged)**
+### **C. Download và Truy cập File (Demo-ready Flow)**
 
-Luồng download không thay đổi vì AOT chỉ được sử dụng cho ownership verification, không ảnh hưởng đến file access.
+Để trình bày với giảng viên, luồng download được triển khai thành bốn pha rõ ràng, nhấn mạnh bảo mật, khả năng giám sát và trải nghiệm người dùng:
+
+1. **Access Negotiation**  
+   - Mobile hiển thị danh sách file cùng trạng thái revocation.  
+   - Người dùng chọn file → `GET /api/files/:id/access` gửi lên Backend.  
+   - Backend xác thực quyền truy cập, lấy manifest chunk, log sự kiện vào bảng audit và phản hồi `{ encryptedMasterKey, chunkManifest, ownershipPolicy }`.
+
+2. **Key Orchestration**  
+   - Ứng dụng giải mã Master Key bằng khóa riêng cục bộ.  
+   - Giải mã `chunkKeysObject`, dựng bảng `{chunkIndex → chunkKey}`.  
+   - Chuẩn bị danh sách hash đối chiếu (SHA-256) từ manifest nhằm phục vụ bước integrity.
+
+3. **Chunk Retrieval & Integrity**  
+   - Mobile tải song song từng chunk qua gateway IPFS.  
+   - Mỗi chunk sau giải mã sẽ được kiểm tra hash (`computedHash === manifestHash`).  
+   - Nếu mismatch, ứng dụng retry tối đa 3 lần và gửi `POST /api/files/:id/integrity-alert` để backend ghi nhận sự bất thường.
+
+4. **Reconstruction & UX Moments**  
+   - Các chunk hợp lệ được ghép lại thành file; bản cache tạm được mã hóa AES-256 tại thiết bị với TTL tùy loại tài liệu.  
+   - UI dẫn dắt người dùng qua các trạng thái `Resolving Keys → Downloading Chunks → Verifying Integrity → Ready`.  
+   - Người dùng có thể xem, chia sẻ nội bộ, xóa cache; toàn bộ thao tác được gửi telemetry cho audit trail.
 
 ```mermaid
 sequenceDiagram
-    participant Client
-    participant Backend  
+    participant User as Mobile App
+    participant API as Backend Gateway
+    participant Audit as Audit Log
     participant IPFS
 
-    Client->>Backend: 1. Request file access (fileId)
-    Backend-->>Client: 2. Return {encryptedMasterKey, chunksInfo}
-    Client->>Client: 3. Decrypt Master Key
-    Client->>Backend: 4. Get encrypted chunk keys
-    Backend-->>Client: encryptedChunkKeys
-    Client->>Client: 5. Decrypt Chunk Keys Object
-
+    User->>API: 1. Request access (fileId)
+    API->>Audit: Record access intent
+    API-->>User: {encMasterKey, chunkManifest, policy}
+    User->>User: Decrypt keys & stage manifest
     loop For each chunk
-        Client->>IPFS: 6a. Download by CID  
-        IPFS-->>Client: 6b. Encrypted chunk
-        Client->>Client: 6c. Decrypt chunk
+        User->>IPFS: Fetch chunk by CID
+        IPFS-->>User: Encrypted chunk
+        User->>User: Decrypt + hash verify
+        alt Integrity OK
+            User->>User: Append to assembly buffer
+        else Hash mismatch
+            User->>API: Report integrity alert
+            API->>Audit: Mark anomaly
+        end
     end
-    
-    Client->>Client: 7. Reconstruct file
+    User->>User: Reconstruct file & encrypt cache
+    User->>Audit: Optional usage telemetry (view/share/delete)
 ```
+
+**UI Deliverables cho Demo:**
+
+- **Download Detail Screen**: Card tiến trình bốn pha + progress bar theo chunk và badge hash ✅/⚠️.  
+- **Integrity Badge**: Hiển thị “AOT Integrity Verified” khi mọi chunk đạt chuẩn.  
+- **Audit Timeline Modal**: Liệt kê thời điểm truy cập, hành động (view/share/delete).  
+- **Offline Cache Toggle**: Cho phép giữ bản mã hóa nội bộ, minh họa chính sách bảo vệ dữ liệu.
+
+**Điều kiện tiên quyết để user tải/ chia sẻ:**
+
+- **Bản ghi `user_file_access` hợp lệ**: Backend chỉ trả về `encryptedMasterKey` khi user có entry còn hạn và không nằm trong danh sách revoke.  
+- **Manifest được ký & chunk keys**: Cùng master key, app nhận `chunkManifest` (CID + hash) và `chunkKeysObject` mã hóa; không có manifest → giao diện hiển thị trạng thái “Access denied”.  
+- **Ownership Policy check**: UI đọc `ownershipPolicy` để chắc rằng AOT của chủ sở hữu không bị tạm khóa; nếu policy báo `revoked`, nút download bị vô hiệu hóa.  
+- **Chia sẻ cho người khác**: Khi owner chọn “Share”, backend sinh master key mới mã hóa cho target và thêm entry `user_file_access`; UI hiển thị dialog xác nhận và cập nhật badge “Shared with X users”.  
+- **Không đủ dữ liệu (chỉ có CID)**: Stepper dừng ở `Resolving Keys`, thông báo “CID không đủ để giải mã – cần Master Key + Chunk Keys đã được cấp quyền”.
+
+**Lưu ý trải nghiệm người dùng:**
+
+- Người dùng **không nhập** `encryptedMasterKey` thủ công. Ứng dụng nhận gói `{encryptedMasterKey, chunkManifest}` từ API, sau đó tự giải mã bằng khóa thiết bị (Secure Storage/Keychain). UI chỉ hiển thị trạng thái “Resolving Keys” trong lúc thao tác này diễn ra.
+- Khi file được chia sẻ, backend tạo bản ghi `user_file_access` mới cho người nhận, bao gồm master key đã re-encrypt theo public key của họ. Gói trả về cho người nhận chứa đầy đủ manifest/keys nên họ không phải nhập thêm dữ liệu.
+- Vì file được cắt thành nhiều CID, manifest cung cấp danh sách các CID và hash tương ứng; người nhận chỉ cần nhấn “Download” và hệ thống tự động tải từng chunk theo manifest.
+- Nếu API trả về lỗi “no access grant”, UI gợi ý người dùng yêu cầu chủ sở hữu cấp quyền; không có trường nhập CID bổ sung.
+
+**Quản lý chia sẻ & phạm vi nhìn thấy đối với user nhận (ví dụ: người dùng B):**
+
+- Khi file A vừa được upload, chỉ chủ sở hữu mới có bản ghi `user_file_access`; người dùng B nhìn thấy metadata (tên, kích thước, badge trạng thái) nhưng khi bấm “Open Secure Download” hệ thống gọi `GET /api/files/:id/access` và sẽ nhận phản hồi `403/no access grant`. Không có `encryptedMasterKey` hay `chunkManifest` nào được trả về trong trường hợp này.
+- Khi chủ sở hữu thực hiện hành động “Share to B”, backend tạo bản ghi `user_file_access` mới với `encryptedMasterKey` đã re-encrypt bằng public key của B và gắn cột `granted_at`. Kể từ thời điểm đó, mọi lần B yêu cầu truy cập sẽ nhận được gói `{ encryptedMasterKey, chunkManifest, ownershipPolicy }` giống như chủ sở hữu.
+- Nếu chủ sở hữu thu hồi quyền hoặc bản ghi bị hết hạn, backend xóa/ vô hiệu hóa `user_file_access` của B. Lần tải tiếp theo B chỉ nhận thông báo “Access denied – request sharing approval”, tiếp tục không nhìn thấy master key lẫn manifest.
+- Audit trail ghi nhận cả hai chiều: hành động chia sẻ (owner cấp quyền, userId của B) và mọi lần B tải file. Điều này giúp minh chứng rằng quyền truy cập vào `encryptedMasterKey`/`chunkManifest` luôn được kiểm soát bởi lịch sử chia sẻ.
+
+#### **Download Demo UI Walkthrough**
+
+| Màn hình | Thành phần chính | Mô tả tương tác | Thông điệp demo |
+|----------|------------------|-----------------|-----------------|
+| **File Library** | Danh sách file kèm badge `Active/Revoked`, icon khóa AOT | Người dùng chạm vào file → hiển thị preview manifest, nút “Open Secure Download” | Nhấn mạnh kiểm soát truy cập dựa trên AOT và trạng thái revocation |
+| **Access Negotiation Sheet** | Modal bottom sheet mô tả quyền truy cập, timestamp cấp quyền, nút “Continue” | Khi người dùng xác nhận, app gọi API access và chuyển sang trạng thái `Resolving Keys` | Cho giảng viên thấy bước thương lượng khóa trước khi tải |
+| **Download Detail Screen** | Stepper 4 pha, progress bar chunk, danh sách chunk collapsible, thẻ “Current Policy” | Tự động cập nhật theo từng chunk, hiển thị retry khi hash mismatch, cảnh báo màu hổ phách | Trình bày rõ tính toàn vẹn dữ liệu và khả năng tự phục hồi |
+| **Integrity Badge State** | Badge xanh “AOT Integrity Verified”, timestamp hoàn tất, nút “View Audit Trail” | Khi toàn bộ chunk thành công, badge hiện lên, người dùng có thể mở audit | Chứng minh hệ thống đảm bảo tính toàn vẹn trước khi xem file |
+| **Audit Timeline Modal** | Timeline vertical, icon sự kiện (download, view, share, cache delete), meta data (thiết bị, thời gian) | Người dùng xem các sự kiện vừa diễn ra; các nút chia sẻ/kết thúc ghi thêm bản ghi | Thể hiện audit trail và tính minh bạch cho giám sát |
+| **Secure Viewer Overlay** | Toolbar tối giản, nút “Share internally”, “Delete secure cache”, banner TTL | Khi xem file, overlay cho phép hành động giới hạn, hiển thị thời gian cache tự xóa | Nhấn mạnh chính sách bảo mật hậu download |
+
+**Micro-interactions & Trải nghiệm người dùng:**
+
+- **Stepper động**: Mỗi pha chuyển màu xanh dương đậm khi hoàn tất, rung nhẹ nếu bị kẹt ở integrity check.  
+- **Chunk list**: Mỗi dòng hiển thị `Chunk #`, kích thước, hash rút gọn; khi retry, dòng chuyển sang màu cam với bộ đếm `Retry m/3`.  
+- **Toast thông báo**: `Integrity alert sent to gateway` hiển thị 1.5 giây nếu báo lỗi; `Secure cache created (expires in 24h)` khi tạo cache.  
+- **Color palette**: Nền sáng, nhấn mạnh yếu tố an toàn bằng tone xanh lá khi verified, cam khi cảnh báo, xám khi pending.  
+- **Accessibility**: Văn bản song ngữ (Việt/Anh ngắn gọn) cho mỗi trạng thái, icon kèm text để dễ thuyết trình.  
+- **Demo script gợi ý**: “Chúng ta thấy chunk #5 bị lỗi hash → hệ thống tự retry và báo cáo lên gateway. Sau 2 lần retry thành công, badge integrity mới sáng lên.”
 
 ---
 
@@ -709,7 +782,7 @@ interface SchnorrSecurityModel {
 | **Ownership Proof Creation** | N/A | Fresh nonce + scalar ops (r, R=r·G, s=r+e·k) | +~2ms | ✅ Yes |
 | **Ownership Proof Verification** | Admin lookup | EC point verification (s·G == R + e·Q) | +~3ms | ✅ Yes |
 | **Revocation Verification** | Simple check | Schnorr proof + Ring signature verification | +~6ms | ✅ Yes |
-| **Download** | Standard crypto | Unchanged | 0ms | ✅ Yes |
+| **Download** | Standard crypto | Integrity hashing + audit logging | +~4ms/chunk | ✅ Yes |
 
 **Performance Advantages:**
 - **~50% faster** than ECDSA verification (no modular inverse needed)
@@ -1029,7 +1102,7 @@ class SchnorrRevocationService {
 | **Upload** | +2ms overhead | 256-bit DLP + Ring security | ✅ Fully decentralized |
 | **Proof Generation** | +2ms | Schnorr scalar ops (r, R, s=r+e·k) | ✅ Client-side only |
 | **Proof Verification** | +3ms | EC point verification (s·G == R + e·Q) | ✅ Zero-knowledge |
-| **Download** | Unchanged | AES-256 + chunking | ✅ P2P through IPFS |
+| **Download** | +4ms/chunk hashing | AES-256 + integrity audits | ✅ P2P through IPFS |
 | **Revocation** | 60-85% faster | Schnorr + Ring proof (50% faster than ECDSA) | ✅ Owner-initiated only |
 | **Tracing** | On-demand | Adjudicator-controlled | ⚠️ Requires trusted party |
 
