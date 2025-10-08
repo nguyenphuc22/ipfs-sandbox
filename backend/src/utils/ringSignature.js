@@ -42,6 +42,41 @@ function normalizeHex(value) {
     return trimmed.startsWith('0x') ? trimmed.slice(2) : trimmed;
 }
 
+/**
+ * Ensure public key is in compressed format (66 hex chars with 02/03 prefix)
+ * Converts x-only (64 chars) to compressed format by trying both parities
+ */
+async function ensureCompressedPublicKey(publicKey) {
+    const { Point } = await loadSecpModule();
+    const normalized = normalizeHex(publicKey);
+
+    // Already compressed
+    if (normalized.length === 66 && (normalized.startsWith('02') || normalized.startsWith('03'))) {
+        return normalized;
+    }
+
+    // X-only format (64 chars) - try both parities
+    if (normalized.length === 64) {
+        for (const prefix of ['02', '03']) {
+            try {
+                const point = Point.fromHex(`${prefix}${normalized}`);
+                return Buffer.from(point.toRawBytes(true)).toString('hex');
+            } catch (error) {
+                // Try next prefix
+            }
+        }
+        throw new Error('Invalid x-only public key - neither parity works');
+    }
+
+    // Uncompressed format (130 chars) - convert to compressed
+    if (normalized.length === 130) {
+        const point = Point.fromHex(normalized);
+        return Buffer.from(point.toRawBytes(true)).toString('hex');
+    }
+
+    throw new Error(`Unsupported public key format: length ${normalized.length}`);
+}
+
 function mod(a, b) {
     const result = a % b;
     return result >= 0n ? result : result + b;
@@ -70,16 +105,22 @@ async function hashToPoint(publicKeyHex) {
     const { Point, CURVE } = await loadSecpModule();
     const sha256 = await loadSha256();
     const normalized = ensureBuffer(normalizeHex(publicKeyHex), 'hex');
+    console.log('[hashToPoint] Input publicKeyHex:', publicKeyHex.substring(0, 20));
     for (let counter = 0; counter < 256; counter += 1) {
         const counterBuffer = Buffer.alloc(4);
         counterBuffer.writeUInt32BE(counter, 0);
         const digest = Buffer.from(sha256(Buffer.concat([normalized, counterBuffer])));
         const scalar = mod(BigInt('0x' + digest.toString('hex')), CURVE.n);
+        if (counter < 3) {
+            console.log(`[hashToPoint] counter=${counter}, bytes=[${Array.from(counterBuffer)}], digest=${digest.toString('hex').substring(0, 16)}...`);
+        }
         if (scalar === 0n) {
             continue;
         }
         try {
-            return Point.BASE.multiply(scalar);
+            const result = Point.BASE.multiply(scalar);
+            console.log(`[hashToPoint] Success at counter=${counter}`);
+            return result;
         } catch (error) {
             // Retry with next counter value
         }
@@ -206,16 +247,48 @@ async function verifyLsagRingSignature({
         throw new Error('Invalid s vector in ring signature');
     }
 
-    const normalizedRing = signature.ringMembers.map((key) => normalizeHex(String(key)));
+    // Normalize all ring members to compressed format
+    console.log('[Ring Signature] Normalizing ring members to compressed format...');
+    console.log('[Ring Signature] Raw ring members received:', signature.ringMembers);
+    const normalizedRing = await Promise.all(
+        signature.ringMembers.map(async (key, index) => {
+            console.log(`[Ring Signature] Processing member ${index}:`, {
+                fullKey: key,
+                length: key?.length,
+                type: typeof key,
+            });
+            const compressed = await ensureCompressedPublicKey(key);
+            console.log(`[Ring Signature] Normalized member ${index}:`, {
+                original: key?.substring?.(0, 20),
+                originalLength: key?.length,
+                compressed: compressed.substring(0, 20),
+                compressedLength: compressed.length,
+            });
+            return compressed;
+        })
+    );
+
     if (expectedRingPublicKeys && expectedRingPublicKeys.length > 0) {
-        const expected = new Set(expectedRingPublicKeys.map((key) => normalizeHex(String(key))));
+        // Also normalize expected keys to compressed format
+        const expectedNormalized = await Promise.all(
+            expectedRingPublicKeys.map(key => ensureCompressedPublicKey(key))
+        );
+        const expected = new Set(expectedNormalized);
         const provided = new Set(normalizedRing);
+
+        console.log('[Ring Signature] Comparing ring members:', {
+            expectedCount: expected.size,
+            providedCount: provided.size,
+            expected: Array.from(expected).map(k => k.substring(0, 20)),
+            provided: Array.from(provided).map(k => k.substring(0, 20)),
+        });
+
         if (expected.size !== provided.size) {
-            throw new Error('Ring members mismatch');
+            throw new Error('Ring members mismatch: different sizes');
         }
         for (const key of expected) {
             if (!provided.has(key)) {
-                throw new Error('Ring members mismatch');
+                throw new Error(`Ring members mismatch: missing key ${key.substring(0, 20)}`);
             }
         }
     }
@@ -226,26 +299,86 @@ async function verifyLsagRingSignature({
         throw new Error('Ring signature message digest mismatch');
     }
 
+    console.log('[Ring Signature] Starting verification with:', {
+        ringSize: normalizedRing.length,
+        keyImageLength: signature.keyImage?.length,
+        c0Length: signature.c0?.length,
+        sCount: signature.s?.length,
+        ringMembersInOrder: normalizedRing.map((k, idx) => ({
+            index: idx,
+            prefix: k.substring(0, 20),
+            suffix: k.substring(k.length - 10),
+        })),
+    });
+
     const keyImagePoint = Point.fromHex(normalizeHex(signature.keyImage));
     let c = mod(BigInt('0x' + normalizeHex(signature.c0)), CURVE.n);
     const initialC = c;
 
     for (let i = 0; i < normalizedRing.length; i += 1) {
-        const publicKeyPoint = Point.fromHex(normalizedRing[i]);
+        const ringMemberKey = normalizedRing[i];
+        console.log(`[Ring Signature] Verifying member ${i}:`, {
+            keyLength: ringMemberKey?.length,
+            keyPrefix: ringMemberKey?.substring(0, 10),
+            keySuffix: ringMemberKey?.substring(ringMemberKey.length - 10),
+        });
+
+        try {
+            const publicKeyPoint = Point.fromHex(ringMemberKey);
+            console.log(`[Ring Signature] Member ${i} point created successfully`);
+        } catch (error) {
+            console.error(`[Ring Signature] FAILED to create point for member ${i}:`, {
+                error: error.message,
+                key: ringMemberKey,
+                keyLength: ringMemberKey?.length,
+            });
+            throw error;
+        }
+
+        const publicKeyPoint = Point.fromHex(ringMemberKey);
         const sScalar = mod(BigInt('0x' + normalizeHex(signature.s[i])), CURVE.n);
         if (sScalar <= 0n) {
             throw new Error('Ring signature response scalar is invalid');
         }
 
+        console.log(`[Ring Signature] Member ${i} inputs:`, {
+            currentC: c.toString(16).padStart(64, '0').substring(0, 20) + '...',
+            s: sScalar.toString(16).padStart(64, '0').substring(0, 20) + '...',
+        });
+
         const hpPoint = await hashToPoint(normalizedRing[i]);
         const L = Point.BASE.multiply(sScalar).add(publicKeyPoint.multiply(c));
         const R = hpPoint.multiply(sScalar).add(keyImagePoint.multiply(c));
-        c = await hashToScalar(messageBuffer, L.toRawBytes(true), R.toRawBytes(true));
+
+        const LBytes = L.toRawBytes(true);
+        const RBytes = R.toRawBytes(true);
+        console.log(`[Ring Signature] Member ${i} L/R points:`, {
+            LLength: LBytes.length,
+            LPrefix: Buffer.from(LBytes).toString('hex').substring(0, 20),
+            RLength: RBytes.length,
+            RPrefix: Buffer.from(RBytes).toString('hex').substring(0, 20),
+        });
+
+        c = await hashToScalar(messageBuffer, LBytes, RBytes);
+        console.log(`[Ring Signature] Member ${i} computed next c:`, c.toString(16).padStart(64, '0').substring(0, 20) + '...');
     }
 
+    console.log('[Ring Signature] Final verification check:', {
+        finalC: c.toString(16).padStart(64, '0'),
+        initialC: initialC.toString(16).padStart(64, '0'),
+        matches: c === initialC,
+    });
+
     if (c !== initialC) {
+        console.error('[Ring Signature] VERIFICATION FAILED:', {
+            finalC: c.toString(16).padStart(64, '0'),
+            initialC: initialC.toString(16).padStart(64, '0'),
+            difference: 'Values do not match',
+        });
         throw new Error('Invalid ring signature');
     }
+
+    console.log('[Ring Signature] ✓ Verification successful!');
     return true;
 }
 

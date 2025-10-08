@@ -6,6 +6,13 @@ Bài viết này trình bày kiến trúc hệ thống cuối cùng cho đề t�
 
 ---
 
+### **Mô hình danh tính ẩn danh phía người dùng**
+
+- **Thông tin lưu trên backend được rút gọn tối đa**: mỗi bản ghi user chỉ còn `displayLabel` (bí danh dễ nhận biết trong UI) và `publicKey`. Không có email, mật khẩu hay secret key lưu trên máy chủ.
+- **`userId` vẫn được tạo ngẫu nhiên** để liên kết tới `UserFileAccess`, nhưng chỉ dùng cho audit và phân quyền nội bộ; bảng audit hiển thị `displayLabel` + `publicKey` để giảng viên/ban giám sát nhận diện đúng mức, không cần định danh pháp lý.
+- **Chia sẻ khóa ngoại tuyến**: khi chủ sở hữu gửi secure key package, họ sử dụng bí danh của người nhận (ví dụ “Alice NCKH”) thay vì email. App tra cứu public key tương ứng để mã hóa bao thư.
+- **Escrowed identity** tiếp tục phục vụ cơ chế giám sát đặc biệt; chỉ Adjudicator mới có thể giải mã nếu cần quy trách nhiệm.
+
 ## **1. Các Khái niệm Mật mã Nền tảng**
 
 ### **A. Chữ ký Vòng (Ring Signature)**
@@ -233,7 +240,7 @@ CREATE TABLE files (
     escrowed_identity TEXT,
 
     -- Schnorr Anonymous Ownership Token
-    ownership_public_key VARCHAR(130),  -- Q = k·G (uncompressed EC point, 65 bytes hex)
+    ownership_public_key VARCHAR(66),   -- Taproot-style x-only key (32 bytes hex, stored normalized)
     ownership_created_at TIMESTAMP,
 
     created_at TIMESTAMP,
@@ -359,8 +366,8 @@ sequenceDiagram
     %% Registration (Unchanged)
     note over Client: **Phần 1: Đăng ký An toàn**
     Client->>Client: 1. Tự tạo cặp khóa (PublicKey, SecretKey)
-    Client->>Backend: 2. Gửi {Định danh, PublicKey} để đăng ký
-    Backend->>DB: 3. Lưu {Định danh, PublicKey} vào Database
+    Client->>Backend: 2. Gửi {displayLabel (bí danh), PublicKey} để đăng ký
+    Backend->>DB: 3. Lưu {displayLabel, PublicKey} vào Database
 
     %% Upload Process với AOT
     note over Client, IPFS: **Phần 2: Upload File với AOT và Chunking**
@@ -511,24 +518,25 @@ sequenceDiagram
 Để trình bày với giảng viên, luồng download được triển khai thành bốn pha rõ ràng, nhấn mạnh bảo mật, khả năng giám sát và trải nghiệm người dùng:
 
 1. **Access Negotiation**  
-   - Mobile hiển thị danh sách file cùng trạng thái revocation.  
-   - Người dùng chọn file → `GET /api/files/:id/access` gửi lên Backend.  
-   - Backend xác thực quyền truy cập, lấy manifest chunk, log sự kiện vào bảng audit và phản hồi `{ encryptedMasterKey, chunkManifest, ownershipPolicy }`.
+    - Mobile hiển thị danh sách file cùng trạng thái revocation.  
+    - Người dùng chọn file → `GET /api/files/:id/access` gửi lên Backend.  
+    - Backend xác thực quyền truy cập, lấy manifest chunk, log sự kiện vào bảng audit và phản hồi `{ chunkManifest, ownershipPolicy, grantContext }` (không gửi master key).  
+    - Master key luôn được người dùng quản lý cục bộ; app tra cứu trong Secure Storage bằng `fileId` hoặc yêu cầu chủ sở hữu gửi lại qua kênh riêng nếu chưa từng nhận.
 
 2. **Key Orchestration**  
-   - Ứng dụng giải mã Master Key bằng khóa riêng cục bộ.  
-   - Giải mã `chunkKeysObject`, dựng bảng `{chunkIndex → chunkKey}`.  
-   - Chuẩn bị danh sách hash đối chiếu (SHA-256) từ manifest nhằm phục vụ bước integrity.
+    - Ứng dụng lấy Master Key từ kho bảo mật cục bộ (Keychain/SecureStorage). Nếu không tìm thấy thì hiển thị trạng thái chờ khóa và hướng dẫn người dùng lấy “bao thư mã hóa” từ chủ sở hữu qua kênh P2P.  
+    - Sau khi Master Key sẵn sàng, app tự giải mã `chunkKeysObject` (lưu cục bộ do owner gửi) và dựng bảng `{chunkIndex → chunkKey}`.  
+    - Chuẩn bị danh sách hash đối chiếu (SHA-256) từ manifest nhằm phục vụ bước integrity.
 
 3. **Chunk Retrieval & Integrity**  
-   - Mobile tải song song từng chunk qua gateway IPFS.  
-   - Mỗi chunk sau giải mã sẽ được kiểm tra hash (`computedHash === manifestHash`).  
-   - Nếu mismatch, ứng dụng retry tối đa 3 lần và gửi `POST /api/files/:id/integrity-alert` để backend ghi nhận sự bất thường.
+    - Mobile tải song song từng chunk qua gateway IPFS (có thể đi thẳng tới IPFS gateway).  
+    - App giải mã chunk bằng key tương ứng lấy từ bộ nhớ cục bộ/messaging, sau đó kiểm tra hash (`computedHash === manifestHash`).  
+    - Nếu mismatch, ứng dụng retry tối đa 3 lần và gửi `POST /api/files/:id/integrity-alert` để backend ghi nhận sự bất thường.
 
 4. **Reconstruction & UX Moments**  
-   - Các chunk hợp lệ được ghép lại thành file; bản cache tạm được mã hóa AES-256 tại thiết bị với TTL tùy loại tài liệu.  
-   - UI dẫn dắt người dùng qua các trạng thái `Resolving Keys → Downloading Chunks → Verifying Integrity → Ready`.  
-   - Người dùng có thể xem, chia sẻ nội bộ, xóa cache; toàn bộ thao tác được gửi telemetry cho audit trail.
+    - Các chunk hợp lệ được ghép lại thành file; bản cache tạm được mã hóa AES-256 bằng master key hoặc khóa phiên sinh cục bộ, TTL tùy loại tài liệu.  
+    - UI dẫn dắt người dùng qua các trạng thái `Waiting for Master Key → Resolving Keys → Downloading Chunks → Verifying Integrity → Ready`.  
+    - Người dùng có thể xem, chia sẻ nội bộ (gửi master key đã mã hóa cho người khác), xóa cache; toàn bộ thao tác được gửi telemetry cho audit trail.
 
 ```mermaid
 sequenceDiagram
@@ -539,8 +547,9 @@ sequenceDiagram
 
     User->>API: 1. Request access (fileId)
     API->>Audit: Record access intent
-    API-->>User: {encMasterKey, chunkManifest, policy}
-    User->>User: Decrypt keys & stage manifest
+    API-->>User: {chunkManifest, policy, grantContext}
+    User->>User: Lấy master key từ Secure Storage / nhập bao thư được chủ sở hữu cung cấp
+    User->>User: Decrypt chunk keys & stage manifest
     loop For each chunk
         User->>IPFS: Fetch chunk by CID
         IPFS-->>User: Encrypted chunk
@@ -565,25 +574,25 @@ sequenceDiagram
 
 **Điều kiện tiên quyết để user tải/ chia sẻ:**
 
-- **Bản ghi `user_file_access` hợp lệ**: Backend chỉ trả về `encryptedMasterKey` khi user có entry còn hạn và không nằm trong danh sách revoke.  
-- **Manifest được ký & chunk keys**: Cùng master key, app nhận `chunkManifest` (CID + hash) và `chunkKeysObject` mã hóa; không có manifest → giao diện hiển thị trạng thái “Access denied”.  
+- **Bản ghi `user_file_access` hợp lệ**: Backend chỉ xác nhận quyền truy cập và trả về manifest khi user có entry còn hạn; bản ghi không chứa master key mà chỉ lưu trạng thái cấp quyền, thời gian hết hạn, log revocation.  
+- **Master key & chunk keys cục bộ**: App tìm master key đã được chủ sở hữu gửi trước đó (qua kênh P2P/AsyncStorage). Không tìm thấy → hiển thị trạng thái “Awaiting secure key package”.  
 - **Ownership Policy check**: UI đọc `ownershipPolicy` để chắc rằng AOT của chủ sở hữu không bị tạm khóa; nếu policy báo `revoked`, nút download bị vô hiệu hóa.  
-- **Chia sẻ cho người khác**: Khi owner chọn “Share”, backend sinh master key mới mã hóa cho target và thêm entry `user_file_access`; UI hiển thị dialog xác nhận và cập nhật badge “Shared with X users”.  
-- **Không đủ dữ liệu (chỉ có CID)**: Stepper dừng ở `Resolving Keys`, thông báo “CID không đủ để giải mã – cần Master Key + Chunk Keys đã được cấp quyền”.
+- **Chia sẻ cho người khác**: Khi owner chọn “Share”, app của owner tự mã hóa master key bằng public key của người nhận và gửi qua kênh riêng (QR, NFC, DIDComm, v.v.). Backend chỉ ghi nhận event chia sẻ để audit và cập nhật `grantContext`, không giữ khóa.  
+- **Không đủ dữ liệu (chỉ có CID)**: Stepper dừng ở `Waiting for Master Key`, thông báo “CID không đủ để giải mã – cần Master Key + Chunk Keys đã được chủ sở hữu cung cấp”.
 
 **Lưu ý trải nghiệm người dùng:**
 
-- Người dùng **không nhập** `encryptedMasterKey` thủ công. Ứng dụng nhận gói `{encryptedMasterKey, chunkManifest}` từ API, sau đó tự giải mã bằng khóa thiết bị (Secure Storage/Keychain). UI chỉ hiển thị trạng thái “Resolving Keys” trong lúc thao tác này diễn ra.
+- Người dùng **không phải nhập khóa dạng raw**, nhưng họ cần bảo quản “bao thư master key” mà chủ sở hữu đã gửi (QR code, file .aotkey, v.v.). Ứng dụng tự đọc bao thư từ Secure Storage hoặc cho phép quét/import, rồi giải mã bằng khóa thiết bị. UI hiển thị trạng thái “Waiting for secure key package” cho đến khi thao tác này hoàn tất.
 - Khi file được chia sẻ, backend tạo bản ghi `user_file_access` mới cho người nhận, bao gồm master key đã re-encrypt theo public key của họ. Gói trả về cho người nhận chứa đầy đủ manifest/keys nên họ không phải nhập thêm dữ liệu.
 - Vì file được cắt thành nhiều CID, manifest cung cấp danh sách các CID và hash tương ứng; người nhận chỉ cần nhấn “Download” và hệ thống tự động tải từng chunk theo manifest.
 - Nếu API trả về lỗi “no access grant”, UI gợi ý người dùng yêu cầu chủ sở hữu cấp quyền; không có trường nhập CID bổ sung.
 
 **Quản lý chia sẻ & phạm vi nhìn thấy đối với user nhận (ví dụ: người dùng B):**
 
-- Khi file A vừa được upload, chỉ chủ sở hữu mới có bản ghi `user_file_access`; người dùng B nhìn thấy metadata (tên, kích thước, badge trạng thái) nhưng khi bấm “Open Secure Download” hệ thống gọi `GET /api/files/:id/access` và sẽ nhận phản hồi `403/no access grant`. Không có `encryptedMasterKey` hay `chunkManifest` nào được trả về trong trường hợp này.
-- Khi chủ sở hữu thực hiện hành động “Share to B”, backend tạo bản ghi `user_file_access` mới với `encryptedMasterKey` đã re-encrypt bằng public key của B và gắn cột `granted_at`. Kể từ thời điểm đó, mọi lần B yêu cầu truy cập sẽ nhận được gói `{ encryptedMasterKey, chunkManifest, ownershipPolicy }` giống như chủ sở hữu.
-- Nếu chủ sở hữu thu hồi quyền hoặc bản ghi bị hết hạn, backend xóa/ vô hiệu hóa `user_file_access` của B. Lần tải tiếp theo B chỉ nhận thông báo “Access denied – request sharing approval”, tiếp tục không nhìn thấy master key lẫn manifest.
-- Audit trail ghi nhận cả hai chiều: hành động chia sẻ (owner cấp quyền, userId của B) và mọi lần B tải file. Điều này giúp minh chứng rằng quyền truy cập vào `encryptedMasterKey`/`chunkManifest` luôn được kiểm soát bởi lịch sử chia sẻ.
+- Khi file A vừa được upload, chỉ chủ sở hữu mới có bản ghi `user_file_access`; người dùng B nhìn thấy metadata (tên, kích thước, badge trạng thái) nhưng khi bấm “Open Secure Download” hệ thống gọi `GET /api/files/:id/access` và sẽ nhận phản hồi `403/no access grant`. Không có manifest hay khóa nào được trả về.
+- Khi chủ sở hữu thực hiện hành động “Share to B” (B là bí danh đã đăng ký kèm public key), backend chỉ tạo bản ghi `user_file_access` mới với trạng thái “granted” và log audit. Việc gửi `encryptedMasterKey`/`chunkKeysObject` diễn ra trực tiếp giữa hai client (ví dụ quét QR chứa bao thư mã hóa theo public key của B). Từ thời điểm đó, mỗi lần B yêu cầu truy cập sẽ nhận được manifest + policy từ backend, đồng thời app dùng khóa đã lưu để giải mã.
+- Nếu chủ sở hữu thu hồi quyền hoặc bản ghi bị hết hạn, backend xóa/vô hiệu hóa `user_file_access` của B. Lần tải tiếp theo B chỉ nhận thông báo “Access denied – request sharing approval” và app tự xóa master key cục bộ để tránh sử dụng sai.
+- Audit trail ghi nhận cả hai chiều: hành động chia sẻ (owner cấp quyền, userId của B) và mọi lần B tải file. Điều này chứng minh việc cấp quyền luôn đi kèm lịch sử trao đổi khóa ngoài băng.
 
 #### **Download Demo UI Walkthrough**
 
@@ -645,7 +654,7 @@ sequenceDiagram
     Adjudicator->>Adjudicator: 6c. Generate investigation timeline
 
     Adjudicator-->>Admin: 7. Investigation Report
-    note left of Adjudicator: {<br/>  identifiedUser: {id, name, email},<br/>  uploadTimestamp, revocationTimestamp,<br/>  filesOwned: count, revocationsExecuted: count,<br/>  riskAssessment, recommendedActions<br/>}
+    note left of Adjudicator: {<br/>  identifiedUser: {id, displayLabel, publicKey},<br/>  uploadTimestamp, revocationTimestamp,<br/>  filesOwned: count, revocationsExecuted: count,<br/>  riskAssessment, recommendedActions<br/>}
 ```
 
 ---

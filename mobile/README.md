@@ -8,6 +8,12 @@ A complete mobile app featuring document picker, image picker, file validation, 
 
 ## 🚀 Features
 
+### Identity Onboarding
+- One-time initialization screen captures a display name and generates Schnorr key pairs locally
+- Registration shares only the display name and public key with the gateway; private keys remain on-device via secure storage
+- Restores server-generated identifiers/ring context on future launches to keep the identity consistent
+- Home screen file list is automatically filtered by the active public key so users only see their own uploads
+
 ### Gateway Integration
 - **Direct Gateway Access**: Real operations through the secured backend at `localhost:3000`
 - **Connection Monitoring**: Real-time health checks and diagnostics
@@ -125,9 +131,8 @@ const downloadResult = await downloadFile('QmXXXXX...');
 - **IPFS Test**: `GET http://localhost:3000/api/files/test-ipfs`
 - **File Upload**: `POST http://localhost:3000/api/files/upload`
 - **File Download**: `GET http://localhost:3000/api/files/{hash}`
-- **List Files**: `GET http://localhost:3000/api/files`
 - **Delete File**: `DELETE http://localhost:3000/api/files/{hash}`
-- **User Files**: `GET http://localhost:3000/api/users/files`
+- **User Files (filtered)**: `GET http://localhost:3000/api/files/user/{userId}/files?publicKey={hexPublicKey}`
 - **Signatures**: `GET/POST http://localhost:3000/api/signatures`
 
 ## Development

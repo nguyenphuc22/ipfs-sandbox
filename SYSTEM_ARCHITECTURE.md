@@ -20,14 +20,14 @@ graph TB
         Gateway["`**Express.js Backend**
         - REST API Endpoints
         - File Upload/Download
-        - User Authentication
+        - Pseudonymous Identity Registry
         - Ring Signatures`"]
     end
 
     subgraph "Data Layer"
         DB["`**SQLite Database**
         (Prisma ORM)
-        - Users
+        - Users (displayLabel + publicKey)
         - Files
         - Signatures`"]
     end
@@ -480,11 +480,11 @@ sequenceDiagram
 
 **Thông điệp quyền truy cập trong UI:**
 
-- Badge “Access requires Master Key grant” hiển thị khi user chỉ có CID nhưng chưa được cấp master key.  
-- Dialog chia sẻ yêu cầu chủ sở hữu chứng thực bằng AOT; nút `Confirm Share` chỉ bật khi backend trả về `newEncryptedMasterKey` dành cho người nhận.  
+- Badge “Access requires secure key package” hiển thị khi user chỉ có CID/manifest nhưng chưa nhận master key từ chủ sở hữu.  
+- Dialog chia sẻ yêu cầu chủ sở hữu chứng thực bằng AOT; nút `Confirm Share` mở ra màn hình tạo “Secure Key Package” (QR code / file `.aotkey`) để gửi cho người nhận. Backend chỉ ghi nhận sự kiện cấp quyền.
 - Nếu policy trả về `ownershipPolicy.revoked === true`, stepper bị khóa cùng thông báo “Owner chưa cấp lại quyền truy cập sau revocation”.
-- Trong quá trình download, người dùng không phải nhập `encryptedMasterKey`. Ứng dụng tự đọc dữ liệu trả về từ API, giải mã bằng khóa cục bộ, và cập nhật trạng thái “Resolving Keys” → “Downloading Chunks”.
-- Manifest nhiều CID được trình bày dạng danh sách; người dùng chỉ quan sát tiến trình, hệ thống tự động gọi tới gateway để lấy từng chunk.
+- Trong quá trình download, ứng dụng hiển thị trạng thái “Waiting for secure key package” cho đến khi master key xuất hiện trong Secure Storage hoặc được người dùng quét/import. Sau đó flow chuyển sang “Resolving Keys” → “Downloading Chunks”.
+- Manifest nhiều CID được trình bày dạng danh sách; người dùng chỉ quan sát tiến trình, hệ thống tự động gọi tới gateway để lấy từng chunk bằng các key đã lưu cục bộ.
 
 **Animation cues:**
 
@@ -667,17 +667,16 @@ graph LR
 
 ## Data Models & Schema
 
+> **Identity footprint**: hệ thống backend chỉ lưu `displayLabel` (bí danh dùng trong UI/audit) và `publicKey` cho mỗi user. Không có email hay mật khẩu được persist; mọi thao tác phân quyền dựa trên `userId` ngẫu nhiên + khóa công khai.
+
 ### Database Schema Relationships
 
 ```mermaid
 erDiagram
     User {
         string id PK
-        string username UK
-        string email UK  
-        string passwordHash
-        string publicKey
-        string secretKey
+        string displayLabel
+        string publicKey UK
         string role
         datetime createdAt
         datetime updatedAt
@@ -978,7 +977,7 @@ CREATE TABLE files (
     file_name VARCHAR(255),
 
     -- Schnorr Ownership Token
-    ownership_public_key VARCHAR(130),  -- Q = k·G (uncompressed EC point)
+    ownership_public_key VARCHAR(66),   -- Taproot-style x-only key (32 bytes hex, normalized)
     ownership_created_at TIMESTAMP,
 
     -- Ring Signature (for anonymity)
@@ -1049,9 +1048,9 @@ Verifier (knows Q):
 - **Overall: 40% faster than ECDSA**
 
 **Storage Overhead:**
-- Per file: 65 bytes (ownership_public_key)
+- Per file: 32 bytes (ownership_public_key x-only hex)
 - Per revocation: 65 bytes (R) + 32 bytes (s) = 97 bytes
-- **Savings: Removed commitment field (65 bytes) vs old design**
+- **Savings:** Dropped need for full uncompressed EC point while keeping verification intact
 
 ### Integration with Ring Signatures
 

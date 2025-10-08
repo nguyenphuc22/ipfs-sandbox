@@ -1,5 +1,5 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema-file
+// Prisma schema for IPFS AOT System with Chunking
+// Implements full thesis architecture with chunk-based storage
 
 generator client {
   provider = "prisma-client-js"
@@ -10,35 +10,231 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ============================================================================
+// USER MANAGEMENT
+// ============================================================================
+
 model User {
   id            String        @id @default(uuid())
   username      String        @unique
   email         String        @unique
   passwordHash  String
-  publicKey     String?
-  secretKey     String?
+  publicKey     String?       // User's public key for encryption
+  secretKey     String?       // DEPRECATED: Should not store secret keys
   role          String        @default("user")
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
-  files         File[]
+  // Relations
+  uploadedFiles File[]        @relation("FileUploader")
   signatures    Signature[]
+  fileAccess    UserFileAccess[]
 }
+
+// ============================================================================
+// FILE MANAGEMENT WITH AOT & CHUNKING
+// ============================================================================
 
 model File {
-  id            String        @id @default(uuid())
-  ipfsHash      String        @unique
-  filename      String
-  size          Int
-  mimeType      String?
-  encryptedKey  String?
-  uploaderId    String
-  uploader      User          @relation(fields: [uploaderId], references: [id])
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  id                String        @id @default(uuid())
 
-  signatures    Signature[]
+  // Basic file info
+  fileName          String
+  totalSize         Int
+  mimeType          String?
+  chunkCount        Int           @default(0)
+
+  // Metadata
+  metadata          String?       // JSON metadata
+  metadataHash      String        // Hash of metadata for verification
+
+  // Encryption
+  encryptedChunkKeys String       // Encrypted JSON: { "0": "key0", "1": "key1", ... }
+
+  // Ring Signature for Upload Authentication
+  ringSignature     String?
+  ringPublicKeys    String?       // JSON array of public keys in ring
+  escrowedIdentity  String?       // Encrypted identity for adjudicator
+
+  // Schnorr Anonymous Ownership Token
+  ownershipPublicKey String       // Q = k·G (Schnorr public key)
+  ownershipCreatedAt DateTime     @default(now())
+
+  // Upload info
+  uploaderId        String
+  uploader          User          @relation("FileUploader", fields: [uploaderId], references: [id])
+
+  // Status
+  status            String        @default("active") // active, revoked, deleted
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  // Revocation tracking
+  lastRevocationId  String?
+  lastRevocationAt  DateTime?
+
+  // Relations
+  chunks            FileChunk[]
+  signatures        Signature[]
+  userAccess        UserFileAccess[]
+  revocations       AnonymousRevocation[]
+  integrityAlerts   IntegrityAlert[]
+  auditLogs         AuditLog[]
+
+  @@index([ownershipPublicKey])
+  @@index([uploaderId])
+  @@index([status])
 }
+
+// ============================================================================
+// CHUNK STORAGE
+// ============================================================================
+
+model FileChunk {
+  id            String        @id @default(uuid())
+  fileId        String
+  file          File          @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  // Chunk identification
+  chunkIndex    Int           // 0-based index
+  chunkHash     String        // SHA-256 hash of decrypted chunk (for integrity)
+
+  // IPFS storage
+  ipfsCid       String        // CID of encrypted chunk in IPFS
+  size          Int           // Size in bytes
+
+  // Metadata
+  encryptedAt   DateTime      @default(now())
+  createdAt     DateTime      @default(now())
+
+  @@unique([fileId, chunkIndex])
+  @@index([ipfsCid])
+}
+
+// ============================================================================
+// ACCESS CONTROL
+// ============================================================================
+
+model UserFileAccess {
+  id                    String    @id @default(uuid())
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fileId                String
+  file                  File      @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  // Encrypted master key for this user
+  // Access metadata (keyless backend)
+  grantedAt             DateTime  @default(now())
+  grantedBy             String?   // userId of granter (file owner)
+  expiresAt             DateTime? // Optional expiration
+
+  // Client-managed key state (no key material stored server-side)
+  keyStatus             String    @default("client-managed") // client-managed, owner-local, shared-offline
+  hasLocalKey           Boolean   @default(false)
+  keyIssuedAt           DateTime?
+  keyPackageFingerprint String?   // Optional hash/fingerprint for audit references
+
+  // Status
+  status                String    @default("active") // active, revoked
+  revokedAt             DateTime?
+
+  @@unique([userId, fileId])
+  @@index([userId])
+  @@index([fileId])
+  @@index([status])
+  @@index([keyStatus])
+}
+
+// ============================================================================
+// ANONYMOUS REVOCATION WITH SCHNORR PROOF
+// ============================================================================
+
+model AnonymousRevocation {
+  id                    String    @id @default(uuid())
+  fileId                String
+  file                  File      @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  // Target user to revoke (can be null for full revocation)
+  revokedUserId         String?
+
+  // Schnorr Ownership Proof
+  proofR                String    // R = r·G (commitment point, 65 bytes hex)
+  proofS                String    // s = r + e·k (response scalar, 32 bytes hex)
+  proofMessage          String    // Message signed (fileId:timestamp:targetUser)
+  proofTimestamp        DateTime
+
+  // Ring signature for anonymity
+  ringSignature         String?
+  ringPublicKeys        String?   // JSON array
+
+  // Re-encryption details
+  chunksReencrypted     String    // JSON array of chunk indices re-encrypted
+  revocationStrategy    String?   // JSON: strategy details
+
+  // Metadata
+  createdAt             DateTime  @default(now())
+  executedBySystem      Boolean   @default(false)
+
+  @@index([fileId])
+  @@index([revokedUserId])
+  @@index([createdAt])
+}
+
+// ============================================================================
+// INTEGRITY & AUDIT
+// ============================================================================
+
+model IntegrityAlert {
+  id                String    @id @default(uuid())
+  fileId            String
+  file              File      @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  // Alert details
+  chunkIndex        Int
+  expectedHash      String
+  actualHash        String?
+
+  // Reporter
+  reportedBy        String    // userId
+  reportedAt        DateTime  @default(now())
+
+  // Resolution
+  resolved          Boolean   @default(false)
+  resolvedAt        DateTime?
+  resolution        String?   // What action was taken
+
+  @@index([fileId])
+  @@index([resolved])
+}
+
+model AuditLog {
+  id                String    @id @default(uuid())
+
+  // Event details
+  eventType         String    // download, view, share, delete_cache, revoke, etc.
+  fileId            String?
+  file              File?     @relation(fields: [fileId], references: [id], onDelete: SetNull)
+
+  // Actor
+  userId            String?   // Can be null for anonymous actions
+  deviceId          String?   // Device identifier
+  ipAddress         String?
+
+  // Event data
+  metadata          String?   // JSON with event-specific data
+
+  // Timing
+  timestamp         DateTime  @default(now())
+
+  @@index([fileId])
+  @@index([userId])
+  @@index([eventType])
+  @@index([timestamp])
+}
+
+// ============================================================================
+// LEGACY SIGNATURE SUPPORT (Keep for backward compatibility)
+// ============================================================================
 
 model Signature {
   id            String        @id @default(uuid())

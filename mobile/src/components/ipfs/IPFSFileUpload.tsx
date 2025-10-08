@@ -23,9 +23,9 @@ export const IPFSFileUpload: React.FC<IPFSFileUploadProps> = ({
 
   const handleFilePick = async () => {
     try {
-      const result = await pickFiles({ 
+      const result = await pickFiles({
         allowMultiSelection: false,
-        type: ['allFiles', 'pdf', 'images', 'doc', 'docx', 'txt', 'csv', 'zip'] 
+        type: ['allFiles', 'pdf', 'images', 'doc', 'docx', 'txt', 'csv', 'zip'],
       });
 
       if (result.success && result.files && result.files.length > 0) {
@@ -178,8 +178,8 @@ export const IPFSFileUpload: React.FC<IPFSFileUploadProps> = ({
         <View style={styles.progressContainer}>
           <Text style={styles.progressText}>Upload Progress</Text>
           <View style={styles.progressBar}>
-            <View 
-              style={[styles.progressFill, { width: `${uploadProgress}%` }]} 
+            <View
+              style={[styles.progressFill, { width: `${uploadProgress}%` }]}
             />
           </View>
         </View>

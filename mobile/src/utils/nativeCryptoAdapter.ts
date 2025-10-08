@@ -1,4 +1,6 @@
 import { digest, schnorr } from '@fintoda/react-native-crypto-lib';
+import { sha256 as nobleSha256 } from '@noble/hashes/sha2';
+import { Point } from '@noble/secp256k1';
 
 const normalizeHex = (value: string): string => value.trim().toLowerCase().replace(/^0x/, '');
 
@@ -22,24 +24,29 @@ const bytesToHex = (bytes: Uint8Array): string => {
   return hex;
 };
 
+// IMPORTANT: Use @noble/hashes/sha2 instead of native crypto
+// This ensures identical SHA256 results between mobile and backend
 export const sha256Bytes = (bytes: Uint8Array): Uint8Array => {
-  return digest.createHash(digest.HASH.SHA256, bytes);
+  return nobleSha256(bytes);
 };
 
 export const schnorrPublicKeyHex = (privateKeyHex: string): string => {
-  const priv = hexToBytes(privateKeyHex);
-  const pub = schnorr.getPublic(priv);
-  console.log('schnorr.getPublic returned length:', pub.length);
+  // Use @noble/secp256k1 for consistent public key derivation
+  // This ensures we get the correct compressed format with proper parity
+  const privateKeyBigInt = BigInt('0x' + normalizeHex(privateKeyHex));
+  const point = Point.fromPrivateKey(privateKeyBigInt);
+  const compressed = point.toRawBytes(true); // true = compressed format (33 bytes)
+  const result = bytesToHex(compressed);
 
-  // If it returns 33 bytes (compressed), convert to x-only (32 bytes)
-  if (pub.length === 33) {
-    // Remove first byte (02 or 03 prefix) to get x-only public key
-    const xOnly = pub.slice(1);
-    console.log('Converted to x-only, length:', xOnly.length);
-    return bytesToHex(xOnly);
-  }
+  console.log('[schnorrPublicKeyHex] Using @noble/secp256k1:', {
+    privateKeyPrefix: privateKeyHex.substring(0, 16) + '...',
+    compressedLength: compressed.length,
+    resultLength: result.length,
+    resultPrefix: result.substring(0, 10),
+    parityByte: compressed[0]?.toString(16).padStart(2, '0'),
+  });
 
-  return bytesToHex(pub);
+  return result;
 };
 
 export const schnorrSignHex = async (messageHex: string, privateKeyHex: string): Promise<string> => {

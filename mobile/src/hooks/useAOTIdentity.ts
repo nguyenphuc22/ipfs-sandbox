@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AuthService, RegisterUserPayload } from '../services/AuthService';
+import { AuthService } from '../services/AuthService';
 import { AOTIdentity, RegisteredRingMember, RingContext } from '../types';
-import { generateKeyPair, initializeCrypto } from '../utils/aotCrypto';
+import { generateKeyPair, initializeCrypto, toCompressedPublicKey } from '../utils/aotCrypto';
 
 const STORAGE_KEY = 'aot_identity_v1';
 
@@ -26,6 +26,7 @@ export interface UseAOTIdentityResult {
   otherMembers: RegisteredRingMember[];
   isLoading: boolean;
   error: string | null;
+  initializeIdentity: (displayName: string) => Promise<AOTIdentity>;
   ensureIdentity: () => Promise<AOTIdentity>;
   refreshContext: () => Promise<RingContext>;
   clearError: () => void;
@@ -65,18 +66,59 @@ export const useAOTIdentity = (): UseAOTIdentityResult => {
     await AsyncStorage.setItem(STORAGE_KEY, serializeIdentity(value));
   }, []);
 
+  const resolveIdentityFromContext = useCallback(
+    async (draft: AOTIdentity): Promise<{ identity: AOTIdentity; context: RingContext }> => {
+      const fetched = await authServiceRef.current.fetchContext();
+      if (!fetched.success) {
+        throw new Error('Failed to load ring context');
+      }
+
+      // Normalize both keys to compressed format for comparison
+      const draftKeyCompressed = toCompressedPublicKey(draft.publicKey);
+      const matched = fetched.context.users.find((member) => {
+        try {
+          const memberKeyCompressed = toCompressedPublicKey(member.publicKey);
+          return memberKeyCompressed === draftKeyCompressed || member.identifier === draft.identifier;
+        } catch (error) {
+          console.warn('[AOT Identity] Failed to normalize member key:', member.publicKey, error);
+          return member.identifier === draft.identifier;
+        }
+      });
+
+      if (!matched) {
+        throw new Error('Registered identity not found in ring context');
+      }
+
+      const updatedIdentity: AOTIdentity = {
+        ...draft,
+        identifier: matched.identifier || draft.identifier,
+        userId: matched.userId,
+        displayName: matched.displayName || draft.displayName,
+        registeredAt: matched.createdAt || draft.registeredAt || new Date().toISOString(),
+      };
+
+      await persistIdentity(updatedIdentity);
+      setRingContext(fetched.context);
+      return { identity: updatedIdentity, context: fetched.context };
+    },
+    [persistIdentity],
+  );
+
   const registerIdentity = useCallback(
-    async (
-      payload: RegisterUserPayload,
-      draft: AOTIdentity,
-    ): Promise<{ identity: AOTIdentity; context: RingContext }> => {
-      const response = await authServiceRef.current.registerUser(payload);
+    async (draft: AOTIdentity): Promise<{ identity: AOTIdentity; context: RingContext }> => {
+      const response = await authServiceRef.current.registerUser({
+        identifier: draft.identifier,
+        displayName: draft.displayName || draft.identifier,
+        publicKey: draft.publicKey,
+        escrowedIdentity: draft.escrowedIdentity ?? null,
+      });
       if (!response.success || !response.user) {
         throw new Error(response.error || 'Failed to register identity');
       }
 
       const updatedIdentity: AOTIdentity = {
         ...draft,
+        identifier: response.user.identifier || draft.identifier,
         userId: response.user.userId,
         displayName: response.user.displayName || draft.displayName,
         registeredAt: new Date().toISOString(),
@@ -90,6 +132,59 @@ export const useAOTIdentity = (): UseAOTIdentityResult => {
     [persistIdentity],
   );
 
+  const initializeIdentity = useCallback(
+    async (displayName: string): Promise<AOTIdentity> => {
+      const trimmedName = displayName.trim();
+      if (!trimmedName) {
+        const message = 'Display name is required';
+        setError(message);
+        throw new Error(message);
+      }
+
+      setIsLoading(true);
+      try {
+        initializeCrypto();
+
+        let draft: AOTIdentity;
+        if (identity) {
+          draft = {
+            ...identity,
+            displayName: trimmedName,
+          };
+        } else {
+          const { privateKey, publicKey } = await generateKeyPair();
+          draft = {
+            identifier: createRandomIdentifier(),
+            displayName: trimmedName,
+            publicKey,
+            privateKey,
+          };
+        }
+
+        try {
+          const registered = await registerIdentity(draft);
+          setRingContext(registered.context);
+          setIdentity(registered.identity);
+          setError(null);
+          return registered.identity;
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'Failed to initialize identity';
+          if (message.toLowerCase().includes('already registered')) {
+            const resolved = await resolveIdentityFromContext(draft);
+            setIdentity(resolved.identity);
+            setError(null);
+            return resolved.identity;
+          }
+          setError(message);
+          throw err instanceof Error ? err : new Error(message);
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [identity, registerIdentity, resolveIdentityFromContext],
+  );
+
   const ensureIdentity = useCallback(async (): Promise<AOTIdentity> => {
     setIsLoading(true);
     try {
@@ -99,46 +194,29 @@ export const useAOTIdentity = (): UseAOTIdentityResult => {
       let context: RingContext | null = ringContext;
 
       if (!current) {
-        const { privateKey, publicKey } = await generateKeyPair();
-        current = {
-          identifier: createRandomIdentifier(),
-          displayName: undefined,
-          publicKey,
-          privateKey,
-        };
+        throw new Error('Identity has not been initialized');
+      }
 
-        const registered = await registerIdentity(
-          {
-            identifier: current.identifier,
-            publicKey: current.publicKey,
-          },
-          current,
-        );
-        context = registered.context;
-        setRingContext(context);
-        setIdentity(registered.identity);
-        return registered.identity;
+      if (!current.displayName) {
+        throw new Error('Please complete identity initialization before continuing');
       }
 
       if (!current.registeredAt) {
-        const registered = await registerIdentity(
-          {
-            identifier: current.identifier,
-            publicKey: current.publicKey,
-          },
-          current,
-        );
+        const registered = await registerIdentity(current);
         setRingContext(registered.context);
         setIdentity(registered.identity);
         return registered.identity;
       }
 
+      if (!current.userId) {
+        const resolved = await resolveIdentityFromContext(current);
+        setIdentity(resolved.identity);
+        return resolved.identity;
+      }
+
       if (!context) {
-        const fetched = await authServiceRef.current.fetchContext();
-        if (!fetched.success) {
-          throw new Error('Failed to fetch ring context');
-        }
-        setRingContext(fetched.context);
+        const resolved = await resolveIdentityFromContext(current);
+        setRingContext(resolved.context);
       }
 
       return current;
@@ -149,7 +227,7 @@ export const useAOTIdentity = (): UseAOTIdentityResult => {
     } finally {
       setIsLoading(false);
     }
-  }, [identity, ringContext, registerIdentity]);
+  }, [identity, registerIdentity, resolveIdentityFromContext, ringContext]);
 
   const refreshContext = useCallback(async (): Promise<RingContext> => {
     setIsLoading(true);
@@ -181,6 +259,7 @@ export const useAOTIdentity = (): UseAOTIdentityResult => {
     otherMembers,
     isLoading,
     error,
+    initializeIdentity,
     ensureIdentity,
     refreshContext,
     clearError,

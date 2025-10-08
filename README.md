@@ -134,8 +134,15 @@ curl http://localhost:3000/api/files/YOUR_HASH
 - Private network access controls
 - API endpoint protection
 - File encryption at rest
+- Pseudonymous registry that stores only display labels and public keys while private keys stay on-device
 
 ## 📱 Mobile Application Features
+
+### Identity & Key Management
+- One-time initialization screen prompts the user for a display name and generates a Schnorr key pair locally
+- Registration sends only the display name and public key to the gateway; the private key never leaves the device
+- Identity metadata is cached securely with support for restoring server-issued identifiers on subsequent launches
+- Home screen file listings automatically filter by the active identity's public key so each user sees only their content
 
 ### Gateway Integration Highlights
 - **Real IPFS Operations**: Direct connection to the gateway at `localhost:3000`

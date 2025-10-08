@@ -22,11 +22,11 @@ export interface IPFSConnectionState {
 
 export const useIPFS = (options: UseIPFSOptions = {}) => {
   const { config, autoConnect = true } = options;
-  
+
   // Service instance
   const serviceRef = useRef<IPFSService | null>(null);
   const autoConnectInitiated = useRef(false);
-  
+
   // Connection state
   const [connectionState, setConnectionState] = useState<IPFSConnectionState>({
     isConnected: false,
@@ -35,15 +35,15 @@ export const useIPFS = (options: UseIPFSOptions = {}) => {
     error: null,
     lastChecked: null,
   });
-  
+
   // File operations state
   const [isUploading, setIsUploading] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-  
+
   // Check connection and health
   const checkConnection = useCallback(async () => {
-    if (!serviceRef.current) return;
+    if (!serviceRef.current) {return;}
 
     setConnectionState(prev => ({ ...prev, isConnecting: true, error: null }));
 
@@ -118,10 +118,10 @@ export const useIPFS = (options: UseIPFSOptions = {}) => {
       }, 200);
 
       const result = await serviceRef.current.uploadFile(file);
-      
+
       clearInterval(progressInterval);
       setUploadProgress(100);
-      
+
       setTimeout(() => {
         setUploadProgress(0);
         setIsUploading(false);
@@ -187,7 +187,7 @@ export const useIPFS = (options: UseIPFSOptions = {}) => {
 
     try {
       const result = await serviceRef.current.uploadMultipleFiles(files);
-      
+
       setUploadProgress(100);
       setTimeout(() => {
         setUploadProgress(0);
@@ -255,12 +255,12 @@ export const useIPFS = (options: UseIPFSOptions = {}) => {
   }, []);
 
   // Get user files
-  const getUserFiles = useCallback(async () => {
+  const getUserFiles = useCallback(async (filters: { userId?: string; publicKey?: string }) => {
     if (!serviceRef.current) {
       return { success: false, error: 'IPFS service not initialized' };
     }
 
-    return serviceRef.current.getUserFiles();
+    return serviceRef.current.getUserFiles(filters);
   }, []);
 
   // Signature operations
@@ -303,7 +303,7 @@ export const useIPFS = (options: UseIPFSOptions = {}) => {
   return {
     // Connection state
     connectionState,
-    
+
     // File operations
     uploadFile,
     uploadMultipleFiles,
@@ -312,15 +312,15 @@ export const useIPFS = (options: UseIPFSOptions = {}) => {
     listFiles,
     deleteFile,
     getUserFiles,
-    
+
     // Signature operations
     getSignatures,
     createSignature,
     verifySignature,
-    
+
     // Connection management
     checkConnection,
-    
+
     // Config management
     getConfig,
     updateConfig,

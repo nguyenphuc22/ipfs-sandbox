@@ -2,9 +2,9 @@ import { API_CONFIG } from '../config/api';
 import { RegisteredRingMember, RingContext } from '../types';
 
 export interface RegisterUserPayload {
-  identifier: string;
-  displayName?: string;
+  displayName: string;
   publicKey: string;
+  identifier?: string;
   escrowedIdentity?: string | null;
 }
 

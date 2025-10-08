@@ -28,7 +28,7 @@ export const useFileStorage = (): UseFileStorageReturn => {
     try {
       setIsLoading(true);
       setError(null);
-      
+
       const storedData = await AsyncStorage.getItem(STORAGE_KEY);
       if (storedData) {
         const parsedFiles: FileData[] = JSON.parse(storedData);
@@ -54,15 +54,15 @@ export const useFileStorage = (): UseFileStorageReturn => {
   const saveFile = useCallback(async (file: FileData) => {
     try {
       setError(null);
-      
+
       // Update local state first for immediate UI update
       setStoredFiles(prevFiles => {
         // Check if file already exists (by ID or IPFS hash)
-        const existingIndex = prevFiles.findIndex(f => 
-          f.id === file.id || 
+        const existingIndex = prevFiles.findIndex(f =>
+          f.id === file.id ||
           (f.ipfsHash && file.ipfsHash && f.ipfsHash === file.ipfsHash)
         );
-        
+
         if (existingIndex >= 0) {
           // Update existing file
           const updatedFiles = [...prevFiles];
@@ -77,13 +77,13 @@ export const useFileStorage = (): UseFileStorageReturn => {
       // Then persist to storage
       const currentFiles = await AsyncStorage.getItem(STORAGE_KEY);
       const filesArray: FileData[] = currentFiles ? JSON.parse(currentFiles) : [];
-      
+
       // Check if file already exists
-      const existingIndex = filesArray.findIndex(f => 
-        f.id === file.id || 
+      const existingIndex = filesArray.findIndex(f =>
+        f.id === file.id ||
         (f.ipfsHash && file.ipfsHash && f.ipfsHash === file.ipfsHash)
       );
-      
+
       if (existingIndex >= 0) {
         // Update existing file
         filesArray[existingIndex] = file;
@@ -91,7 +91,7 @@ export const useFileStorage = (): UseFileStorageReturn => {
         // Add new file at the beginning
         filesArray.unshift(file);
       }
-      
+
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(filesArray));
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to save file';
@@ -104,7 +104,7 @@ export const useFileStorage = (): UseFileStorageReturn => {
   const removeFile = useCallback(async (fileId: string) => {
     try {
       setError(null);
-      
+
       // Update local state first
       setStoredFiles(prevFiles => prevFiles.filter(f => f.id !== fileId));
 
@@ -126,10 +126,10 @@ export const useFileStorage = (): UseFileStorageReturn => {
   const clearAllFiles = useCallback(async () => {
     try {
       setError(null);
-      
+
       // Update local state first
       setStoredFiles([]);
-      
+
       // Then clear storage
       await AsyncStorage.removeItem(STORAGE_KEY);
     } catch (err) {

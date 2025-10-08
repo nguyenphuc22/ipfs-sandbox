@@ -21,8 +21,11 @@ import {
   createLsagRingSignature,
   createSchnorrProof,
   generateMasterKey,
+  isValidPublicKeyHex,
   normalizeHex,
+  toCompressedPublicKey,
 } from '../../utils/aotCrypto';
+import { API_CONFIG } from '../../config/api';
 
 interface AOTUploadModalProps {
   visible: boolean;
@@ -36,9 +39,6 @@ interface AOTUploadModalProps {
 }
 
 const formatKey = (key: string) => `${key.slice(0, 8)}…${key.slice(-6)}`;
-
-const isHexString = (value: string | null | undefined): value is string =>
-  typeof value === 'string' && /^[0-9a-f]+$/i.test(value);
 
 export const AOTUploadModal: React.FC<AOTUploadModalProps> = ({
   visible,
@@ -66,6 +66,7 @@ export const AOTUploadModal: React.FC<AOTUploadModalProps> = ({
   const [localError, setLocalError] = useState<string | null>(null);
   const [metadataHash, setMetadataHash] = useState<string | null>(null);
   const [masterKey, setMasterKey] = useState<string | null>(null);
+  const [ringWarning, setRingWarning] = useState<string | null>(null);
 
   const resetState = () => {
     setSelectedMemberKeys([]);
@@ -73,23 +74,33 @@ export const AOTUploadModal: React.FC<AOTUploadModalProps> = ({
     setLocalError(null);
     setMetadataHash(null);
     setMasterKey(null);
+    setRingWarning(null);
     clearError();
   };
 
   const selectableMembers = useMemo(() => {
-    if (!identity) {
-      return otherMembers;
+    if (!identity?.publicKey) {
+      return otherMembers.filter((member) => isValidPublicKeyHex(member.publicKey));
     }
 
+    const ownerKey = normalizeHex(identity.publicKey);
     const unique = new Map<string, RegisteredRingMember>();
+
     [...(ringContext?.users ?? []), ...otherMembers].forEach((member) => {
-      if (member.publicKey !== identity.publicKey) {
-        unique.set(member.publicKey, member);
+      if (!member?.publicKey) {
+        return;
+      }
+      const normalized = normalizeHex(member.publicKey);
+      if (!isValidPublicKeyHex(normalized) || normalized === ownerKey) {
+        return;
+      }
+      if (!unique.has(normalized)) {
+        unique.set(normalized, member);
       }
     });
 
     return Array.from(unique.values());
-  }, [identity, otherMembers, ringContext?.users]);
+  }, [identity?.publicKey, otherMembers, ringContext?.users]);
 
   useEffect(() => {
     if (!visible) {
@@ -111,10 +122,37 @@ export const AOTUploadModal: React.FC<AOTUploadModalProps> = ({
           return;
         }
 
-        const defaultSelection = (context.ringMemberPublicKeys || [])
-          .map((key) => normalizeHex(key))
-          .filter((key) => key !== normalizeHex(ensuredIdentity.publicKey));
-        setSelectedMemberKeys(defaultSelection);
+        const ownerKey = normalizeHex(ensuredIdentity.publicKey);
+        if (!isValidPublicKeyHex(ownerKey)) {
+          const message = 'Khóa công khai của bạn không hợp lệ. Vui lòng tạo lại danh tính.';
+          setLocalError(message);
+          onError?.(message);
+          Alert.alert('AOT', message);
+          return;
+        }
+
+        const contextMembers = Array.from(
+          new Set(
+            (context.ringMemberPublicKeys || [])
+              .map((key) => normalizeHex(key))
+              .filter(Boolean),
+          ),
+        );
+
+        const validMembers = contextMembers.filter(
+          (key) => key !== ownerKey && isValidPublicKeyHex(key),
+        );
+        const invalidCount = contextMembers.length - validMembers.length;
+
+        if (invalidCount > 0) {
+          const warningMessage = `Đã bỏ qua ${invalidCount} khóa công khai không hợp lệ khỏi vòng ký.`;
+          setRingWarning(warningMessage);
+          console.warn('[AOT] Invalid ring member keys filtered', { invalidCount });
+        } else {
+          setRingWarning(null);
+        }
+
+        setSelectedMemberKeys(validMembers);
       } catch (err) {
         if (cancelled) {
           return;
@@ -139,21 +177,50 @@ export const AOTUploadModal: React.FC<AOTUploadModalProps> = ({
   }, [visible, file]);
 
   const ringMembers = useMemo(() => {
-    if (!identity) {
+    if (!identity?.publicKey) {
       return [] as string[];
     }
     const normalizedOwner = normalizeHex(identity.publicKey);
-    const unique = new Set<string>([normalizedOwner, ...selectedMemberKeys.map(normalizeHex)]);
-    return Array.from(unique);
-  }, [identity, selectedMemberKeys]);
+    if (!isValidPublicKeyHex(normalizedOwner)) {
+      return [] as string[];
+    }
+
+    const unique = new Set<string>([normalizedOwner]);
+    selectedMemberKeys.forEach((key) => {
+      const normalized = normalizeHex(key);
+      if (isValidPublicKeyHex(normalized) && normalized !== normalizedOwner) {
+        unique.add(normalized);
+      }
+    });
+
+    // IMPORTANT: Normalize to compressed format BEFORE sorting
+    // This ensures the sorting order matches what will be embedded in the signature
+    const compressed = Array.from(unique).map((key) => {
+      try {
+        return toCompressedPublicKey(key);
+      } catch (error) {
+        console.error('[AOT Upload Modal] Failed to compress key in useMemo:', key, error);
+        return null;
+      }
+    }).filter((key): key is string => key !== null);
+
+    // IMPORTANT: Sort ring members lexicographically to ensure deterministic order
+    // This order MUST match the order used during signature creation and backend verification
+    return compressed.sort((a, b) => a.localeCompare(b));
+  }, [identity?.publicKey, selectedMemberKeys]);
 
   const toggleMember = (publicKey: string) => {
+    const normalized = normalizeHex(publicKey);
+    if (!isValidPublicKeyHex(normalized)) {
+      console.warn('[AOT] Attempted to toggle invalid ring member key', { publicKey });
+      return;
+    }
+
     setSelectedMemberKeys((prev) => {
-      const normalized = normalizeHex(publicKey);
-      if (prev.map(normalizeHex).includes(normalized)) {
-        return prev.filter((key) => normalizeHex(key) !== normalized);
+      if (prev.includes(normalized)) {
+        return prev.filter((key) => key !== normalized);
       }
-      return [...prev, publicKey];
+      return [...prev, normalized];
     });
   };
 
@@ -166,10 +233,33 @@ export const AOTUploadModal: React.FC<AOTUploadModalProps> = ({
       setSubmitting(true);
       setLocalError(null);
 
-      const orderedRing = ringMembers;
-      if (orderedRing.length < 1) {
-        throw new Error('Không thể xác định vòng ký');
+      // Normalize owner key to compressed format
+      const ownerKey = toCompressedPublicKey(identity.publicKey);
+      console.log('[AOT Upload Modal] Owner key normalized:', {
+        original: identity.publicKey,
+        originalLength: identity.publicKey.length,
+        compressed: ownerKey,
+        compressedLength: ownerKey.length,
+      });
+
+      // ringMembers is already compressed and sorted in the useMemo above
+      // Just validate and use directly
+      const orderedRing = ringMembers.filter((key) => isValidPublicKeyHex(key));
+
+      if (orderedRing.length === 0) {
+        throw new Error('Không thể xác định vòng ký hợp lệ');
       }
+
+      console.log('[AOT Upload Modal] Using pre-sorted ring members:', {
+        totalCount: orderedRing.length,
+        allKeysAreCompressed: orderedRing.every(k => k.length === 66),
+        members: orderedRing.map((key, idx) => ({
+          index: idx,
+          prefix: key.substring(0, 20),
+          suffix: key.substring(key.length - 10),
+          length: key.length,
+        })),
+      });
 
       const metadataPayload = {
         fileName: file.name || 'unnamed',
@@ -177,33 +267,103 @@ export const AOTUploadModal: React.FC<AOTUploadModalProps> = ({
         mimeType: file.type || 'application/octet-stream',
         createdAt: new Date().toISOString(),
         ownerIdentifier: identity.identifier,
-        ownerPublicKey: identity.publicKey,
+        ownerPublicKey: ownerKey,
         ringMembers: orderedRing,
       };
+
+      console.log('[AOT Upload Modal] Metadata payload:', {
+        fileName: metadataPayload.fileName,
+        ownerPublicKeyLength: ownerKey.length,
+        ownerPublicKeyPrefix: ownerKey.substring(0, 20),
+        ringMembersCount: orderedRing.length,
+      });
 
       const { metadataHash: computedHash } = await computeMetadataHash(metadataPayload);
       const schnorrProof = await createSchnorrProof(computedHash, identity.privateKey);
 
+      console.log('[AOT Upload Modal] Schnorr proof created:', {
+        metadataHash: computedHash,
+        RLength: schnorrProof.R.length,
+        sLength: schnorrProof.s.length,
+      });
+
       let ringSignaturePayload: Record<string, any> | null = null;
       if (orderedRing.length >= 2) {
+        // Find signer index using compressed key comparison
         const signerIndex = orderedRing.findIndex(
-          (key) => normalizeHex(key) === normalizeHex(identity.publicKey),
+          (key) => normalizeHex(key) === normalizeHex(ownerKey),
         );
+
+        console.log('[AOT Upload Modal] Creating ring signature:', {
+          ringSize: orderedRing.length,
+          signerIndex,
+          message: computedHash,
+          allKeysAreCompressed: orderedRing.every(k => k.length === 66),
+          ringMembersInOrder: orderedRing.map((k, idx) => ({
+            index: idx,
+            prefix: k.substring(0, 20),
+            suffix: k.substring(k.length - 10),
+          })),
+        });
+
+        if (signerIndex === -1) {
+          throw new Error('Owner key not found in ring members');
+        }
 
         ringSignaturePayload = await createLsagRingSignature({
           message: computedHash,
           ringPublicKeys: orderedRing,
-          signerIndex: signerIndex === -1 ? 0 : signerIndex,
+          signerIndex,
           signerPrivateKey: identity.privateKey,
+        });
+
+        console.log('[AOT Upload Modal] Ring signature created:', {
+          hasKeyImage: !!ringSignaturePayload?.keyImage,
+          keyImageLength: ringSignaturePayload?.keyImage?.length,
+          hasC0: !!ringSignaturePayload?.c0,
+          sCount: ringSignaturePayload?.s?.length,
         });
       }
 
       const masterKeyValue = generateMasterKey();
 
+      console.log('[AOT Upload Modal] About to send upload request with:', {
+        fileSize: file.size,
+        fileName: file.name,
+        metadataHashLength: computedHash.length,
+        ownershipPublicKeyLength: ownerKey.length,
+        hasRingSignature: !!ringSignaturePayload,
+        ringMembersCount: orderedRing.length,
+      });
+
+      // Test connectivity before upload
+      console.log('[AOT Upload Modal] Testing backend connectivity...');
+      try {
+        const testResponse = await fetch(API_CONFIG.baseUrl + '/health', {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        console.log('[AOT Upload Modal] Health check response:', {
+          status: testResponse.status,
+          ok: testResponse.ok,
+        });
+        if (!testResponse.ok) {
+          throw new Error(`Backend not reachable: ${testResponse.status}`);
+        }
+      } catch (connectError) {
+        console.error('[AOT Upload Modal] Backend connectivity test failed:', connectError);
+        throw new Error(
+          `Không thể kết nối đến backend tại ${API_CONFIG.baseUrl}. ` +
+          `Vui lòng kiểm tra: (1) Backend đang chạy, (2) URL cấu hình đúng, (3) Network connectivity. ` +
+          `Lỗi: ${connectError instanceof Error ? connectError.message : String(connectError)}`
+        );
+      }
+
+      // Use chunked upload (new thesis implementation)
       const response = await uploadFileWithAOT({
         file,
         metadataHash: computedHash,
-        ownershipPublicKey: identity.publicKey,
+        ownershipPublicKey: ownerKey,
         ringSignature: ringSignaturePayload ? JSON.stringify(ringSignaturePayload) : undefined,
         escrowedIdentity: identity.escrowedIdentity || `escrow:${identity.identifier}`,
         ringMembers: orderedRing,
@@ -211,7 +371,7 @@ export const AOTUploadModal: React.FC<AOTUploadModalProps> = ({
           R: schnorrProof.R,
           s: schnorrProof.s,
           message: computedHash,
-          publicKey: identity.publicKey,
+          publicKey: ownerKey,
         },
       });
 
@@ -222,15 +382,18 @@ export const AOTUploadModal: React.FC<AOTUploadModalProps> = ({
       const uploadResponse = response.response;
       const fileData: FileData = {
         id: uploadResponse.fileId || `${Date.now()}`,
-        name: uploadResponse.name || file.name || 'unnamed',
-        size: uploadResponse.size || file.size || 0,
+        name: uploadResponse.fileName || uploadResponse.name || file.name || 'unnamed',
+        size: uploadResponse.totalSize || uploadResponse.size || file.size || 0,
         uploadTime: new Date(),
         status: 'completed',
-        ipfsHash: uploadResponse.cid,
+        ipfsHash: uploadResponse.cid, // Legacy support
         metadataHash: computedHash,
-        ownershipPublicKey: identity.publicKey,
+        ownershipPublicKey: ownerKey,
         masterKey: masterKeyValue,
         ringMembers: orderedRing,
+        // New chunked upload fields
+        chunkCount: uploadResponse.chunkCount,
+        chunks: uploadResponse.chunks,
       };
 
       setMetadataHash(computedHash);
@@ -283,6 +446,9 @@ export const AOTUploadModal: React.FC<AOTUploadModalProps> = ({
           fontSize: 12,
           fontWeight: '600',
           color: colors.textSecondary,
+        },
+        keyLabelSpacing: {
+          marginTop: 12,
         },
         keyValue: {
           fontFamily: 'monospace',
@@ -364,6 +530,10 @@ export const AOTUploadModal: React.FC<AOTUploadModalProps> = ({
           color: colors.error,
           marginBottom: 12,
         },
+        warningText: {
+          color: colors.warning,
+          marginBottom: 12,
+        },
         pill: {
           alignSelf: 'flex-start',
           borderRadius: 999,
@@ -376,6 +546,12 @@ export const AOTUploadModal: React.FC<AOTUploadModalProps> = ({
           color: colors.white,
           fontSize: 12,
           fontWeight: '600',
+        },
+        emptyMemberText: {
+          color: colors.textSecondary,
+        },
+        loaderSpacing: {
+          marginTop: 16,
         },
       }),
     [colors],
@@ -393,13 +569,14 @@ export const AOTUploadModal: React.FC<AOTUploadModalProps> = ({
 
           {identityError ? <Text style={styles.errorText}>{identityError}</Text> : null}
           {localError ? <Text style={styles.errorText}>{localError}</Text> : null}
+          {ringWarning ? <Text style={styles.warningText}>{ringWarning}</Text> : null}
 
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Khóa của bạn</Text>
             <View style={styles.keyContainer}>
               <Text style={styles.keyLabel}>Public Key</Text>
               <Text style={styles.keyValue}>{identity ? identity.publicKey : 'Đang tạo...'}</Text>
-              <Text style={[styles.keyLabel, { marginTop: 12 }]}>Secret Key</Text>
+              <Text style={[styles.keyLabel, styles.keyLabelSpacing]}>Secret Key</Text>
               <Text style={styles.keyValue}>{identity ? identity.privateKey : 'Đang tạo...'}</Text>
               {masterKey ? (
                 <View style={styles.pill}>
@@ -438,7 +615,7 @@ export const AOTUploadModal: React.FC<AOTUploadModalProps> = ({
               );
             })}
             {selectableMembers.length === 0 ? (
-              <Text style={{ color: colors.textSecondary }}>
+              <Text style={styles.emptyMemberText}>
                 Chưa có người dùng khác trong vòng ký. Bạn có thể upload với 1 thành viên.
               </Text>
             ) : null}
@@ -469,7 +646,7 @@ export const AOTUploadModal: React.FC<AOTUploadModalProps> = ({
           </View>
 
           {(initializing || isLoading) && !submitting ? (
-            <ActivityIndicator style={{ marginTop: 16 }} color={colors.primary} />
+            <ActivityIndicator style={styles.loaderSpacing} color={colors.primary} />
           ) : null}
         </ScrollView>
       </View>

@@ -1,4 +1,4 @@
-import {useState, useCallback} from 'react';
+import {useState, useCallback, useMemo} from 'react';
 import {Alert} from 'react-native';
 import {
   FilePickerOptions,
@@ -21,8 +21,8 @@ export const useFilePicker = (
     pickedFiles: [],
   });
 
-  const filePickerService = new FilePickerService();
-  const permissionService = new PermissionService();
+  const filePickerService = useMemo(() => new FilePickerService(), []);
+  const permissionService = useMemo(() => new PermissionService(), []);
 
   const setLoading = useCallback((isLoading: boolean) => {
     setState(prev => ({...prev, isLoading}));
@@ -131,15 +131,15 @@ export const useFilePicker = (
         return { success: true, files: valid };
       } catch (error) {
         handleFilePickerError(error);
-        return { 
-          success: false, 
-          error: error instanceof Error ? error.message : 'File picker failed' 
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'File picker failed',
         };
       } finally {
         setLoading(false);
       }
     },
-    [setLoading, setError, addPickedFiles, validateFiles, handleFilePickerError, permissionService, filePickerService],
+    [setLoading, setError, addPickedFiles, validateFiles, handleFilePickerError, filePickerService],
   );
 
   const pickSingleFile = useCallback(

@@ -1,22 +1,27 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView, RefreshControl } from 'react-native';
 import { useIPFS, useEnhancedStorage } from '../../hooks';
 import { useTheme } from '../../styles';
 import { FileData } from '../../types';
 import { FileViewer } from './FileViewer';
+import { normalizeHex } from '../../utils/aotCrypto';
 
 interface IPFSFileListProps {
   onFileDeleted?: (fileId: string) => void;
   externalFiles?: FileData[];
+  ownerUserId?: string;
+  ownerPublicKey?: string;
 }
 
 export const IPFSFileList: React.FC<IPFSFileListProps> = ({
   onFileDeleted,
   externalFiles = [],
+  ownerUserId,
+  ownerPublicKey,
 }) => {
   const { colors } = useTheme();
-  const { listFiles, deleteFile } = useIPFS();
-  
+  const { listFiles, deleteFile, getUserFiles } = useIPFS();
+
   // Add enhanced storage hook for persistence
   const {
     storedFiles,
@@ -25,71 +30,109 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
     isLoading: isStorageLoading,
     metadata,
   } = useEnhancedStorage();
-  
+
   const [apiFiles, setApiFiles] = useState<FileData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  
+
   // File viewer state
   const [viewerVisible, setViewerVisible] = useState(false);
   const [selectedFile, setSelectedFile] = useState<FileData | null>(null);
-  
-  // Combine API files, external files, and stored files, deduplicate by IPFS hash, and sort by upload time (newest first)
-  const allFiles = React.useMemo(() => {
+
+  const normalizedOwnerKey = useMemo(
+    () => (ownerPublicKey ? normalizeHex(ownerPublicKey) : null),
+    [ownerPublicKey],
+  );
+
+  const allFiles = useMemo(() => {
     const combined = [...externalFiles, ...apiFiles, ...storedFiles];
-    
-    // Deduplicate by IPFS hash or file ID
+
     const uniqueFiles = combined.reduce((acc: FileData[], current) => {
-      const existingFile = acc.find(file => 
-        // First try to match by IPFS hash (most reliable)
-        (file.ipfsHash && current.ipfsHash && file.ipfsHash === current.ipfsHash) ||
-        // Fallback to file ID
-        file.id === current.id
+      const existingFile = acc.find(
+        (file) =>
+          (file.ipfsHash && current.ipfsHash && file.ipfsHash === current.ipfsHash) ||
+          file.id === current.id,
       );
-      
+
       if (!existingFile) {
         acc.push(current);
       }
-      
+
       return acc;
     }, []);
-    
-    // Sort by upload time (newest first)
-    return uniqueFiles.sort((a, b) => 
-      new Date(b.uploadTime).getTime() - new Date(a.uploadTime).getTime()
+
+    return uniqueFiles.sort(
+      (a, b) => new Date(b.uploadTime).getTime() - new Date(a.uploadTime).getTime(),
     );
-  }, [externalFiles, apiFiles, storedFiles]);
+  }, [apiFiles, externalFiles, storedFiles]);
 
-  const loadFiles = React.useCallback(async (showLoading = true) => {
-    if (showLoading) setIsLoading(true);
-    try {
-      const result = await listFiles();
-      if (result.success && result.files) {
-        // Ensure files is always an array
-        const filesList = Array.isArray(result.files) ? result.files : [];
-        setApiFiles(filesList);
-      } else {
-        console.warn('Failed to load files:', result.error);
-        setApiFiles([]); // Set empty array on failure
+  const isMountedRef = useRef(true);
+  useEffect(() => () => {
+    isMountedRef.current = false;
+  }, []);
+
+  const fetchFiles = useCallback(
+    async (showLoading = true) => {
+      if (!isMountedRef.current) {
+        return;
       }
-    } catch (error) {
-      console.error('Error loading files:', error);
-      setApiFiles([]); // Set empty array on error
-    } finally {
-      if (showLoading) setIsLoading(false);
-    }
-  }, [listFiles]);
 
-  // Auto-load files on component mount
+      if (showLoading) {
+        setIsLoading(true);
+      }
+
+      try {
+        let result;
+        if (ownerUserId || ownerPublicKey) {
+          result = await getUserFiles({
+            userId: ownerUserId,
+            publicKey: ownerPublicKey,
+          });
+        } else {
+          result = await listFiles();
+        }
+
+        if (!isMountedRef.current) {
+          return;
+        }
+
+        if (result.success && result.files) {
+          const filesList = Array.isArray(result.files) ? result.files : [];
+          const filtered = normalizedOwnerKey
+            ? filesList.filter((file) =>
+                file.ownershipPublicKey
+                  ? normalizeHex(file.ownershipPublicKey) === normalizedOwnerKey
+                  : true,
+              )
+            : filesList;
+          setApiFiles(filtered);
+        } else {
+          console.warn('Failed to load files:', result?.error);
+          setApiFiles([]);
+        }
+      } catch (error) {
+        if (isMountedRef.current) {
+          console.error('Error loading files:', error);
+          setApiFiles([]);
+        }
+      } finally {
+        if (isMountedRef.current && showLoading) {
+          setIsLoading(false);
+        }
+      }
+    },
+    [getUserFiles, listFiles, normalizedOwnerKey, ownerPublicKey, ownerUserId],
+  );
+
   useEffect(() => {
-    loadFiles();
-  }, [loadFiles]);
+    fetchFiles();
+  }, [fetchFiles]);
 
-  const handleRefresh = async () => {
+  const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
-    await loadFiles(false);
+    await fetchFiles(false);
     setIsRefreshing(false);
-  };
+  }, [fetchFiles]);
 
   const handleViewFile = (file: FileData) => {
     if (!file.ipfsHash) {
@@ -125,11 +168,11 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
                   setApiFiles(updatedApiFiles);
                 }
               }
-              
+
               // Always remove from local storage
               await removeFile(file.id);
               onFileDeleted?.(file.id);
-              
+
               Alert.alert('Success', 'File deleted successfully');
             } catch (error) {
               const errorMessage = error instanceof Error ? error.message : 'Failed to delete file';
@@ -166,7 +209,7 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
   };
 
   const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return '0 Bytes';
+    if (bytes === 0) {return '0 Bytes';}
     const k = 1024;
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
@@ -181,7 +224,7 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
       mp4: '🎥', avi: '🎥', mov: '🎥', mkv: '🎥',
       mp3: '🎵', wav: '🎵', flac: '🎵',
       zip: '📦', rar: '📦',
-      xls: '📊', xlsx: '📊', csv: '📊'
+      xls: '📊', xlsx: '📊', csv: '📊',
     };
     return iconMap[extension] || '📄';
   };
@@ -365,8 +408,8 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
       <View style={styles.header}>
         <Text style={styles.title}>Files ({allFiles.length})</Text>
         <View style={styles.actionButtons}>
-          <TouchableOpacity 
-            style={styles.refreshButton} 
+          <TouchableOpacity
+            style={styles.refreshButton}
             onPress={handleRefresh}
             disabled={isRefreshing}
           >
@@ -374,10 +417,10 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
               {isRefreshing ? 'Refreshing...' : 'Refresh'}
             </Text>
           </TouchableOpacity>
-          
+
           {allFiles.length > 0 && (
-            <TouchableOpacity 
-              style={[styles.actionButton, styles.clearButton]} 
+            <TouchableOpacity
+              style={[styles.actionButton, styles.clearButton]}
               onPress={handleClearAllFiles}
             >
               <Text style={styles.actionButtonText}>Clear All</Text>
@@ -395,7 +438,7 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
           </Text>
         </View>
       ) : (
-        <ScrollView 
+        <ScrollView
           style={styles.fileList}
           refreshControl={
             <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
@@ -421,13 +464,13 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
                   </TouchableOpacity>
                 </View>
               </View>
-              
+
               <Text style={styles.fileDetails}>
-                Size: {formatFileSize(file.size)} • 
-                Status: {file.status} • 
+                Size: {formatFileSize(file.size)} •
+                Status: {file.status} •
                 Uploaded: {file.uploadTime.toLocaleString()}
               </Text>
-              
+
               {file.ipfsHash && (
                 <Text style={styles.fileHash}>
                   IPFS: {file.ipfsHash}

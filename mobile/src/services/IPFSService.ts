@@ -1,4 +1,4 @@
-import { FileData, PickedFile } from '../types';
+import { FileData, FileStatus, PickedFile } from '../types';
 import {
   GatewayApiService,
   createDefaultGatewayService,
@@ -39,9 +39,9 @@ export class IPFSService {
       const response = await this.apiService.checkHealth();
       return { isHealthy: true, response };
     } catch (error) {
-      return { 
-        isHealthy: false, 
-        error: error instanceof Error ? error.message : 'Unknown error' 
+      return {
+        isHealthy: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
       };
     }
   }
@@ -51,9 +51,9 @@ export class IPFSService {
       const response = await this.apiService.testIPFSConnection();
       return { isConnected: response.success, response };
     } catch (error) {
-      return { 
-        isConnected: false, 
-        error: error instanceof Error ? error.message : 'Unknown error' 
+      return {
+        isConnected: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
       };
     }
   }
@@ -62,7 +62,7 @@ export class IPFSService {
   async uploadFile(file: PickedFile): Promise<{ success: boolean; data?: FileData; error?: string }> {
     try {
       const response = await this.apiService.uploadFile(file);
-      
+
       if (response.success && response.hash) {
         const fileData: FileData = {
           id: file.id,
@@ -72,15 +72,15 @@ export class IPFSService {
           status: 'completed',
           ipfsHash: response.hash,
         };
-        
+
         return { success: true, data: fileData };
       } else {
         return { success: false, error: response.error || 'Upload failed' };
       }
     } catch (error) {
-      return { 
-        success: false, 
-      error: error instanceof Error ? error.message : 'Upload failed' 
+      return {
+        success: false,
+      error: error instanceof Error ? error.message : 'Upload failed',
       };
     }
   }
@@ -98,9 +98,9 @@ export class IPFSService {
       const blob = await this.apiService.downloadFile(hash);
       return { success: true, blob };
     } catch (error) {
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Download failed' 
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Download failed',
       };
     }
   }
@@ -110,9 +110,9 @@ export class IPFSService {
       const metadata = await this.apiService.getFileMetadata(hash);
       return { success: true, metadata };
     } catch (error) {
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Failed to get metadata' 
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to get metadata',
       };
     }
   }
@@ -122,9 +122,9 @@ export class IPFSService {
       const files = await this.apiService.listFiles();
       return { success: true, files };
     } catch (error) {
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Failed to list files' 
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to list files',
       };
     }
   }
@@ -134,22 +134,60 @@ export class IPFSService {
       const result = await this.apiService.deleteFile(hash);
       return { success: result.success };
     } catch (error) {
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Delete failed' 
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Delete failed',
       };
     }
   }
 
   // User-specific file operations
-  async getUserFiles(): Promise<{ success: boolean; files?: FileData[]; error?: string }> {
+  async getUserFiles(
+    options: { userId?: string; publicKey?: string },
+  ): Promise<{ success: boolean; files?: FileData[]; error?: string }> {
+    const { userId, publicKey } = options;
+
+    if (!publicKey && !userId) {
+      return { success: false, error: 'Public key or user ID is required to load files' };
+    }
+
     try {
-      const files = await this.apiService.getUserFiles();
+      const response = await this.apiService.getUserFiles({ userId, publicKey });
+      if (!response.success) {
+        return {
+          success: false,
+          error: response.error || 'Failed to get user files',
+        };
+      }
+
+      const records = Array.isArray(response.files) ? response.files : [];
+      const allowedStatuses: FileStatus[] = ['uploading', 'completed', 'error', 'active', 'revoked'];
+
+      const files: FileData[] = records.map((record) => {
+        const status = typeof record.status === 'string' ? (record.status as FileStatus) : 'active';
+        return {
+          id: record.id,
+          name: record.fileName || record.name || 'Unknown file',
+          size: record.totalSize ?? record.size ?? 0,
+          uploadTime: record.createdAt ? new Date(record.createdAt) : new Date(),
+          status: allowedStatuses.includes(status) ? status : 'active',
+          ipfsHash: record.cid || undefined,
+          ownershipPublicKey: record.ownershipPublicKey || undefined,
+          mimeType: record.mimeType || undefined,
+          grantedAt: record.grantedAt || undefined,
+          keyStatus: record.keyStatus,
+          hasLocalKey: record.hasLocalKey,
+          chunkCount: record.chunkCount,
+          uploaderName: record.uploader?.username || record.ownerIdentifier || undefined,
+          metadataHash: record.metadataHash,
+        };
+      });
+
       return { success: true, files };
     } catch (error) {
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Failed to get user files' 
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to get user files',
       };
     }
   }
@@ -160,9 +198,9 @@ export class IPFSService {
       const signatures = await this.apiService.getSignatures();
       return { success: true, signatures };
     } catch (error) {
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Failed to get signatures' 
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to get signatures',
       };
     }
   }
@@ -172,9 +210,9 @@ export class IPFSService {
       const signature = await this.apiService.createSignature(data);
       return { success: true, signature };
     } catch (error) {
-      return { 
-        success: false, 
-      error: error instanceof Error ? error.message : 'Failed to create signature' 
+      return {
+        success: false,
+      error: error instanceof Error ? error.message : 'Failed to create signature',
       };
     }
   }
@@ -201,9 +239,9 @@ export class IPFSService {
       const result = await this.apiService.verifySignature(signatureId);
       return { success: true, result };
     } catch (error) {
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Failed to verify signature' 
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to verify signature',
       };
     }
   }
@@ -230,9 +268,9 @@ export class IPFSService {
           totalFailed++;
         }
       } catch (error) {
-        results.push({ 
-          file, 
-          error: error instanceof Error ? error.message : 'Upload failed' 
+        results.push({
+          file,
+          error: error instanceof Error ? error.message : 'Upload failed',
         });
         totalFailed++;
       }

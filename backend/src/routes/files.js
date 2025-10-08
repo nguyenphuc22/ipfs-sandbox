@@ -9,11 +9,23 @@ const {
     getFileRecord,
     addRevocationRecord,
     listFileRecords,
+    listFileRecordsByOwnershipKey,
     updateFileRecord,
     getRingContext,
     getUserByPublicKey,
 } = require('../utils/aotStorage');
 const { verifyLsagRingSignature } = require('../utils/ringSignature');
+const {
+    uploadFileWithChunks,
+    getFileAccessInfo,
+    reportIntegrityAlert,
+    logAuditEvent,
+    listUserFiles,
+} = require('../services/fileChunkService');
+const {
+    executePartialReencryption,
+    getRevocationHistory,
+} = require('../services/revocationService');
 const router = express.Router();
 
 // Configure multer for file uploads
@@ -195,33 +207,55 @@ router.post('/aot-upload', upload.single('file'), async (req, res) => {
         );
 
         const requestedRingMembersRaw = req.body.ringMembers || req.body['ringMembers[]'];
+        console.log('[AOT Upload] Received ring members:', {
+            type: typeof requestedRingMembersRaw,
+            isArray: Array.isArray(requestedRingMembersRaw),
+            value: requestedRingMembersRaw,
+        });
+
         if (requestedRingMembersRaw) {
             let parsedRingMembers;
             if (typeof requestedRingMembersRaw === 'string') {
                 try {
                     parsedRingMembers = JSON.parse(requestedRingMembersRaw);
+                    console.log('[AOT Upload] Parsed ring members from JSON:', parsedRingMembers);
                 } catch (error) {
                     parsedRingMembers = [requestedRingMembersRaw];
+                    console.log('[AOT Upload] Using single ring member (parse failed):', parsedRingMembers);
                 }
             } else if (Array.isArray(requestedRingMembersRaw)) {
                 parsedRingMembers = requestedRingMembersRaw;
+                console.log('[AOT Upload] Using ring members array directly:', parsedRingMembers);
             }
 
             if (Array.isArray(parsedRingMembers) && parsedRingMembers.length > 0) {
                 const normalizedSet = new Set();
-                parsedRingMembers.forEach((value) => {
+                parsedRingMembers.forEach((value, index) => {
                     if (typeof value === 'string') {
-                        normalizedSet.add(normalizePublicKey(value));
+                        const normalized = normalizePublicKey(value);
+                        console.log(`[AOT Upload] Ring member ${index}:`, {
+                            original: value.substring(0, 20) + '...',
+                            normalized: normalized.substring(0, 20) + '...',
+                            length: normalized.length,
+                        });
+                        normalizedSet.add(normalized);
                     }
                 });
 
                 if (!normalizedSet.has(normalizedOwnerKey)) {
                     normalizedSet.add(normalizedOwnerKey);
+                    console.log('[AOT Upload] Added owner key to ring');
                 }
 
-                ringMembers = Array.from(normalizedSet).map(
-                    (key) => availableRingMap.get(key) || key,
-                );
+                // IMPORTANT: Sort ring members lexicographically to ensure deterministic order
+                // This MUST match the order used in mobile app
+                ringMembers = Array.from(normalizedSet)
+                    .map((key) => availableRingMap.get(key) || key)
+                    .sort((a, b) => a.localeCompare(b));
+                console.log('[AOT Upload] Final ring members (sorted):', {
+                    count: ringMembers.length,
+                    members: ringMembers.map(k => k.substring(0, 20) + '...'),
+                });
             }
         }
 
@@ -241,11 +275,22 @@ router.post('/aot-upload', upload.single('file'), async (req, res) => {
                 });
             }
 
+            console.log('[AOT Upload] About to verify ring signature with:', {
+                message: metadataHash,
+                ringSignatureLength: ringSignature?.length,
+                expectedRingPublicKeys: ringMembers.map(k => ({
+                    length: k?.length,
+                    prefix: k?.substring(0, 20),
+                })),
+            });
+
             await verifyLsagRingSignature({
                 message: metadataHash,
                 ringSignature,
                 expectedRingPublicKeys: ringMembers,
             });
+
+            console.log('[AOT Upload] Ring signature verified successfully!');
         }
 
         const parsedRingSignature = ringSignature
@@ -310,6 +355,262 @@ router.post('/aot-upload', upload.single('file'), async (req, res) => {
     }
 });
 
+// ============================================================================
+// NEW CHUNKED UPLOAD WITH AOT (Thesis Implementation)
+// ============================================================================
+
+router.post('/chunked-upload', upload.single('file'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: 'File is required' });
+        }
+
+        const metadataHash = (req.body.metadataHash || '').trim();
+        const ringSignature = (req.body.ringSignature || '').trim();
+        const escrowedIdentity = (req.body.escrowedIdentity || '').trim();
+        const ownershipPublicKey = (req.body.ownershipPublicKey || '').trim();
+
+        // Parse Schnorr proof
+        const ownershipProof = {
+            R: req.body.ownershipProofR || req.body['ownershipProof[R]'],
+            s: req.body.ownershipProofS || req.body['ownershipProof[s]'],
+            message: req.body.ownershipProofMessage || req.body['ownershipProof[message]'],
+            publicKey: req.body.ownershipProofPublicKey || ownershipPublicKey,
+        };
+
+        if (!metadataHash || !ownershipPublicKey) {
+            return res.status(400).json({
+                error: 'metadataHash and ownershipPublicKey are required'
+            });
+        }
+
+        // Verify Schnorr ownership proof
+        await verifySchnorrProof(ownershipProof, ownershipPublicKey);
+
+        // Parse ring members
+        const ringContext = getRingContext();
+        let ringMembers = ringContext.ringMemberPublicKeys || [];
+        const normalizedOwnerKey = normalizePublicKey(ownershipPublicKey);
+
+        const requestedRingMembersRaw = req.body.ringMembers || req.body['ringMembers[]'];
+        if (requestedRingMembersRaw) {
+            let parsedRingMembers;
+            if (typeof requestedRingMembersRaw === 'string') {
+                try {
+                    parsedRingMembers = JSON.parse(requestedRingMembersRaw);
+                } catch (error) {
+                    parsedRingMembers = [requestedRingMembersRaw];
+                }
+            } else if (Array.isArray(requestedRingMembersRaw)) {
+                parsedRingMembers = requestedRingMembersRaw;
+            }
+
+            if (Array.isArray(parsedRingMembers) && parsedRingMembers.length > 0) {
+                const normalizedSet = new Set();
+                parsedRingMembers.forEach((value) => {
+                    if (typeof value === 'string') {
+                        normalizedSet.add(normalizePublicKey(value));
+                    }
+                });
+
+                if (!normalizedSet.has(normalizedOwnerKey)) {
+                    normalizedSet.add(normalizedOwnerKey);
+                }
+
+                // IMPORTANT: Sort ring members lexicographically for deterministic order
+                ringMembers = Array.from(normalizedSet).sort((a, b) => a.localeCompare(b));
+            }
+        }
+
+        // Verify ring signature if ring size >= 2
+        if (ringMembers.length >= 2) {
+            const ringIncludesOwner = ringMembers
+                .map((member) => normalizePublicKey(member))
+                .includes(normalizedOwnerKey);
+
+            if (!ringIncludesOwner) {
+                return res.status(400).json({
+                    error: 'Ownership public key is not part of the registered ring',
+                });
+            }
+
+            if (!ringSignature) {
+                return res.status(400).json({
+                    error: 'ringSignature is required when a ring is configured',
+                });
+            }
+
+            await verifyLsagRingSignature({
+                message: metadataHash,
+                ringSignature,
+                expectedRingPublicKeys: ringMembers,
+            });
+        }
+
+        // Get user ID (for demo, we'll use ownership public key as user ID)
+        const ownerRecord = getUserByPublicKey(ownershipPublicKey);
+        const userId = ownerRecord?.userId || ownershipPublicKey;
+
+        // Upload file with chunking
+        console.log('[Route] Starting chunked upload for:', req.file.originalname);
+        const result = await uploadFileWithChunks({
+            fileBuffer: req.file.buffer,
+            fileName: req.file.originalname,
+            mimeType: req.file.mimetype,
+            userId,
+            metadataHash,
+            ownershipPublicKey,
+            schnorrProof: ownershipProof,
+            ringSignature,
+            ringPublicKeys: ringMembers,
+            escrowedIdentity,
+        });
+
+        res.status(201).json(result);
+
+    } catch (error) {
+        console.error('[Route] Chunked upload error:', error);
+        const message = error instanceof Error ? error.message : 'Failed to process chunked upload';
+        const statusCode = message.includes('Schnorr') || message.includes('mismatch')
+            ? 400
+            : 500;
+        res.status(statusCode).json({ success: false, error: message });
+    }
+});
+
+// ============================================================================
+// DOWNLOAD ENDPOINTS (4-Phase Flow)
+// ============================================================================
+
+// Get file access info (Phase 1: Access Negotiation)
+router.get('/:fileId/access', async (req, res) => {
+    try {
+        const { fileId } = req.params;
+
+        // TODO: Get userId from authentication
+        // For demo, use query parameter
+        const userId = req.query.userId || req.query.userPublicKey;
+
+        if (!userId) {
+            return res.status(401).json({
+                error: 'Authentication required - userId or userPublicKey needed'
+            });
+        }
+
+        const accessInfo = await getFileAccessInfo(fileId, userId);
+        res.json(accessInfo);
+
+    } catch (error) {
+        console.error('[Route] Get file access error:', error);
+        const message = error instanceof Error ? error.message : 'Failed to get file access info';
+        const statusCode = message.includes('denied') || message.includes('not found')
+            ? 403
+            : 500;
+        res.status(statusCode).json({ success: false, error: message });
+    }
+});
+
+// Report integrity alert (Phase 3: Integrity Verification)
+router.post('/:fileId/integrity-alert', async (req, res) => {
+    try {
+        const { fileId } = req.params;
+        const { chunkIndex, expectedHash, actualHash, userId } = req.body;
+
+        if (chunkIndex === undefined || !expectedHash) {
+            return res.status(400).json({
+                error: 'chunkIndex and expectedHash are required'
+            });
+        }
+
+        await reportIntegrityAlert(fileId, chunkIndex, expectedHash, actualHash, userId);
+
+        res.json({
+            success: true,
+            message: 'Integrity alert reported'
+        });
+
+    } catch (error) {
+        console.error('[Route] Report integrity alert error:', error);
+        res.status(500).json({
+            success: false,
+            error: error instanceof Error ? error.message : 'Failed to report alert'
+        });
+    }
+});
+
+// Log audit event (Phase 4: Audit Trail)
+router.post('/:fileId/audit', async (req, res) => {
+    try {
+        const { fileId } = req.params;
+        const { eventType, userId, metadata } = req.body;
+
+        if (!eventType) {
+            return res.status(400).json({ error: 'eventType is required' });
+        }
+
+        await logAuditEvent(eventType, fileId, userId, metadata);
+
+        res.json({
+            success: true,
+            message: 'Audit event logged'
+        });
+
+    } catch (error) {
+        console.error('[Route] Log audit event error:', error);
+        res.status(500).json({
+            success: false,
+            error: error instanceof Error ? error.message : 'Failed to log audit event'
+        });
+    }
+});
+
+// List user's accessible files
+router.get('/user/:userId/files', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const { publicKey, ownershipPublicKey } = req.query;
+
+        const targetKey = (ownershipPublicKey || publicKey || '').toString().trim();
+
+        if (targetKey) {
+            const records = listFileRecordsByOwnershipKey(targetKey);
+            const files = records.map((record) => ({
+                id: record.fileId,
+                fileName: record.name,
+                totalSize: record.size,
+                chunkCount: record.chunkCount ?? 0,
+                mimeType: record.mimeType || null,
+                status: record.status || 'active',
+                ownershipPublicKey: record.ownershipPublicKey,
+                metadataHash: record.metadataHash,
+                cid: record.cid,
+                createdAt: record.createdAt,
+                grantedAt: record.createdAt,
+                keyStatus: record.keyStatus || null,
+                hasLocalKey: false,
+                uploader: record.ownerUserId
+                    ? { id: record.ownerUserId, username: record.ownerIdentifier || null }
+                    : null,
+            }));
+
+            return res.json({ success: true, files });
+        }
+
+        if (!userId || userId === 'undefined' || userId === 'null') {
+            return res.json({ success: true, files: [] });
+        }
+
+        const files = await listUserFiles(userId);
+        res.json({ success: true, files });
+    } catch (error) {
+        console.error('[Route] List user files error:', error);
+        res.status(500).json({
+            success: false,
+            error: error instanceof Error ? error.message : 'Failed to list files'
+        });
+    }
+});
+
 // Simple test route for debugging
 router.get('/viewtest', (req, res) => {
     res.json({ message: 'View test route works' });
@@ -325,6 +626,7 @@ router.get('/aot/files', (req, res) => {
     res.json({ success: true, files });
 });
 
+// Legacy AOT revoke (in-memory storage)
 router.post('/aot/revoke', async (req, res) => {
     try {
         const {
@@ -403,6 +705,154 @@ router.post('/aot/revoke', async (req, res) => {
             ? 400
             : 500;
         res.status(statusCode).json({ success: false, error: message });
+    }
+});
+
+// ============================================================================
+// NEW PARTIAL RE-ENCRYPTION REVOCATION (Thesis Implementation)
+// ============================================================================
+
+router.post('/revoke-with-reencryption', async (req, res) => {
+    try {
+        const {
+            fileId,
+            targetUserId,
+            ringSignature,
+            message,
+            ownershipProof = {},
+            securityLevel = 'standard', // standard, high, maximum
+        } = req.body || {};
+
+        if (!fileId || !message) {
+            return res.status(400).json({
+                error: 'fileId and message are required'
+            });
+        }
+
+        // Verify ring signature if configured
+        const ringContext = getRingContext();
+        const ringMembers = ringContext.ringMemberPublicKeys || [];
+
+        if (ringMembers.length >= 2 && ringSignature) {
+            await verifyLsagRingSignature({
+                message,
+                ringSignature,
+                expectedRingPublicKeys: ringMembers,
+            });
+        }
+
+        // Verify Schnorr ownership proof
+        if (!ownershipProof.R || !ownershipProof.s) {
+            return res.status(400).json({
+                error: 'Valid Schnorr ownership proof (R, s) is required'
+            });
+        }
+
+        // Note: In production, get file ownership key from database
+        // For demo, accept publicKey from request
+        const ownershipPublicKey = ownershipProof.publicKey;
+
+        await verifySchnorrProof({
+            R: ownershipProof.R,
+            s: ownershipProof.s,
+            message: ownershipProof.message || message,
+            publicKey: ownershipPublicKey,
+        }, ownershipPublicKey);
+
+        console.log('[Route] Starting partial re-encryption revocation...');
+
+        // Execute partial re-encryption
+        const result = await executePartialReencryption(
+            fileId,
+            targetUserId,
+            ownershipProof,
+            securityLevel
+        );
+
+        res.json(result);
+
+    } catch (error) {
+        console.error('[Route] Revocation with re-encryption error:', error);
+        const message = error instanceof Error ? error.message : 'Failed to execute revocation';
+        const statusCode = message.includes('Schnorr') || message.includes('not found')
+            ? 400
+            : 500;
+        res.status(statusCode).json({ success: false, error: message });
+    }
+});
+
+// Get revocation history
+router.get('/:fileId/revocations', async (req, res) => {
+    try {
+        const { fileId } = req.params;
+        const history = await getRevocationHistory(fileId);
+        res.json({ success: true, revocations: history });
+    } catch (error) {
+        console.error('[Route] Get revocation history error:', error);
+        res.status(500).json({
+            success: false,
+            error: error instanceof Error ? error.message : 'Failed to get revocation history'
+        });
+    }
+});
+
+// View chunked file info (for UUIDs, not IPFS hashes)
+router.get('/:fileId/info', async (req, res) => {
+    try {
+        const { fileId } = req.params;
+
+        // Check if it's a UUID (chunked file) or IPFS hash (legacy)
+        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(fileId);
+
+        if (!isUUID) {
+            return res.status(400).json({
+                error: 'Invalid file ID format. Use /view/:hash for IPFS hashes.'
+            });
+        }
+
+        const { PrismaClient } = require('@prisma/client');
+        const prisma = new PrismaClient();
+
+        const file = await prisma.file.findUnique({
+            where: { id: fileId },
+            include: {
+                chunks: {
+                    select: {
+                        chunkIndex: true,
+                        ipfsCid: true,
+                        chunkHash: true,
+                        size: true,
+                    },
+                    orderBy: { chunkIndex: 'asc' }
+                }
+            }
+        });
+
+        if (!file) {
+            return res.status(404).json({ error: 'File not found' });
+        }
+
+        res.json({
+            success: true,
+            file: {
+                id: file.id,
+                fileName: file.fileName,
+                totalSize: file.totalSize,
+                chunkCount: file.chunkCount,
+                status: file.status,
+                ownershipPublicKey: file.ownershipPublicKey,
+                createdAt: file.createdAt,
+            },
+            chunks: file.chunks,
+            message: 'This is a chunked file. Use the secure download flow to download it.',
+        });
+
+    } catch (error) {
+        console.error('[Route] Get file info error:', error);
+        res.status(500).json({
+            success: false,
+            error: error instanceof Error ? error.message : 'Failed to get file info'
+        });
     }
 });
 
@@ -485,63 +935,28 @@ function getContentType(filename = '') {
 router.get('/metadata/:hash', async (req, res) => {
     try {
         const { hash } = req.params;
-        
-        // Get file stats from IPFS
-        const ipfsProcess = spawn('ipfs', ['object', 'stat', hash], {
-            env: { ...process.env, IPFS_PATH: '/data/ipfs' }
-        });
 
-        let statOutput = '';
-        let errorOutput = '';
+        // Use IPFS HTTP API to get file stats
+        console.log('METADATA: Fetching file stats from IPFS API:', IPFS_API_URL);
+        const response = await axios.post(
+            `${IPFS_API_URL}/api/v0/object/stat?arg=${hash}`,
+            null,
+            { timeout: 10000 }
+        );
 
-        ipfsProcess.stdout.on('data', (data) => {
-            statOutput += data.toString();
-        });
+        console.log('METADATA: Stats retrieved successfully');
 
-        ipfsProcess.stderr.on('data', (data) => {
-            errorOutput += data.toString();
-        });
-
-        ipfsProcess.on('close', (code) => {
-            if (code === 0) {
-                // Parse stats output
-                const lines = statOutput.trim().split('\n');
-                const metadata = {};
-                lines.forEach(line => {
-                    const [key, ...valueParts] = line.split(':');
-                    if (key && valueParts.length > 0) {
-                        metadata[key.trim()] = valueParts.join(':').trim();
-                    }
-                });
-                
-                res.json({
-                    success: true,
-                    hash: hash,
-                    metadata: metadata
-                });
-            } else {
-                console.error('IPFS object stat error:', errorOutput);
-                res.status(500).json({
-                    error: 'Failed to get file metadata from IPFS',
-                    details: errorOutput || 'IPFS command failed',
-                    exitCode: code
-                });
-            }
-        });
-
-        ipfsProcess.on('error', (error) => {
-            console.error('IPFS process error:', error);
-            res.status(500).json({
-                error: 'Failed to spawn IPFS process',
-                details: error.message
-            });
+        res.json({
+            success: true,
+            hash: hash,
+            metadata: response.data
         });
 
     } catch (error) {
         console.error('Metadata retrieval error:', error.message);
-        res.status(500).json({ 
+        res.status(500).json({
             error: 'Failed to retrieve file metadata from IPFS',
-            details: error.message
+            details: error.response?.data?.Message || error.message
         });
     }
 });
@@ -560,60 +975,39 @@ router.get('/view/:hash', async (req, res) => {
         }
         console.log('VIEW hash validation passed for:', hash);
         const { filename } = req.query; // Optional filename for content-type detection
-        
-        // Use direct IPFS command
-        const ipfsProcess = spawn('ipfs', ['cat', hash], {
-            env: { ...process.env, IPFS_PATH: '/data/ipfs' }
-        });
 
-        let fileBuffer = Buffer.alloc(0);
-        let errorOutput = '';
-
-        ipfsProcess.stdout.on('data', (data) => {
-            fileBuffer = Buffer.concat([fileBuffer, data]);
-        });
-
-        ipfsProcess.stderr.on('data', (data) => {
-            errorOutput += data.toString();
-        });
-
-        ipfsProcess.on('close', (code) => {
-            if (code === 0) {
-                // Detect content type
-                const contentType = getContentType(filename);
-                const displayFilename = filename || `${hash}.bin`;
-                
-                // Set appropriate headers for viewing
-                res.set({
-                    'Content-Type': contentType,
-                    'Content-Disposition': `inline; filename="${displayFilename}"`,
-                    'Content-Length': fileBuffer.length,
-                    'Cache-Control': 'public, max-age=3600'
-                });
-                
-                // For text files, convert to string; for binary files, send buffer
-                if (contentType.startsWith('text/') || contentType === 'application/json') {
-                    res.send(fileBuffer.toString('utf8'));
-                } else {
-                    res.send(fileBuffer);
-                }
-            } else {
-                console.error('IPFS cat error:', errorOutput);
-                res.status(500).json({
-                    error: 'Failed to retrieve file from IPFS',
-                    details: errorOutput || 'IPFS command failed',
-                    exitCode: code
-                });
+        // Use IPFS HTTP API to retrieve file
+        console.log('VIEW: Fetching file from IPFS API:', IPFS_API_URL);
+        const response = await axios.post(
+            `${IPFS_API_URL}/api/v0/cat?arg=${hash}`,
+            null,
+            {
+                responseType: 'arraybuffer',
+                timeout: 30000, // 30 seconds timeout
             }
+        );
+
+        const fileBuffer = Buffer.from(response.data);
+        console.log('VIEW: File retrieved successfully, size:', fileBuffer.length);
+
+        // Detect content type
+        const contentType = getContentType(filename);
+        const displayFilename = filename || `${hash}.bin`;
+
+        // Set appropriate headers for viewing
+        res.set({
+            'Content-Type': contentType,
+            'Content-Disposition': `inline; filename="${displayFilename}"`,
+            'Content-Length': fileBuffer.length,
+            'Cache-Control': 'public, max-age=3600'
         });
 
-        ipfsProcess.on('error', (error) => {
-            console.error('IPFS process error:', error);
-            res.status(500).json({
-                error: 'Failed to spawn IPFS process',
-                details: error.message
-            });
-        });
+        // For text files, convert to string; for binary files, send buffer
+        if (contentType.startsWith('text/') || contentType === 'application/json') {
+            res.send(fileBuffer.toString('utf8'));
+        } else {
+            res.send(fileBuffer);
+        }
 
     } catch (error) {
         console.error('File view error:', error.message);
@@ -638,71 +1032,49 @@ router.get('/:hash', async (req, res) => {
         }
         console.log('Hash validation passed for:', hash);
         const { download, view, filename } = req.query; // ?download=true or ?view=true
-        
-        // Use direct IPFS command instead of HTTP API to avoid 405 issues
-        const ipfsProcess = spawn('ipfs', ['cat', hash], {
-            env: { ...process.env, IPFS_PATH: '/data/ipfs' }
-        });
 
-        let fileBuffer = Buffer.alloc(0);
-        let errorOutput = '';
-
-        ipfsProcess.stdout.on('data', (data) => {
-            fileBuffer = Buffer.concat([fileBuffer, data]);
-        });
-
-        ipfsProcess.stderr.on('data', (data) => {
-            errorOutput += data.toString();
-        });
-
-        ipfsProcess.on('close', (code) => {
-            if (code === 0) {
-                if (view === 'true') {
-                    // View mode - detect content type and send with proper headers
-                    const contentType = getContentType(filename);
-                    const displayFilename = filename || `${hash}.bin`;
-                    
-                    res.set({
-                        'Content-Type': contentType,
-                        'Content-Disposition': `inline; filename="${displayFilename}"`,
-                        'Content-Length': fileBuffer.length,
-                        'Cache-Control': 'public, max-age=3600'
-                    });
-                    
-                    // For text files, convert to string; for binary files, send buffer
-                    if (contentType.startsWith('text/') || contentType === 'application/json') {
-                        res.send(fileBuffer.toString('utf8'));
-                    } else {
-                        res.send(fileBuffer);
-                    }
-                } else {
-                    // Download mode - send as binary
-                    const disposition = download === 'true' ? 'attachment' : 'inline';
-                    res.set({
-                        'Content-Type': 'application/octet-stream',
-                        'Content-Disposition': `${disposition}; filename="${hash}"`,
-                        'Content-Length': fileBuffer.length
-                    });
-                    res.send(fileBuffer);
-                }
-            } else {
-                // Error
-                console.error('IPFS cat error:', errorOutput);
-                res.status(500).json({
-                    error: 'Failed to retrieve file from IPFS',
-                    details: errorOutput || 'IPFS command failed',
-                    exitCode: code
-                });
+        // Use IPFS HTTP API to retrieve file
+        console.log('Fetching file from IPFS API:', IPFS_API_URL);
+        const response = await axios.post(
+            `${IPFS_API_URL}/api/v0/cat?arg=${hash}`,
+            null,
+            {
+                responseType: 'arraybuffer',
+                timeout: 30000, // 30 seconds timeout
             }
-        });
+        );
 
-        ipfsProcess.on('error', (error) => {
-            console.error('IPFS process error:', error);
-            res.status(500).json({
-                error: 'Failed to spawn IPFS process',
-                details: error.message
+        const fileBuffer = Buffer.from(response.data);
+        console.log('File retrieved successfully, size:', fileBuffer.length);
+
+        if (view === 'true') {
+            // View mode - detect content type and send with proper headers
+            const contentType = getContentType(filename);
+            const displayFilename = filename || `${hash}.bin`;
+
+            res.set({
+                'Content-Type': contentType,
+                'Content-Disposition': `inline; filename="${displayFilename}"`,
+                'Content-Length': fileBuffer.length,
+                'Cache-Control': 'public, max-age=3600'
             });
-        });
+
+            // For text files, convert to string; for binary files, send buffer
+            if (contentType.startsWith('text/') || contentType === 'application/json') {
+                res.send(fileBuffer.toString('utf8'));
+            } else {
+                res.send(fileBuffer);
+            }
+        } else {
+            // Download mode - send as binary
+            const disposition = download === 'true' ? 'attachment' : 'inline';
+            res.set({
+                'Content-Type': 'application/octet-stream',
+                'Content-Disposition': `${disposition}; filename="${hash}"`,
+                'Content-Length': fileBuffer.length
+            });
+            res.send(fileBuffer);
+        }
 
     } catch (error) {
         console.error('Retrieval error:', error.message);

@@ -2,6 +2,7 @@ const express = require('express');
 const {
     registerUser,
     getUserByIdentifier,
+    getUserByPublicKey,
     listUsers,
     getRingContext,
     setAdjudicatorPublicKey,
@@ -38,18 +39,18 @@ router.get('/users', (req, res) => {
 
 router.post('/register', (req, res) => {
     try {
-        const { identifier, displayName, publicKey, escrowedIdentity } = req.body || {};
+        const { displayName, publicKey, escrowedIdentity, identifier } = req.body || {};
 
-        if (!identifier || !publicKey) {
+        if (!displayName || !publicKey) {
             return res.status(400).json({
                 success: false,
-                error: 'identifier and publicKey are required to register',
+                error: 'displayName and publicKey are required to register',
             });
         }
 
         const record = registerUser({
-            identifier: String(identifier).trim(),
-            displayName: displayName ? String(displayName).trim() : undefined,
+            identifier: identifier ? String(identifier).trim() : undefined,
+            displayName: String(displayName).trim(),
             publicKey: String(publicKey).trim(),
             escrowedIdentity: escrowedIdentity ? String(escrowedIdentity) : null,
         });
@@ -65,22 +66,32 @@ router.post('/register', (req, res) => {
 
 router.post('/login', (req, res) => {
     try {
-        const { identifier, publicKey } = req.body || {};
+        const { publicKey, displayName, identifier } = req.body || {};
 
-        if (!identifier) {
-            return res.status(400).json({ success: false, error: 'identifier is required' });
+        if (!publicKey && !identifier) {
+            return res.status(400).json({ success: false, error: 'publicKey is required' });
         }
 
-        const user = getUserByIdentifier(String(identifier).trim());
+        const trimmedKey = publicKey ? String(publicKey).trim() : null;
+        const fallbackIdentifier = identifier ? String(identifier).trim() : null;
+        const user = trimmedKey
+            ? getUserByPublicKey(trimmedKey)
+            : fallbackIdentifier
+                ? getUserByIdentifier(fallbackIdentifier)
+                : null;
         if (!user) {
             return res.status(404).json({ success: false, error: 'User not found' });
         }
 
-        if (publicKey && String(publicKey).trim() !== user.publicKey) {
+        if (trimmedKey && trimmedKey !== user.publicKey) {
             return res.status(403).json({
                 success: false,
                 error: 'Public key does not match registered user',
             });
+        }
+
+        if (displayName && String(displayName).trim() !== user.displayName) {
+            console.warn('[Auth] Display name mismatch during login attempt');
         }
 
         const context = getRingContext();
