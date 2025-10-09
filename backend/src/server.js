@@ -7,6 +7,9 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Import shared Prisma instance
+const prisma = require('./config/database');
+
 // Middleware
 app.use(helmet());
 app.use(cors());
@@ -26,7 +29,13 @@ app.get('/health', (req, res) => {
 // Routes (sẽ thêm sau)
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/users', require('./routes/users'));
-app.use('/api/files', require('./routes/files'));
+
+// Import and initialize anonymous routes with shared Prisma instance
+const { router: anonymousRoutes, init: initAnonymousRoutes } = require('./routes/anonymous-endpoints-addition');
+initAnonymousRoutes(prisma);
+app.use('/api/files', anonymousRoutes); // Mount anonymous routes first to take precedence for specific paths
+app.use('/api/files', require('./routes/files')); // Legacy routes (will only handle paths not matched by anonymous routes)
+
 app.use('/api/signatures', require('./routes/signatures'));
 
 // Error handling

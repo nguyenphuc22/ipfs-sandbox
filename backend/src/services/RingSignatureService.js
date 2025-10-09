@@ -7,29 +7,30 @@
  * @module RingSignatureService
  */
 
-import crypto from 'crypto';
-import { PrismaClient } from '@prisma/client';
+const crypto = require('crypto');
+const { PrismaClient } = require('@prisma/client');
 
-const prisma = new PrismaClient();
+class RingSignatureService {
+  constructor(prismaClient) {
+    this.prisma = prismaClient || new PrismaClient();
+    this.usedNonces = new Set();
+    this.MAX_NONCE_CACHE_SIZE = 10000;
+  }
 
-export interface RingSignatureVerification {
-  publicKey: string;
-  signature: string;
-  message: string;
-  ringPublicKeys: string[];
-}
-
-export class RingSignatureService {
   /**
    * Verify ring signature
    *
    * For demo purposes, this is a simplified verification.
    * In production, implement full ring signature algorithm (e.g., LSAG, Borromean)
    *
-   * @param params - Verification parameters
-   * @returns true if signature is valid, false otherwise
+   * @param {Object} params - Verification parameters
+   * @param {string} params.publicKey - Public key of the signer
+   * @param {string} params.signature - Signature to verify
+   * @param {string} params.message - Message that was signed
+   * @param {Array<string>} params.ringPublicKeys - Array of public keys in the ring
+   * @returns {Promise<boolean>} true if signature is valid, false otherwise
    */
-  async verifyRingSignature(params: RingSignatureVerification): Promise<boolean> {
+  async verifyRingSignature(params) {
     try {
       const { publicKey, signature, message, ringPublicKeys } = params;
 
@@ -80,11 +81,11 @@ export class RingSignatureService {
    *
    * Fetches all registered users' public keys from database
    *
-   * @returns Array of public keys
+   * @returns {Promise<Array<string>>} Array of public keys
    */
-  async getAllPublicKeys(): Promise<string[]> {
+  async getAllPublicKeys() {
     try {
-      const users = await prisma.user.findMany({
+      const users = await this.prisma.user.findMany({
         select: {
           publicKey: true,
         },
@@ -97,7 +98,7 @@ export class RingSignatureService {
 
       const publicKeys = users
         .map(user => user.publicKey)
-        .filter((key): key is string => key !== null);
+        .filter(key => key !== null);
 
       console.log(`[Ring Signature] Fetched ${publicKeys.length} public keys for ring`);
       return publicKeys;
@@ -111,21 +112,21 @@ export class RingSignatureService {
   /**
    * Hash public key using SHA-256
    *
-   * @param publicKey - Public key to hash
-   * @returns SHA-256 hash of public key
+   * @param {string} publicKey - Public key to hash
+   * @returns {string} SHA-256 hash of public key
    */
-  hashPublicKey(publicKey: string): string {
+  hashPublicKey(publicKey) {
     return crypto.createHash('sha256').update(publicKey).digest('hex');
   }
 
   /**
    * Verify timestamp freshness (prevent replay attacks)
    *
-   * @param timestamp - Timestamp in milliseconds
-   * @param maxAge - Maximum age in milliseconds (default: 5 minutes)
-   * @returns true if timestamp is fresh
+   * @param {number} timestamp - Timestamp in milliseconds
+   * @param {number} maxAge - Maximum age in milliseconds (default: 5 minutes)
+   * @returns {boolean} true if timestamp is fresh
    */
-  verifyTimestamp(timestamp: number, maxAge: number = 5 * 60 * 1000): boolean {
+  verifyTimestamp(timestamp, maxAge = 5 * 60 * 1000) {
     const now = Date.now();
     const age = now - timestamp;
 
@@ -148,13 +149,10 @@ export class RingSignatureService {
    * For demo: Simple in-memory cache
    * In production: Use Redis or database
    *
-   * @param nonce - Nonce to verify
-   * @returns true if nonce is unique
+   * @param {string} nonce - Nonce to verify
+   * @returns {boolean} true if nonce is unique
    */
-  private usedNonces: Set<string> = new Set();
-  private readonly MAX_NONCE_CACHE_SIZE = 10000;
-
-  verifyNonce(nonce: string): boolean {
+  verifyNonce(nonce) {
     if (this.usedNonces.has(nonce)) {
       console.warn('[Ring Signature] Nonce already used (replay attack?)');
       return false;
@@ -172,5 +170,7 @@ export class RingSignatureService {
   }
 }
 
-// Export singleton instance
-export const ringSignatureService = new RingSignatureService();
+// Export class and a default instance (for backward compatibility)
+const ringSignatureService = new RingSignatureService();
+
+module.exports = { RingSignatureService, ringSignatureService };

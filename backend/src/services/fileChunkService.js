@@ -120,31 +120,43 @@ async function uploadFileWithChunks({
 
     console.log(`[ChunkService] ${chunkRecords.count} chunk records created`);
 
-    // 5. Create user access record (uploader gets access)
+    // 5. Create anonymous access record for the uploader using public key hash
+    // First, get the uploader's public key to compute the hash
+    const uploader = await prisma.user.findUnique({
+      where: { id: userId }
+    });
+
+    if (!uploader || !uploader.publicKey) {
+      throw new Error('Uploader does not have a public key');
+    }
+
+    const accessorPublicKeyHash = crypto
+      .createHash('sha256')
+      .update(uploader.publicKey)
+      .digest('hex');
+
     const keyPackageFingerprint = crypto
       .createHash('sha256')
       .update(`${fileRecord.id}:${masterKey}`)
       .digest('hex');
 
-    await prisma.userFileAccess.create({
+    await prisma.anonymousFileAccess.create({
       data: {
-        userId,
+        accessorPublicKeyHash,
         fileId: fileRecord.id,
-        grantedBy: userId,
         status: 'active',
-        keyStatus: 'owner-local',
-        hasLocalKey: true,
-        keyIssuedAt: new Date(),
+        keyStatus: 'client-managed',
+        accessCount: 0,
         keyPackageFingerprint,
       },
     });
 
-    // 6. Create audit log
-    await prisma.auditLog.create({
+    // 6. Create anonymous audit log
+    await prisma.anonymousAuditLog.create({
       data: {
         eventType: 'upload',
         fileId: fileRecord.id,
-        userId,
+        publicKeyHash: accessorPublicKeyHash,
         metadata: JSON.stringify({
           fileName,
           fileSize: totalSize,
@@ -180,97 +192,7 @@ async function uploadFileWithChunks({
   }
 }
 
-/**
- * Get file access information for download
- * @param {string} fileId - File ID
- * @param {string} userId - Requesting user ID
- * @returns {Promise<Object>} Access information
- */
-async function getFileAccessInfo(fileId, userId) {
-  try {
-    // 1. Get file record
-    const file = await prisma.file.findUnique({
-      where: { id: fileId },
-      include: {
-        chunks: {
-          orderBy: { chunkIndex: 'asc' },
-        },
-        userAccess: {
-          where: {
-            userId,
-            status: 'active',
-          },
-        },
-      },
-    });
 
-    if (!file) {
-      throw new Error('File not found');
-    }
-
-    if (file.status !== 'active') {
-      throw new Error('File is not accessible (revoked or deleted)');
-    }
-
-    // 2. Check access permission
-    if (file.userAccess.length === 0) {
-      throw new Error('Access denied - no grant found');
-    }
-
-    const access = file.userAccess[0];
-
-    // 3. Create chunk manifest
-    const chunkManifest = file.chunks.map(chunk => ({
-      index: chunk.chunkIndex,
-      cid: chunk.ipfsCid,
-      hash: chunk.chunkHash,
-      size: chunk.size,
-    }));
-
-    // 4. Parse encrypted chunk keys
-  // 5. Create ownership policy
-    const ownershipPolicy = {
-      ownershipPublicKey: file.ownershipPublicKey,
-      status: file.status,
-      revoked: file.status === 'revoked',
-      lastRevocationAt: file.lastRevocationAt,
-    };
-
-    // 6. Log access intent
-    await prisma.auditLog.create({
-      data: {
-        eventType: 'access_request',
-        fileId: file.id,
-        userId,
-        metadata: JSON.stringify({
-          fileName: file.fileName,
-          chunkCount: file.chunkCount,
-        }),
-      },
-    });
-
-    return {
-      success: true,
-      fileId: file.id,
-      fileName: file.fileName,
-      totalSize: file.totalSize,
-      chunkCount: file.chunkCount,
-      grantContext: {
-        keyStatus: access.keyStatus,
-        hasLocalKey: access.hasLocalKey,
-        keyIssuedAt: access.keyIssuedAt,
-        keyPackageFingerprint: access.keyPackageFingerprint,
-      },
-      chunkManifest,
-      ownershipPolicy,
-      grantedAt: access.grantedAt,
-    };
-
-  } catch (error) {
-    console.error('[ChunkService] Get access info error:', error);
-    throw error;
-  }
-}
 
 /**
  * Download and decrypt specific chunk
@@ -302,67 +224,175 @@ async function downloadAndDecryptChunk(ipfsCid, chunkKey) {
 }
 
 /**
- * Report integrity alert
+ * Report integrity alert using public key hash (anonymous)
  * @param {string} fileId - File ID
  * @param {number} chunkIndex - Chunk index
  * @param {string} expectedHash - Expected hash
  * @param {string} actualHash - Actual computed hash
- * @param {string} userId - Reporter user ID
+ * @param {string} publicKeyHash - Reporter's public key hash
  */
-async function reportIntegrityAlert(fileId, chunkIndex, expectedHash, actualHash, userId) {
+async function reportIntegrityAlert(fileId, chunkIndex, expectedHash, actualHash, publicKeyHash) {
   try {
+    // Create integrity alert with public key hash
     await prisma.integrityAlert.create({
       data: {
         fileId,
         chunkIndex,
         expectedHash,
         actualHash,
-        reportedBy: userId,
+        reportedByPublicKeyHash: publicKeyHash,  // Use public key hash instead of userId
       },
     });
 
-    console.log(`[ChunkService] Integrity alert reported for file ${fileId}, chunk ${chunkIndex}`);
+    // Log to AnonymousAuditLog as required
+    await prisma.anonymousAuditLog.create({
+      data: {
+        eventType: 'integrity_alert',
+        fileId,
+        publicKeyHash,
+        metadata: JSON.stringify({
+          chunkIndex,
+          expectedHash,
+          actualHash,
+        }),
+      },
+    });
+
+    console.log(`[ChunkService] Integrity alert reported for file ${fileId}, chunk ${chunkIndex} by publicKeyHash: ${publicKeyHash.substring(0, 16)}...`);
   } catch (error) {
     console.error('[ChunkService] Report integrity alert error:', error);
     throw error;
   }
 }
 
-/**
- * Log audit event
+
+
+/***
+ * Log anonymous audit event (NEW - for anonymous access)
  * @param {string} eventType - Event type (download, view, share, etc.)
  * @param {string} fileId - File ID
- * @param {string} userId - User ID
+ * @param {string} publicKeyHash - Public key hash (for anonymous access)
  * @param {Object} metadata - Additional metadata
  */
-async function logAuditEvent(eventType, fileId, userId, metadata = {}) {
+async function logAnonymousAuditEvent(eventType, fileId, publicKeyHash, metadata = {}) {
   try {
-    await prisma.auditLog.create({
+    await prisma.anonymousAuditLog.create({
       data: {
         eventType,
         fileId,
-        userId,
+        publicKeyHash,
         metadata: JSON.stringify(metadata),
       },
     });
   } catch (error) {
-    console.error('[ChunkService] Log audit event error:', error);
+    console.error('[ChunkService] Log anonymous audit event error:', error);
     // Don't throw - audit logging should not break main flow
   }
 }
 
 /**
- * List user's accessible files
- * @param {string} userId - User ID
- * @returns {Promise<Array>} List of files
+ * Get anonymous file access info for a public key hash (NEW - anonymous system)
+ * @param {string} fileId - File ID
+ * @param {string} publicKeyHash - Requesting user's public key hash
+ * @returns {Promise<Object>} Access information using anonymous system
  */
-async function listUserFiles(userId) {
+async function getAnonymousFileAccessInfo(fileId, publicKeyHash) {
+  try {
+    // 1. Get file record with chunks
+    const file = await prisma.file.findUnique({
+      where: { id: fileId },
+      include: {
+        chunks: {
+          orderBy: { chunkIndex: 'asc' },
+        },
+        anonymousAccess: {
+          where: {
+            accessorPublicKeyHash: publicKeyHash,
+            status: 'active',
+          },
+        },
+      },
+    });
+
+    if (!file) {
+      throw new Error('File not found');
+    }
+
+    if (file.status !== 'active') {
+      throw new Error('File is not accessible (revoked or deleted)');
+    }
+
+    // 2. Check anonymous access permission
+    if (file.anonymousAccess.length === 0) {
+      throw new Error('Access denied - no anonymous grant found');
+    }
+
+    const access = file.anonymousAccess[0];
+
+    // 3. Create chunk manifest
+    const chunkManifest = file.chunks.map(chunk => ({
+      index: chunk.chunkIndex,
+      cid: chunk.ipfsCid,
+      hash: chunk.chunkHash,
+      size: chunk.size,
+    }));
+
+    // 4. Create ownership policy
+    const ownershipPolicy = {
+      ownershipPublicKey: file.ownershipPublicKey,
+      status: file.status,
+      revoked: file.status === 'revoked',
+      lastRevocationAt: file.lastRevocationAt,
+    };
+
+    // 5. Log access intent to anonymous audit log
+    await prisma.anonymousAuditLog.create({
+      data: {
+        eventType: 'access_request',
+        fileId: file.id,
+        publicKeyHash,
+        metadata: JSON.stringify({
+          fileName: file.fileName,
+          chunkCount: file.chunkCount,
+        }),
+      },
+    });
+
+    return {
+      success: true,
+      fileId: file.id,
+      fileName: file.fileName,
+      totalSize: file.totalSize,
+      chunkCount: file.chunkCount,
+      grantContext: {
+        keyStatus: access.keyStatus,
+        hasLocalKey: access.hasLocalKey,
+        keyIssuedAt: access.keyIssuedAt,
+        keyPackageFingerprint: access.keyPackageFingerprint,
+      },
+      chunkManifest,
+      ownershipPolicy,
+      grantedAt: access.grantedAt,
+    };
+
+  } catch (error) {
+    console.error('[ChunkService] Get anonymous access info error:', error);
+    throw error;
+  }
+}
+
+/**
+ * List files accessible by public key hash (NEW - replaces listUserFiles)
+ * @param {string} publicKeyHash - Public key hash
+ * @returns {Promise<Array>} List of accessible files
+ */
+async function listAnonymousAccessibleFiles(publicKeyHash) {
   try {
     const files = await prisma.file.findMany({
       where: {
-        userAccess: {
+        anonymousAccess: {
           some: {
-            userId,
+            accessorPublicKeyHash: publicKeyHash,
             status: 'active',
           },
         },
@@ -374,11 +404,11 @@ async function listUserFiles(userId) {
             username: true,
           },
         },
-        userAccess: {
-          where: { userId },
+        anonymousAccess: {
+          where: { accessorPublicKeyHash: publicKeyHash },
           select: {
             grantedAt: true,
-            grantedBy: true,
+            grantedByPublicKeyHash: true,
           },
         },
       },
@@ -396,22 +426,23 @@ async function listUserFiles(userId) {
       status: file.status,
       ownershipPublicKey: file.ownershipPublicKey,
       uploader: file.uploader,
-      grantedAt: file.userAccess[0]?.grantedAt,
-      keyStatus: file.userAccess[0]?.keyStatus,
-      hasLocalKey: file.userAccess[0]?.hasLocalKey,
+      grantedAt: file.anonymousAccess[0]?.grantedAt,
+      keyStatus: file.anonymousAccess[0]?.keyStatus,
+      hasLocalKey: file.anonymousAccess[0]?.hasLocalKey,
       createdAt: file.createdAt,
+      // Make sure no userId is returned in the response
     }));
   } catch (error) {
-    console.error('[ChunkService] List user files error:', error);
+    console.error('[ChunkService] List anonymous accessible files error:', error);
     throw error;
   }
 }
 
 module.exports = {
   uploadFileWithChunks,
-  getFileAccessInfo,
   downloadAndDecryptChunk,
-  reportIntegrityAlert,
-  logAuditEvent,
-  listUserFiles,
+  reportIntegrityAlert, // Updated to use publicKeyHash instead of userId
+  getAnonymousFileAccessInfo, // NEW: Anonymous replacement for getFileAccessInfo
+  logAnonymousAuditEvent, // NEW: for anonymous audit logging
+  listAnonymousAccessibleFiles, // NEW: Anonymous replacement for listUserFiles
 };

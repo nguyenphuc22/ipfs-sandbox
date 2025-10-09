@@ -4,7 +4,6 @@
  */
 
 const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
 const axios = require('axios');
 const FormData = require('form-data');
 const crypto = require('crypto');
@@ -67,30 +66,34 @@ function selectChunksForReencryption(chunkCount, securityLevel = 'standard') {
 }
 
 /**
- * Execute partial re-encryption for revocation
+ * Execute partial re-encryption for revocation (with prisma injection)
  * @param {string} fileId - File ID
  * @param {string} revokedUserId - User ID to revoke
  * @param {Object} ownershipProof - Schnorr proof
  * @param {string} securityLevel - Security level (standard/high/maximum)
+ * @param {Object} prismaClient - Prisma client instance (optional, for dependency injection)
  * @returns {Promise<Object>} Revocation result
  */
 async function executePartialReencryption(
   fileId,
   revokedUserId,
   ownershipProof,
-  securityLevel = 'standard'
+  securityLevel = 'standard',
+  prismaClient
 ) {
   try {
     console.log(`[Revocation] Starting partial re-encryption for file ${fileId}`);
 
     // 1. Get file and chunks
+    const prisma = prismaClient || new PrismaClient();
+    const ownPrisma = !prismaClient; // Track if we created our own instance
     const file = await prisma.file.findUnique({
       where: { id: fileId },
       include: {
         chunks: {
           orderBy: { chunkIndex: 'asc' },
         },
-        userAccess: {
+        anonymousAccess: {
           where: { status: 'active' },
         },
       },
@@ -192,7 +195,7 @@ async function executePartialReencryption(
 
     // 5. Update chunk records in database
     for (const chunk of reencryptedChunks) {
-      await prisma.fileChunk.update({
+      await this.prisma.fileChunk.update({
         where: {
           fileId_chunkIndex: {
             fileId,
@@ -218,35 +221,54 @@ async function executePartialReencryption(
     const newEncryptedChunkKeys = encryptChunkKeys(updatedChunkKeysObject, newMasterKey);
 
     // 7. Update file record
-    await prisma.file.update({
+    await this.prisma.file.update({
       where: { id: fileId },
       data: {
         encryptedChunkKeys: JSON.stringify(newEncryptedChunkKeys),
       },
     });
 
-    // 8. Revoke user access
+    // 8. Revoke anonymous access (find by userId if needed, though ideally should use publicKeyHash)
+    let revokedPublicKeyHash = null;
     if (revokedUserId) {
-      await prisma.userFileAccess.updateMany({
-        where: {
-          fileId,
-          userId: revokedUserId,
-          status: 'active',
-        },
-        data: {
-          status: 'revoked',
-          revokedAt: new Date(),
-        },
+      // Find user's publicKey from the user record
+      const user = await this.prisma.user.findUnique({
+        where: { id: revokedUserId },
+        select: { publicKey: true }
       });
+      
+      if (user && user.publicKey) {
+        revokedPublicKeyHash = crypto
+          .createHash('sha256')
+          .update(user.publicKey)
+          .digest('hex');
+          
+        await this.prisma.anonymousFileAccess.updateMany({
+          where: {
+            fileId,
+            accessorPublicKeyHash: revokedPublicKeyHash,
+            status: 'active',
+          },
+          data: {
+            status: 'revoked',
+            revokedAt: new Date(),
+          },
+        });
+      } else {
+        console.warn(`[Revocation] Could not find public key for user ${revokedUserId}, skipping access revocation`);
+      }
     }
 
-    // 9. Re-encrypt master key for remaining users
-    const remainingUsers = file.userAccess.filter(
-      access => access.userId !== revokedUserId
-    );
+    // 9. Update key status for remaining users with anonymous access
+    let remainingAccess = file.anonymousAccess;
+    if (revokedPublicKeyHash) {
+      remainingAccess = file.anonymousAccess.filter(
+        access => access.accessorPublicKeyHash !== revokedPublicKeyHash
+      );
+    }
 
-    for (const access of remainingUsers) {
-      await prisma.userFileAccess.update({
+    for (const access of remainingAccess) {
+      await this.prisma.anonymousFileAccess.update({
         where: { id: access.id },
         data: {
           keyStatus: 'awaiting-offline-redistribution',
@@ -259,7 +281,7 @@ async function executePartialReencryption(
 
     // 10. Create revocation record
     const revocationId = crypto.randomUUID();
-    await prisma.anonymousRevocation.create({
+    await this.prisma.anonymousRevocation.create({
       data: {
         id: revocationId,
         fileId,
@@ -279,7 +301,7 @@ async function executePartialReencryption(
     });
 
     // 11. Update file last revocation info
-    await prisma.file.update({
+    await this.prisma.file.update({
       where: { id: fileId },
       data: {
         lastRevocationId: revocationId,
@@ -307,8 +329,10 @@ async function executePartialReencryption(
 /**
  * List revocation history for a file
  */
-async function getRevocationHistory(fileId) {
+async function getRevocationHistory(fileId, prismaClient) {
   try {
+    const prisma = prismaClient || new PrismaClient();
+    const ownPrisma = !prismaClient; // Track if we created our own instance
     const revocations = await prisma.anonymousRevocation.findMany({
       where: { fileId },
       orderBy: { createdAt: 'desc' },
@@ -326,6 +350,10 @@ async function getRevocationHistory(fileId) {
     throw error;
   }
 }
+
+// Export functions to maintain backward compatibility
+// These functions can accept an optional prisma client parameter
+// If no prisma is provided, they will create their own instance (for backward compatibility)
 
 module.exports = {
   selectChunksForReencryption,

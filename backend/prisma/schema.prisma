@@ -28,7 +28,6 @@ model User {
   // Relations
   uploadedFiles File[]           @relation("FileUploader")
   signatures    Signature[]
-  fileAccess    UserFileAccess[] // DEPRECATED: Use AnonymousFileAccess instead
 }
 
 // ============================================================================
@@ -76,12 +75,10 @@ model File {
   // Relations
   chunks          FileChunk[]
   signatures      Signature[]
-  userAccess      UserFileAccess[] // DEPRECATED
   anonymousAccess AnonymousFileAccess[] // NEW: Anonymous access control
   sharingRequests AnonymousSharingRequest[] // NEW: Anonymous sharing
   revocations     AnonymousRevocation[]
   integrityAlerts IntegrityAlert[]
-  auditLogs       AuditLog[] // DEPRECATED
 
   @@index([ownershipPublicKey])
   @@index([uploaderId])
@@ -117,37 +114,7 @@ model FileChunk {
 // ACCESS CONTROL (DEPRECATED - Use AnonymousFileAccess)
 // ============================================================================
 
-// ❌ DEPRECATED: This model uses userId which violates anonymity
-// ✅ Use AnonymousFileAccess instead which uses publicKeyHash
-model UserFileAccess {
-  id     String @id @default(uuid())
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  fileId String
-  file   File   @relation(fields: [fileId], references: [id], onDelete: Cascade)
 
-  // Encrypted master key for this user
-  // Access metadata (keyless backend)
-  grantedAt DateTime  @default(now())
-  grantedBy String? // userId of granter (file owner)
-  expiresAt DateTime? // Optional expiration
-
-  // Client-managed key state (no key material stored server-side)
-  keyStatus             String    @default("client-managed") // client-managed, owner-local, shared-offline
-  hasLocalKey           Boolean   @default(false)
-  keyIssuedAt           DateTime?
-  keyPackageFingerprint String? // Optional hash/fingerprint for audit references
-
-  // Status
-  status    String    @default("active") // active, revoked
-  revokedAt DateTime?
-
-  @@unique([userId, fileId])
-  @@index([userId])
-  @@index([fileId])
-  @@index([status])
-  @@index([keyStatus])
-}
 
 // ============================================================================
 // ANONYMOUS REVOCATION WITH SCHNORR PROOF
@@ -212,32 +179,7 @@ model IntegrityAlert {
   @@index([reportedByPublicKeyHash])
 }
 
-// ❌ DEPRECATED: This model uses userId which violates anonymity
-// ✅ Use AnonymousAuditLog instead which uses publicKeyHash
-model AuditLog {
-  id String @id @default(uuid())
 
-  // Event details
-  eventType String // download, view, share, delete_cache, revoke, etc.
-  fileId    String?
-  file      File?   @relation(fields: [fileId], references: [id], onDelete: SetNull)
-
-  // Actor
-  userId    String? // ❌ DEPRECATED: Violates anonymity
-  deviceId  String? // Device identifier
-  ipAddress String?
-
-  // Event data
-  metadata String? // JSON with event-specific data
-
-  // Timing
-  timestamp DateTime @default(now())
-
-  @@index([fileId])
-  @@index([userId])
-  @@index([eventType])
-  @@index([timestamp])
-}
 
 // ============================================================================
 // ANONYMOUS FILE ACCESS (NEW - Replaces UserFileAccess)

@@ -7,52 +7,26 @@
  * @module FileAccessService
  */
 
-import { PrismaClient } from '@prisma/client';
-import { ringSignatureService, RingSignatureService } from './RingSignatureService';
+const { PrismaClient } = require('@prisma/client');
+const { ringSignatureService } = require('./RingSignatureService');
 
-const prisma = new PrismaClient();
-
-export interface ListAccessibleFilesParams {
-  publicKey: string;
-  ringSignature: string;
-  timestamp: number;
-  nonce: string;
-}
-
-export interface NegotiateAccessParams {
-  fileId: string;
-  publicKey: string;
-  ringSignature: string;
-  timestamp: number;
-  nonce: string;
-}
-
-export interface ReportIntegrityAlertParams {
-  fileId: string;
-  publicKey: string;
-  ringSignature: string;
-  chunkIndex: number;
-  expectedHash: string;
-  actualHash: string | null;
-  retryCount: number;
-  timestamp: number;
-  nonce: string;
-}
-
-export class FileAccessService {
-  private ringService: RingSignatureService;
-
-  constructor(ringService?: RingSignatureService) {
+class FileAccessService {
+  constructor(ringService, prismaClient) {
     this.ringService = ringService || ringSignatureService;
+    this.prisma = prismaClient || new PrismaClient();
   }
 
   /**
    * List files accessible by public key (anonymous)
    *
-   * @param params - Request parameters
-   * @returns Array of accessible files
+   * @param {Object} params - Request parameters
+   * @param {string} params.publicKey - User's public key
+   * @param {string} params.ringSignature - Ring signature
+   * @param {string} params.timestamp - Request timestamp
+   * @param {string} params.nonce - Request nonce
+   * @returns {Promise<Array>} Array of accessible files
    */
-  async listAccessibleFiles(params: ListAccessibleFilesParams): Promise<any[]> {
+  async listAccessibleFiles(params) {
     const { publicKey, ringSignature, timestamp, nonce } = params;
 
     // 1. Verify timestamp freshness
@@ -82,7 +56,7 @@ export class FileAccessService {
     const publicKeyHash = this.ringService.hashPublicKey(publicKey);
 
     // 5. Query access grants by publicKeyHash (NOT userId)
-    const accessGrants = await prisma.anonymousFileAccess.findMany({
+    const accessGrants = await this.prisma.anonymousFileAccess.findMany({
       where: {
         accessorPublicKeyHash: publicKeyHash,
         status: 'active',
@@ -126,7 +100,7 @@ export class FileAccessService {
     }));
 
     // 7. Log audit (no userId)
-    await prisma.anonymousAuditLog.create({
+    await this.prisma.anonymousAuditLog.create({
       data: {
         eventType: 'file_list_query',
         publicKeyHash: publicKeyHash,
@@ -148,10 +122,15 @@ export class FileAccessService {
   /**
    * Negotiate access to specific file (anonymous)
    *
-   * @param params - Request parameters
-   * @returns File access manifest with chunk information
+   * @param {Object} params - Request parameters
+   * @param {string} params.fileId - ID of the file to access
+   * @param {string} params.publicKey - User's public key
+   * @param {string} params.ringSignature - Ring signature
+   * @param {string} params.timestamp - Request timestamp
+   * @param {string} params.nonce - Request nonce
+   * @returns {Promise<Object>} File access manifest with chunk information
    */
-  async negotiateAccess(params: NegotiateAccessParams): Promise<any> {
+  async negotiateAccess(params) {
     const { fileId, publicKey, ringSignature, timestamp, nonce } = params;
 
     // 1. Verify timestamp freshness
@@ -181,7 +160,7 @@ export class FileAccessService {
     const publicKeyHash = this.ringService.hashPublicKey(publicKey);
 
     // 5. Verify access grant by publicKeyHash (NOT userId)
-    const accessGrant = await prisma.anonymousFileAccess.findUnique({
+    const accessGrant = await this.prisma.anonymousFileAccess.findUnique({
       where: {
         accessorPublicKeyHash_fileId: {
           accessorPublicKeyHash: publicKeyHash,
@@ -217,7 +196,7 @@ export class FileAccessService {
     }));
 
     // 8. Update access stats
-    await prisma.anonymousFileAccess.update({
+    await this.prisma.anonymousFileAccess.update({
       where: { id: accessGrant.id },
       data: {
         lastAccessAt: new Date(),
@@ -227,7 +206,7 @@ export class FileAccessService {
     });
 
     // 9. Log audit (no userId)
-    await prisma.anonymousAuditLog.create({
+    await this.prisma.anonymousAuditLog.create({
       data: {
         eventType: 'access_negotiation',
         fileId: fileId,
@@ -270,9 +249,19 @@ export class FileAccessService {
   /**
    * Report integrity alert (anonymous)
    *
-   * @param params - Alert parameters
+   * @param {Object} params - Alert parameters
+   * @param {string} params.fileId - ID of the file
+   * @param {string} params.publicKey - Reporter's public key
+   * @param {string} params.ringSignature - Ring signature
+   * @param {number} params.chunkIndex - Index of the chunk
+   * @param {string} params.expectedHash - Expected hash value
+   * @param {string} params.actualHash - Actual hash value
+   * @param {number} params.retryCount - Number of retries
+   * @param {string} params.timestamp - Request timestamp
+   * @param {string} params.nonce - Request nonce
+   * @returns {Promise<void>}
    */
-  async reportIntegrityAlert(params: ReportIntegrityAlertParams): Promise<void> {
+  async reportIntegrityAlert(params) {
     const {
       fileId, publicKey, ringSignature,
       chunkIndex, expectedHash, actualHash,
@@ -306,7 +295,7 @@ export class FileAccessService {
     const publicKeyHash = this.ringService.hashPublicKey(publicKey);
 
     // 5. Create integrity alert (no userId)
-    await prisma.integrityAlert.create({
+    await this.prisma.integrityAlert.create({
       data: {
         fileId: fileId,
         chunkIndex: chunkIndex,
@@ -319,7 +308,7 @@ export class FileAccessService {
     });
 
     // 6. Log audit (no userId)
-    await prisma.anonymousAuditLog.create({
+    await this.prisma.anonymousAuditLog.create({
       data: {
         eventType: 'integrity_alert',
         fileId: fileId,
@@ -339,5 +328,7 @@ export class FileAccessService {
   }
 }
 
-// Export singleton instance
-export const fileAccessService = new FileAccessService();
+// Export the class and a default instance (for backward compatibility)
+const fileAccessService = new FileAccessService();
+
+module.exports = { FileAccessService, fileAccessService };
