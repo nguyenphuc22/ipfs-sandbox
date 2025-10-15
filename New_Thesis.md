@@ -9,8 +9,8 @@ Bài viết này trình bày kiến trúc hệ thống cuối cùng cho đề t�
 ### **Mô hình danh tính ẩn danh phía người dùng**
 
 - **Thông tin lưu trên backend được rút gọn tối đa**: mỗi bản ghi user chỉ còn `displayLabel` (bí danh dễ nhận biết trong UI) và `publicKey`. Không có email, mật khẩu hay secret key lưu trên máy chủ.
-- **`userId` vẫn được tạo ngẫu nhiên** để liên kết tới `UserFileAccess`, nhưng chỉ dùng cho audit và phân quyền nội bộ; bảng audit hiển thị `displayLabel` + `publicKey` để giảng viên/ban giám sát nhận diện đúng mức, không cần định danh pháp lý.
-- **Chia sẻ khóa ngoại tuyến**: khi chủ sở hữu gửi secure key package, họ sử dụng bí danh của người nhận (ví dụ “Alice NCKH”) thay vì email. App tra cứu public key tương ứng để mã hóa bao thư.
+- **HOÀN TOÀN ẨN DANH - KHÔNG có `userId` trong anonymous flow**: Hệ thống sử dụng `publicKeyHash = SHA256(publicKey)` để track anonymous users thay vì userId. Tất cả anonymous endpoints (anonymous-list, anonymous-access, anonymous-audit-log) KHÔNG yêu cầu userId, chỉ dùng publicKey + ringSignature để authenticate.
+- **Chia sẻ khóa ngoại tuyến**: khi chủ sở hữu gửi secure key package, họ sử dụng public key của người nhận để mã hóa master key. App của người nhận tự decrypt và lưu vào SecureStorage. Backend KHÔNG lưu trữ master key.
 - **Escrowed identity** tiếp tục phục vụ cơ chế giám sát đặc biệt; chỉ Adjudicator mới có thể giải mã nếu cần quy trách nhiệm.
 
 ## **1. Các Khái niệm Mật mã Nền tảng**
@@ -208,7 +208,7 @@ graph TD
     M --> N[Store Encrypted ChunkKeys<br/>Database]
     
     O[User Access] --> P[Encrypt Master FileKey<br/>with User's PublicKey]
-    P --> Q[Store in user_file_access<br/>Table]
+    P --> Q[Store in AnonymousFileAccess<br/>với accessorPublicKeyHash]
     
     %% AOT Integration
     R[User Upload] --> S[Generate AOT]
@@ -260,35 +260,41 @@ CREATE TABLE file_chunks (
     UNIQUE(file_id, chunk_index)
 );
 
--- Bảng User Access (Unchanged)
-CREATE TABLE user_file_access (
+-- Bảng Anonymous File Access (NO userId!)
+CREATE TABLE anonymous_file_access (
     id UUID PRIMARY KEY,
-    user_id UUID,
+    accessor_public_key_hash VARCHAR(64),  -- SHA256(publicKey)
     file_id UUID REFERENCES files(id),
-    encrypted_master_key TEXT,
     granted_at TIMESTAMP,
-    
-    UNIQUE(user_id, file_id)
+    expires_at TIMESTAMP,
+    last_access_proof TEXT,                -- Ring signature
+    last_access_at TIMESTAMP,
+    access_count INT DEFAULT 0,
+    key_status VARCHAR(20) DEFAULT 'client-managed',
+    status VARCHAR(20) DEFAULT 'active',
+
+    UNIQUE(accessor_public_key_hash, file_id)
 );
 
--- Bảng Anonymous Revocation History (Updated for Schnorr)
+-- Bảng Anonymous Revocation History (NO userId)
 CREATE TABLE anonymous_revocations (
     id UUID PRIMARY KEY,
     file_id UUID REFERENCES files(id),
-    revoked_user_id UUID,
+    revoked_public_key_hash VARCHAR(64),  -- SHA256 of revoked user's publicKey
 
     -- Schnorr Ownership Proof data
     proof_R VARCHAR(130),                 -- R = r·G (commitment point, 65 bytes hex)
     proof_s VARCHAR(64),                  -- s = r + e·k (response scalar)
-    proof_message VARCHAR(512),           -- Message signed (fileId:timestamp:targetUser)
+    proof_message VARCHAR(512),           -- Message signed (fileId:timestamp:targetPublicKeyHash)
     proof_timestamp TIMESTAMP,            -- When proof was generated
 
     -- Ring signature for anonymity
     ring_signature TEXT,
+    ring_public_keys TEXT,
 
     -- Re-encryption details
-    chunks_reencrypted JSONB,             -- Array of chunk indices re-encrypted
-    revocation_strategy JSONB,            -- Strategy used for partial re-encryption
+    chunks_reencrypted TEXT,              -- JSON array of chunk indices
+    revocation_strategy TEXT,             -- Strategy used for partial re-encryption
 
     created_at TIMESTAMP,
     executed_by_system BOOLEAN DEFAULT false
@@ -309,7 +315,7 @@ interface SchnorrOwnershipToken {
 interface SchnorrOwnershipProof {
     R: string;          // R = r·G (commitment point, fresh mỗi proof)
     s: string;          // s = r + e·k (response scalar)
-    message: string;    // Message được sign (fileId:timestamp:targetUser)
+    message: string;    // Message được sign (fileId:timestamp:targetPublicKeyHash)
 }
 
 interface FileWithSchnorrOwnership {
@@ -331,14 +337,16 @@ interface FileWithSchnorrOwnership {
 
 interface AnonymousRevocationRequest {
     fileId: string;
-    targetUserId: string;
+    targetPublicKeyHash: string;  // SHA256 of target user's publicKey (NO userId!)
 
     // Schnorr Ownership Proof components
     ownershipProof: SchnorrOwnershipProof;  // Schnorr signature proof
 
-    // Ring signature (unchanged)
+    // Ring signature for anonymity
+    publicKey: string;
     ringSignature: string;
-    requestTimestamp: number;
+    timestamp: number;
+    nonce: string;
     revocationStrategy?: RevocationStrategy;
 }
 
@@ -406,9 +414,10 @@ sequenceDiagram
     note right of Backend: RingVerify(h(metadata), σ, Ring)
 
     alt Signature Valid
-        Backend->>DB: 13a. Store file với ownershipPublicKey
-        Backend->>DB: 13b. Store chunks information
-        Backend->>DB: 13c. Store user access (encrypted master key)
+        Backend->>Backend: 13a. Calculate publicKeyHash = SHA256(publicKey)
+        Backend->>DB: 13b. Store file với ownershipPublicKey
+        Backend->>DB: 13c. Store chunks information
+        Backend->>DB: 13d. Store AnonymousFileAccess<br/>(accessorPublicKeyHash, fileId, status: active)
         Backend-->>Client: 14. Success Response
         note left of Backend: {fileId, success: true}
     else Invalid Signature
@@ -433,7 +442,7 @@ sequenceDiagram
     note over Owner: **Phase 1: Anonymous Revocation Request**
     Owner->>Owner: 1. Retrieve stored k (private key)
     Owner->>Owner: 2. Create revocation message
-    note right of Owner: message = "revoke:" + fileId + ":" + targetUserId + ":" + timestamp
+    note right of Owner: message = "revoke:" + fileId + ":" + targetPublicKeyHash + ":" + timestamp
 
     Owner->>Owner: 3. Create Schnorr Ownership Proof
     Owner->>Owner: 3a. Generate FRESH nonce r (random)
@@ -443,7 +452,7 @@ sequenceDiagram
     Owner->>Owner: 3e. **Ring Signature:** σ = RingSign(message, userSecretKey, ring)
 
     Owner->>Backend: 4. Submit Anonymous Revocation Request
-    note right of Owner: {<br/>  fileId, targetUserId,<br/>  ownershipProof: {R, s, message},<br/>  ringSignature, timestamp<br/>}
+    note right of Owner: {<br/>  fileId, targetPublicKeyHash,<br/>  ownershipProof: {R, s, message},<br/>  ringSignature, timestamp, nonce<br/>}
 
     note over Backend: **Phase 2: Schnorr Anonymous Verification**
     Backend->>DB: 5. Get file ownership data
@@ -572,27 +581,32 @@ sequenceDiagram
 - **Audit Timeline Modal**: Liệt kê thời điểm truy cập, hành động (view/share/delete).  
 - **Offline Cache Toggle**: Cho phép giữ bản mã hóa nội bộ, minh họa chính sách bảo vệ dữ liệu.
 
-**Điều kiện tiên quyết để user tải/ chia sẻ:**
+**Điều kiện tiên quyết để user tải/ chia sẻ (Anonymous Flow):**
 
-- **Bản ghi `user_file_access` hợp lệ**: Backend chỉ xác nhận quyền truy cập và trả về manifest khi user có entry còn hạn; bản ghi không chứa master key mà chỉ lưu trạng thái cấp quyền, thời gian hết hạn, log revocation.  
-- **Master key & chunk keys cục bộ**: App tìm master key đã được chủ sở hữu gửi trước đó (qua kênh P2P/AsyncStorage). Không tìm thấy → hiển thị trạng thái “Awaiting secure key package”.  
-- **Ownership Policy check**: UI đọc `ownershipPolicy` để chắc rằng AOT của chủ sở hữu không bị tạm khóa; nếu policy báo `revoked`, nút download bị vô hiệu hóa.  
-- **Chia sẻ cho người khác**: Khi owner chọn “Share”, app của owner tự mã hóa master key bằng public key của người nhận và gửi qua kênh riêng (QR, NFC, DIDComm, v.v.). Backend chỉ ghi nhận event chia sẻ để audit và cập nhật `grantContext`, không giữ khóa.  
-- **Không đủ dữ liệu (chỉ có CID)**: Stepper dừng ở `Waiting for Master Key`, thông báo “CID không đủ để giải mã – cần Master Key + Chunk Keys đã được chủ sở hữu cung cấp”.
+- **Bản ghi `AnonymousFileAccess` hợp lệ**: Backend xác nhận quyền truy cập bằng cách query `AnonymousFileAccess WHERE accessorPublicKeyHash = SHA256(publicKey)`. Bản ghi chỉ lưu trạng thái cấp quyền, thời gian hết hạn, và `lastAccessProof` (ring signature). KHÔNG lưu master key, KHÔNG lưu userId.
+- **Master key & chunk keys cục bộ**: App tìm master key trong SecureStorage với key pattern `masterKey_${fileId}_${publicKeyHash}`. Không tìm thấy → hiển thị trạng thái "Waiting for Secure Key Package" và hướng dẫn user nhận từ owner qua P2P.
+- **Ownership Policy check**: UI đọc `ownershipPolicy` từ response của `/anonymous-access` endpoint để kiểm tra file status. Nếu `status !== 'active'`, nút download bị vô hiệu hóa với thông báo "File revoked".
+- **Chia sẻ cho người khác (Anonymous)**: Khi owner chọn "Share", app tính `recipientPublicKeyHash = SHA256(recipientPublicKey)`, mã hóa master key bằng recipient's public key, và gửi secure key package qua kênh P2P (QR, NFC). Backend tạo bản ghi `AnonymousFileAccess` mới với `accessorPublicKeyHash = recipientPublicKeyHash` và log vào `AnonymousAuditLog`. KHÔNG lưu userId.
+- **Không đủ dữ liệu (chỉ có CID)**: Stepper dừng ở `Waiting for Master Key`, thông báo "CID không đủ để giải mã – cần Secure Key Package từ owner qua P2P channel".
 
 **Lưu ý trải nghiệm người dùng:**
 
-- Người dùng **không phải nhập khóa dạng raw**, nhưng họ cần bảo quản “bao thư master key” mà chủ sở hữu đã gửi (QR code, file .aotkey, v.v.). Ứng dụng tự đọc bao thư từ Secure Storage hoặc cho phép quét/import, rồi giải mã bằng khóa thiết bị. UI hiển thị trạng thái “Waiting for secure key package” cho đến khi thao tác này hoàn tất.
-- Khi file được chia sẻ, backend tạo bản ghi `user_file_access` mới cho người nhận, bao gồm master key đã re-encrypt theo public key của họ. Gói trả về cho người nhận chứa đầy đủ manifest/keys nên họ không phải nhập thêm dữ liệu.
-- Vì file được cắt thành nhiều CID, manifest cung cấp danh sách các CID và hash tương ứng; người nhận chỉ cần nhấn “Download” và hệ thống tự động tải từng chunk theo manifest.
-- Nếu API trả về lỗi “no access grant”, UI gợi ý người dùng yêu cầu chủ sở hữu cấp quyền; không có trường nhập CID bổ sung.
+- Người dùng **không phải nhập khóa dạng raw**, nhưng họ cần bảo quản "secure key package" mà chủ sở hữu đã gửi qua P2P (QR code, NFC, file .aotkey). Ứng dụng tự đọc package từ Secure Storage hoặc cho phép quét/import, rồi giải mã bằng khóa thiết bị. UI hiển thị trạng thái "Waiting for secure key package" cho đến khi thao tác này hoàn tất.
+- Khi file được chia sẻ (Anonymous Flow), owner's app tạo secure key package (master key encrypted với recipient's publicKey) và gửi qua P2P channel. Backend tạo bản ghi `AnonymousFileAccess` mới với `accessorPublicKeyHash = SHA256(recipientPublicKey)`. Backend KHÔNG lưu master key, KHÔNG lưu userId.
+- Vì file được cắt thành nhiều CID, manifest (nhận từ `/anonymous-access` endpoint) cung cấp danh sách các CID và hash tương ứng; người nhận chỉ cần nhấn "Download" và hệ thống tự động tải từng chunk theo manifest.
+- Nếu API trả về lỗi "403 Access denied", UI gợi ý người dùng yêu cầu chủ sở hữu cấp quyền (gửi secure key package); không có trường nhập CID bổ sung.
 
-**Quản lý chia sẻ & phạm vi nhìn thấy đối với user nhận (ví dụ: người dùng B):**
+**Quản lý chia sẻ & phạm vi nhìn thấy đối với user nhận (Anonymous Flow):**
 
-- Khi file A vừa được upload, chỉ chủ sở hữu mới có bản ghi `user_file_access`; người dùng B nhìn thấy metadata (tên, kích thước, badge trạng thái) nhưng khi bấm “Open Secure Download” hệ thống gọi `GET /api/files/:id/access` và sẽ nhận phản hồi `403/no access grant`. Không có manifest hay khóa nào được trả về.
-- Khi chủ sở hữu thực hiện hành động “Share to B” (B là bí danh đã đăng ký kèm public key), backend chỉ tạo bản ghi `user_file_access` mới với trạng thái “granted” và log audit. Việc gửi `encryptedMasterKey`/`chunkKeysObject` diễn ra trực tiếp giữa hai client (ví dụ quét QR chứa bao thư mã hóa theo public key của B). Từ thời điểm đó, mỗi lần B yêu cầu truy cập sẽ nhận được manifest + policy từ backend, đồng thời app dùng khóa đã lưu để giải mã.
-- Nếu chủ sở hữu thu hồi quyền hoặc bản ghi bị hết hạn, backend xóa/vô hiệu hóa `user_file_access` của B. Lần tải tiếp theo B chỉ nhận thông báo “Access denied – request sharing approval” và app tự xóa master key cục bộ để tránh sử dụng sai.
-- Audit trail ghi nhận cả hai chiều: hành động chia sẻ (owner cấp quyền, userId của B) và mọi lần B tải file. Điều này chứng minh việc cấp quyền luôn đi kèm lịch sử trao đổi khóa ngoài băng.
+- Khi file A vừa được upload, chỉ owner có bản ghi `AnonymousFileAccess` với `accessorPublicKeyHash = SHA256(ownerPublicKey)`. User B khi gọi `POST /api/files/anonymous-list` với `publicKey_B` sẽ không thấy file A trong danh sách (vì `SHA256(publicKey_B)` không match bất kỳ bản ghi `AnonymousFileAccess` nào cho file A).
+- Khi owner thực hiện "Share to B", owner's app tính `publicKeyHashB = SHA256(publicKey_B)`, tạo secure key package (master key encrypted với publicKey_B), và:
+  1. Gửi secure key package qua P2P channel (QR code, NFC, secure messaging)
+  2. Call `POST /api/files/:fileId/grant-access` với body `{recipientPublicKey, ringSignature, nonce}`
+  3. Backend tạo bản ghi `AnonymousFileAccess` mới: `{accessorPublicKeyHash: SHA256(recipientPublicKey), fileId, status: 'active'}`
+  4. Backend log vào `AnonymousAuditLog`: `{eventType: 'ACCESS_GRANTED', publicKeyHash: SHA256(ownerPublicKey), metadata: {recipientHash: SHA256(recipientPublicKey)}}`
+- Từ thời điểm đó, khi B gọi `POST /api/files/anonymous-list`, backend query `AnonymousFileAccess WHERE accessorPublicKeyHash = SHA256(publicKey_B)` và trả về file A. Khi B gọi `POST /api/files/:fileId/anonymous-access`, backend verify access và trả về chunk manifest.
+- Nếu owner thu hồi quyền, backend update `AnonymousFileAccess` set `status = 'revoked'` hoặc delete bản ghi. Lần tải tiếp theo B nhận `403 Access denied`. App B tự động xóa master key từ SecureStorage.
+- Audit trail HOÀN TOÀN ẨN DANH: `AnonymousAuditLog` chỉ ghi `publicKeyHash` của owner và recipient, KHÔNG ghi userId. Event types: `ACCESS_GRANTED`, `ACCESS_REVOKED`, `FILE_DOWNLOADED`, `INTEGRITY_ALERT`.
 
 #### **Download Demo UI Walkthrough**
 
@@ -715,7 +729,7 @@ function verifySchnorrAnonymousOwnership(
 // Schnorr protocol với fresh nonce mỗi lần
 interface SchnorrProtocol {
     // Mỗi revocation request tạo proof MỚI
-    message: string;                // fileId:timestamp:targetUser (unique)
+    message: string;                // fileId:timestamp:targetPublicKeyHash (unique)
     R: string;                      // r·G (FRESH nonce r mỗi lần)
     s: string;                      // s = r + e·k (response)
 
@@ -809,7 +823,7 @@ interface SchnorrStorageOverhead {
     // Per revocation additions (database)
     proofR: "65 bytes (commitment R = r·G)";
     proofS: "32 bytes (response scalar s)";
-    proofMessage: "~100 bytes (fileId:timestamp:targetUser)";
+    proofMessage: "~100 bytes (fileId:timestamp:targetPublicKeyHash)";
     revocationMetadata: "~100-500 bytes";
 
     // Client-side storage (NOT in database)
@@ -870,7 +884,7 @@ class SchnorrOwnershipManager {
 
     // Create Schnorr ownership proof for revocation
     createSchnorrProof(
-        message: string,                // fileId:timestamp:targetUser
+        message: string,                // fileId:timestamp:targetPublicKeyHash
         ownershipPrivateKey: string     // k
     ): SchnorrOwnershipProof {
         // CRITICAL: Generate FRESH random nonce r each time
@@ -1057,7 +1071,7 @@ class SchnorrRevocationService {
 
     // Additional security: Verify message freshness
     verifyMessageFreshness(message: string): boolean {
-        // Parse message: fileId:timestamp:targetUser
+        // Parse message: fileId:timestamp:targetPublicKeyHash
         const parts = message.split(':');
         if (parts.length !== 3) return false;
 

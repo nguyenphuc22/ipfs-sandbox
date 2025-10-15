@@ -14,7 +14,13 @@ const deserializeIdentity = (value: string | null): AOTIdentity | null => {
     return null;
   }
   try {
-    return JSON.parse(value) as AOTIdentity;
+    const parsed = JSON.parse(value);
+    // Migration: Remove userId field if it exists from old storage format
+    if (parsed && 'userId' in parsed) {
+      const { userId, ...rest } = parsed;
+      return rest as AOTIdentity;
+    }
+    return parsed as AOTIdentity;
   } catch (error) {
     return null;
   }
@@ -92,7 +98,6 @@ export const useAOTIdentity = (): UseAOTIdentityResult => {
       const updatedIdentity: AOTIdentity = {
         ...draft,
         identifier: matched.identifier || draft.identifier,
-        userId: matched.userId,
         displayName: matched.displayName || draft.displayName,
         registeredAt: matched.createdAt || draft.registeredAt || new Date().toISOString(),
       };
@@ -119,7 +124,6 @@ export const useAOTIdentity = (): UseAOTIdentityResult => {
       const updatedIdentity: AOTIdentity = {
         ...draft,
         identifier: response.user.identifier || draft.identifier,
-        userId: response.user.userId,
         displayName: response.user.displayName || draft.displayName,
         registeredAt: new Date().toISOString(),
       };
@@ -206,12 +210,6 @@ export const useAOTIdentity = (): UseAOTIdentityResult => {
         setRingContext(registered.context);
         setIdentity(registered.identity);
         return registered.identity;
-      }
-
-      if (!current.userId) {
-        const resolved = await resolveIdentityFromContext(current);
-        setIdentity(resolved.identity);
-        return resolved.identity;
       }
 
       if (!context) {

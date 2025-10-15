@@ -121,31 +121,45 @@ sequenceDiagram
     B-->>M: Success + Hash
 ```
 
-### 3. File Download Flow (Slide Version)
+### 3. File Download Flow - Anonymous (Slide Version)
 
 ```mermaid
 sequenceDiagram
     participant M as Mobile App
     participant B as Backend API
-    participant D as Database
+    participant D as Database (Anonymous)
     participant I as IPFS Gateway
-    participant L as Audit Log
+    participant L as AnonymousAuditLog
 
-    M->>B: Request access (fileId)
-    B->>D: Fetch manifest + policy
-    B->>L: Record access intent
-    B-->>M: {encMasterKey, chunkManifest}
+    Note over M,L: HOÀN TOÀN ẨN DANH - KHÔNG có userId
+
+    M->>M: Generate fresh nonce + timestamp
+    M->>M: Create ring signature
+    M->>B: POST /anonymous-list<br/>{publicKey, ringSignature, nonce}
+    B->>B: Calculate publicKeyHash = SHA256(publicKey)
+    B->>D: Query AnonymousFileAccess<br/>WHERE accessorPublicKeyHash
+    B-->>M: List accessible files
+
+    M->>B: POST /:fileId/anonymous-access<br/>{publicKey, ringSignature, nonce}
+    B->>B: Verify ring signature + nonce
+    B->>D: Check access by publicKeyHash
+    B->>L: Log ACCESS_NEGOTIATION (publicKeyHash only)
+    B-->>M: {chunkManifest, ownershipPolicy}<br/>NO master key!
+
+    Note over M: Master key từ SecureStorage<br/>hoặc nhận từ owner P2P
+
     loop For each chunk
-        M->>I: Fetch CID
+        M->>I: GET /ipfs/{cid}
         I-->>M: Encrypted chunk
         M->>M: Decrypt + hash verify
         alt Hash fail
-            M->>B: Report anomaly
-            B->>L: Mark integrity alert
+            M->>B: POST /anonymous-integrity-alert<br/>{publicKey, ringSignature}
+            B->>L: Log IntegrityAlert (publicKeyHash)
         end
     end
     M->>M: Reconstruct & cache file
-    M->>L: Optional usage telemetry
+    M->>B: POST /audit/anonymous-log<br/>{eventType: DOWNLOAD_COMPLETE}
+    B->>L: Log audit event (publicKeyHash only)
 ```
 
 ### 4. IPFS Network Structure (Slide Version)
@@ -465,7 +479,7 @@ sequenceDiagram
 | View | Thành phần chính | Lưu đồ UX | Tín hiệu thị giác |
 |------|------------------|-----------|-------------------|
 | **Secure Library** | List item với tên file, kích thước, badge `Active/Revoked`, icon AOT | Tap → mở Access Negotiation Sheet, option “Open Secure Download” | Badge xanh cho file hợp lệ, cam cho revoked |
-| **Access Negotiation Sheet** | Bottom sheet gồm policy summary, adjudicator note, nút `Continue` | On confirm → trigger API access, close sheet, state chuyển `Resolving Keys`; nếu thiếu `user_file_access` entry → hiển thị lỗi | Icon ổ khóa xoay, text “Verifying anonymous ownership…” |
+| **Access Negotiation Sheet** | Bottom sheet gồm policy summary, adjudicator note, nút `Continue` | On confirm → trigger API access, close sheet, state chuyển `Resolving Keys`; nếu thiếu `AnonymousFileAccess` entry (publicKeyHash không có quyền) → hiển thị lỗi | Icon ổ khóa xoay, text "Verifying anonymous ownership…" |
 | **Download Detail Screen** | Stepper 4 bước, progress bar, accordion chunk list, policy card | Auto-scroll theo chunk, hiển thị retries, trigger integrity alert khi cần | Màu xanh dương cho completed, đỏ cam cho lỗi, tooltip cho hash mismatch |
 | **Integrity Badge** | Chip màu xanh + icon shield, timestamp hoàn tất | Bật khi mọi chunk pass, cung cấp nút mở audit timeline | Glow animation 600ms để nhấn mạnh |
 | **Audit Timeline Modal** | Timeline dọc, icon cho download/view/share/delete | Ghi nhận từng hành động, gửi POST audit khi nhấn nút | Icon xanh cho hành động bình thường, cam cho cảnh báo |
@@ -667,9 +681,11 @@ graph LR
 
 ## Data Models & Schema
 
-> **Identity footprint**: hệ thống backend chỉ lưu `displayLabel` (bí danh dùng trong UI/audit) và `publicKey` cho mỗi user. Không có email hay mật khẩu được persist; mọi thao tác phân quyền dựa trên `userId` ngẫu nhiên + khóa công khai.
+> **HOÀN TOÀN ẨN DANH**: Hệ thống backend KHÔNG lưu userId cho anonymous access.
+> Chỉ lưu `publicKeyHash` (SHA256 của publicKey) để track anonymous users.
+> Mọi thao tác phân quyền dựa trên publicKey + ringSignature, không cần userId.
 
-### Database Schema Relationships
+### Database Schema Relationships (Anonymous Architecture)
 
 ```mermaid
 erDiagram
@@ -684,14 +700,57 @@ erDiagram
 
     File {
         string id PK
-        string ipfsHash UK
-        string filename
-        int size
-        string mimeType
-        string encryptedKey
+        string fileName
+        int totalSize
+        int chunkCount
+        string ownershipPublicKey
         string uploaderId FK
+        string status
         datetime createdAt
         datetime updatedAt
+    }
+
+    FileChunk {
+        string id PK
+        string fileId FK
+        int chunkIndex
+        string chunkHash
+        string ipfsCid
+        int size
+        datetime createdAt
+    }
+
+    AnonymousFileAccess {
+        string id PK
+        string accessorPublicKeyHash "SHA256(publicKey)"
+        string fileId FK
+        datetime grantedAt
+        datetime expiresAt
+        string lastAccessProof "Ring signature"
+        int accessCount
+        string keyStatus "client-managed"
+        string status
+    }
+
+    AnonymousAuditLog {
+        string id PK
+        string eventType
+        string fileId
+        string publicKeyHash "SHA256(publicKey)"
+        string ringSignature
+        string metadata "JSON"
+        datetime timestamp
+    }
+
+    IntegrityAlert {
+        string id PK
+        string fileId FK
+        int chunkIndex
+        string expectedHash
+        string actualHash
+        string reportedByPublicKeyHash "Anonymous"
+        datetime reportedAt
+        boolean resolved
     }
 
     Signature {
@@ -701,14 +760,16 @@ erDiagram
         string ringUserIds
         string signature
         boolean isOpened
-        string openingProof
         datetime createdAt
-        datetime updatedAt
     }
 
     User ||--o{ File : "uploads"
+    File ||--o{ FileChunk : "has chunks"
+    File ||--o{ AnonymousFileAccess : "grants access"
+    File ||--o{ AnonymousAuditLog : "logged in"
+    File ||--o{ IntegrityAlert : "alerts for"
+    File ||--o{ Signature : "has signatures"
     User ||--o{ Signature : "signs"
-    File ||--o{ Signature : "has"
 ```
 
 ### Data Flow Patterns

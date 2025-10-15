@@ -8,7 +8,6 @@ const STORAGE_PATH = path.join(DATA_DIR, 'aot-records.json');
 
 const SAMPLE_USERS = [
     {
-        userId: 'sample-user-1',
         identifier: 'alice',
         displayName: 'Alice (Demo)',
         publicKey: '02d5391e1c3926bc48a31235614d614f71f8b00da84041f92aa35ca8a40008ac3d',
@@ -16,7 +15,6 @@ const SAMPLE_USERS = [
         createdAt: '2024-01-01T00:00:00.000Z',
     },
     {
-        userId: 'sample-user-2',
         identifier: 'bob',
         displayName: 'Bob (Demo)',
         publicKey: '02917370ea1f516c57b0a1430664d966554c3221b6dab7a1299ad21c80c88a85c4',
@@ -24,7 +22,6 @@ const SAMPLE_USERS = [
         createdAt: '2024-01-02T00:00:00.000Z',
     },
     {
-        userId: 'sample-user-3',
         identifier: 'carol',
         displayName: 'Carol (Demo)',
         publicKey: '02e43fdfcbbf9fb62eddb746122d5e70fa4e5ac47d44b128528ab43085d74f950f',
@@ -32,7 +29,6 @@ const SAMPLE_USERS = [
         createdAt: '2024-01-03T00:00:00.000Z',
     },
     {
-        userId: 'sample-user-4',
         identifier: 'dave',
         displayName: 'Dave (Demo)',
         publicKey: '024fe936e790f54644f8bb365490409bc51561c018758f200ad3df5187913a8229',
@@ -40,7 +36,6 @@ const SAMPLE_USERS = [
         createdAt: '2024-01-04T00:00:00.000Z',
     },
     {
-        userId: 'sample-user-5',
         identifier: 'erin',
         displayName: 'Erin (Demo)',
         publicKey: '03c80105d9e2fc11b2acd07dd5459a684c1d9af41d66afa1fba29fef78504e9996',
@@ -223,7 +218,6 @@ function normalizeData(data = {}) {
                 identifier:
                     sanitizeIdentifierValue(user.identifier) ||
                     generateIdentifier(user.displayName || user.publicKey, existingIdentifiers),
-                userId: user.userId || crypto.randomUUID(),
                 createdAt: user.createdAt || new Date().toISOString(),
             });
             existingPublicKeys.add(key);
@@ -334,7 +328,6 @@ function registerUser({ identifier, displayName, publicKey, escrowedIdentity = n
         normalizedIdentifier || generateIdentifier(normalizedDisplayName || normalizedPublicKey, identifierSet);
 
     const record = {
-        userId: crypto.randomUUID(),
         identifier: resolvedIdentifier,
         displayName: normalizedDisplayName || resolvedIdentifier,
         publicKey: canonicalPublicKey,
