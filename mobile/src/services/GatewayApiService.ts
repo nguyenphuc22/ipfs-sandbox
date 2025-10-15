@@ -86,13 +86,9 @@ export interface GatewayUserFileRecord {
   createdAt?: string;
   keyStatus?: string;
   hasLocalKey?: boolean;
-  uploader?: {
-    id?: string;
-    username?: string;
-  };
   metadataHash?: string;
   ownerIdentifier?: string | null;
-  ownerUserId?: string | null;
+  // ✅ No uploader.username or PII - using anonymous access only
 }
 
 export interface GatewayUserFilesResponse {
@@ -122,8 +118,6 @@ export interface FileAccessResponse {
   grantedAt: string;
   grantContext: {
     keyStatus: string;
-    hasLocalKey: boolean;
-    keyIssuedAt?: string;
     keyPackageFingerprint?: string;
   };
 }
@@ -132,12 +126,19 @@ export interface IntegrityAlertPayload {
   chunkIndex: number;
   expectedHash: string;
   actualHash?: string;
-  userId: string;
+  publicKey: string;
+  ringSignature: string;
+  retryCount?: number;
+  timestamp: number;
+  nonce: string;
 }
 
 export interface AuditEventPayload {
-  eventType: 'download' | 'view' | 'share' | 'delete_cache';
-  userId: string;
+  eventType: 'download' | 'view' | 'share' | 'delete_cache' | 'access_request';
+  publicKey: string;
+  ringSignature: string;
+  timestamp: number;
+  nonce: string;
   metadata?: Record<string, any>;
 }
 
@@ -508,28 +509,26 @@ export class GatewayApiService {
   }
 
   async getUserFiles(
-    input: string | { userId?: string; publicKey?: string }
+    input: { publicKey: string; ringSignature: string; timestamp: number; nonce: string }
   ): Promise<GatewayUserFilesResponse> {
-    let userId: string | undefined;
-    let publicKey: string | undefined;
+    const { publicKey, ringSignature, timestamp, nonce } = input;
 
-    if (typeof input === 'string') {
-      userId = input;
-    } else if (input) {
-      userId = input.userId;
-      publicKey = input.publicKey;
+    // Validate all required parameters
+    if (!publicKey || !ringSignature || timestamp === undefined || !nonce) {
+      throw new Error('Missing required anonymous authentication parameters: publicKey, ringSignature, timestamp, nonce');
     }
 
-    const query = new URLSearchParams();
-    if (publicKey) {
-      query.set('publicKey', publicKey);
-    }
+    const payload = {
+      publicKey,
+      ringSignature,
+      timestamp,
+      nonce
+    };
 
-    const resolvedUserId = userId ?? 'self';
-    const encoded = encodeURIComponent(resolvedUserId);
-    const endpoint = `/api/files/user/${encoded}/files${query.toString() ? `?${query.toString()}` : ''}`;
-
-    return this.makeRequest<GatewayUserFilesResponse>(endpoint);
+    return this.makeRequest<GatewayUserFilesResponse>('/api/files/anonymous-list', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
   }
 
   async getSignatures(): Promise<any[]> {
@@ -621,41 +620,114 @@ export class GatewayApiService {
     }
   }
 
-  async getFileAccess(fileId: string, userId: string): Promise<FileAccessResponse> {
+  async getFileAccess(
+    fileId: string, 
+    publicKey: string, 
+    ringSignature: string, 
+    timestamp: number, 
+    nonce: string
+  ): Promise<FileAccessResponse> {
+    const payload = {
+      fileId,
+      publicKey,
+      ringSignature,
+      timestamp,
+      nonce
+    };
+
     return this.makeRequest<FileAccessResponse>(
-      `/api/files/${fileId}/access?userId=${encodeURIComponent(userId)}`
+      `/api/files/${fileId}/anonymous-access`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }
     );
   }
 
   async reportIntegrityAlert(
     fileId: string,
-    payload: IntegrityAlertPayload
+    payload: {
+      chunkIndex: number;
+      expectedHash: string;
+      actualHash?: string;
+      publicKey: string;
+      ringSignature: string;
+      retryCount?: number;
+      timestamp: number;
+      nonce: string;
+    }
   ): Promise<{ success: boolean; message: string }> {
+    const anonymousPayload = {
+      fileId,
+      chunkIndex: payload.chunkIndex,
+      expectedHash: payload.expectedHash,
+      actualHash: payload.actualHash,
+      publicKey: payload.publicKey,
+      ringSignature: payload.ringSignature,
+      retryCount: payload.retryCount || 0,
+      timestamp: payload.timestamp,
+      nonce: payload.nonce,
+    };
+
     return this.makeRequest<{ success: boolean; message: string }>(
-      `/api/files/${fileId}/integrity-alert`,
+      `/api/files/${fileId}/anonymous-integrity-alert`,
       {
         method: 'POST',
-        body: JSON.stringify(payload),
+        body: JSON.stringify(anonymousPayload),
       }
     );
   }
 
   async logAuditEvent(
     fileId: string,
-    payload: AuditEventPayload
+    payload: {
+      eventType: 'download' | 'view' | 'share' | 'delete_cache' | 'access_request';
+      publicKey: string;
+      ringSignature: string;
+      timestamp: number;
+      nonce: string;
+      metadata?: Record<string, any>;
+    }
   ): Promise<{ success: boolean; message: string }> {
+    const anonymousPayload = {
+      eventType: payload.eventType,
+      fileId,
+      publicKey: payload.publicKey,
+      ringSignature: payload.ringSignature,
+      timestamp: payload.timestamp,
+      nonce: payload.nonce,
+      metadata: payload.metadata || {}
+    };
+
+    // Use the new anonymous audit logging endpoint (part of anonymous-endpoints-addition.js)
     return this.makeRequest<{ success: boolean; message: string }>(
-      `/api/files/${fileId}/audit`,
+      '/api/files/audit/anonymous-log',
       {
         method: 'POST',
-        body: JSON.stringify(payload),
+        body: JSON.stringify(anonymousPayload),
       }
     );
   }
 
-  async listUserFiles(userId: string): Promise<FileData[]> {
+  async listUserFiles(
+    publicKey: string, 
+    ringSignature: string, 
+    timestamp: number, 
+    nonce: string
+  ): Promise<FileData[]> {
+    const payload = {
+      publicKey,
+      ringSignature,
+      timestamp,
+      nonce
+    };
+
     const response = await this.makeRequest<{ success: boolean; files: FileData[] }>(
-      `/api/files/user/${encodeURIComponent(userId)}/files`
+      '/api/files/anonymous-list',
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }
     );
     return response.files || [];
   }

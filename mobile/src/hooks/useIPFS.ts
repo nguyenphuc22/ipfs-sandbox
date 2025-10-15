@@ -254,12 +254,18 @@ export const useIPFS = (options: UseIPFSOptions = {}) => {
     return serviceRef.current.deleteFile(hash);
   }, []);
 
-  // Get user files
-  const getUserFiles = useCallback(async (filters: { userId?: string; publicKey?: string }) => {
+  // Get user files (anonymous)
+  const getUserFiles = useCallback(async (filters: { 
+    publicKey?: string; 
+    ringSignature?: string; 
+    timestamp?: number; 
+    nonce?: string 
+  }) => {
     if (!serviceRef.current) {
       return { success: false, error: 'IPFS service not initialized' };
     }
 
+    // This now uses anonymous parameters instead of userId
     return serviceRef.current.getUserFiles(filters);
   }, []);
 

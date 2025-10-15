@@ -14,6 +14,7 @@ import {
 import { useTheme } from '../../styles';
 import { FileData } from '../../types';
 import { createDefaultGatewayService, FileViewResponse } from '../../services/GatewayApiService';
+import { anonymousFileAccessService } from '../../services/AnonymousFileAccessService';
 
 type FileViewerProps = {
   file: FileData;
@@ -116,6 +117,11 @@ export const FileViewer: React.FC<FileViewerProps> = ({
       };
 
       fetchFileContent();
+      
+      // Log anonymous audit event for file viewing
+      anonymousFileAccessService.logAnonymousAuditEvent('view', file.id).catch(error => {
+        console.warn('[FileViewer] Failed to log anonymous audit event:', error);
+      });
 
       return () => {
         isCancelled = true;

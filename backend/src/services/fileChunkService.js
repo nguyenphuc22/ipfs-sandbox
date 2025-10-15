@@ -14,6 +14,7 @@ const {
   decryptChunk,
   computeChunkHash,
 } = require('../utils/chunkingUtils');
+const { maskHashForLogging, secureLog } = require('../utils/monitoring');
 
 const IPFS_API_URL = process.env.IPFS_API_URL || 'http://127.0.0.1:5001';
 
@@ -258,7 +259,8 @@ async function reportIntegrityAlert(fileId, chunkIndex, expectedHash, actualHash
       },
     });
 
-    console.log(`[ChunkService] Integrity alert reported for file ${fileId}, chunk ${chunkIndex} by publicKeyHash: ${publicKeyHash.substring(0, 16)}...`);
+    const maskedHash = maskHashForLogging(publicKeyHash, 'publicKeyHash');
+    secureLog('ChunkService', `Integrity alert reported for file ${fileId}, chunk ${chunkIndex} by publicKeyHash: ${maskedHash}`, 'info', { fileId, chunkIndex, publicKeyHash });
   } catch (error) {
     console.error('[ChunkService] Report integrity alert error:', error);
     throw error;
@@ -366,8 +368,6 @@ async function getAnonymousFileAccessInfo(fileId, publicKeyHash) {
       chunkCount: file.chunkCount,
       grantContext: {
         keyStatus: access.keyStatus,
-        hasLocalKey: access.hasLocalKey,
-        keyIssuedAt: access.keyIssuedAt,
         keyPackageFingerprint: access.keyPackageFingerprint,
       },
       chunkManifest,
@@ -398,17 +398,11 @@ async function listAnonymousAccessibleFiles(publicKeyHash) {
         },
       },
       include: {
-        uploader: {
-          select: {
-            id: true,
-            username: true,
-          },
-        },
         anonymousAccess: {
           where: { accessorPublicKeyHash: publicKeyHash },
           select: {
             grantedAt: true,
-            grantedByPublicKeyHash: true,
+            keyStatus: true,
           },
         },
       },
@@ -425,12 +419,10 @@ async function listAnonymousAccessibleFiles(publicKeyHash) {
       mimeType: file.mimeType,
       status: file.status,
       ownershipPublicKey: file.ownershipPublicKey,
-      uploader: file.uploader,
       grantedAt: file.anonymousAccess[0]?.grantedAt,
       keyStatus: file.anonymousAccess[0]?.keyStatus,
-      hasLocalKey: file.anonymousAccess[0]?.hasLocalKey,
       createdAt: file.createdAt,
-      // Make sure no userId is returned in the response
+      // ✅ No userId or PII returned in response
     }));
   } catch (error) {
     console.error('[ChunkService] List anonymous accessible files error:', error);

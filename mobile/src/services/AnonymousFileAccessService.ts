@@ -374,6 +374,92 @@ export class AnonymousFileAccessService {
       return null;
     }
   }
+  
+  /**
+   * List files accessible by a specific public key (anonymous) - with explicit parameters
+   * 
+   * This method allows passing parameters directly instead of retrieving from storage
+   * 
+   * @param params - Explicit parameters for the request
+   * @returns Array of accessible files
+   */
+  async listAccessibleFilesWithParams(params: {
+    publicKey: string;
+    ringSignature: string;
+    timestamp: number;
+    nonce: string;
+  }): Promise<AccessibleFile[]> {
+    try {
+      console.log('[Anonymous Access] Listing accessible files with explicit parameters...');
+      
+      // Make request to anonymous-list endpoint with provided parameters
+      const response = await this.makeRequest<AnonymousListResponse>(
+        '/api/files/anonymous-list',
+        {
+          method: 'POST',
+          body: JSON.stringify(params),
+        }
+      );
+
+      console.log(`[Anonymous Access] Found ${response.files.length} accessible files`);
+      return response.files;
+
+    } catch (error) {
+      console.error('[Anonymous Access] Error listing files with params:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Log an audit event anonymously
+   * 
+   * @param eventType - Type of event (download, view, share, etc.)
+   * @param fileId - File ID for the event
+   * @param metadata - Additional event metadata
+   * @returns Promise<void>
+   */
+  async logAnonymousAuditEvent(
+    eventType: 'download' | 'view' | 'share' | 'delete_cache' | 'access_request',
+    fileId: string,
+    metadata?: Record<string, any>
+  ): Promise<void> {
+    try {
+      console.log(`[Anonymous Audit] Logging event: ${eventType} for file ${fileId}`);
+      
+      // Get user's public key from storage
+      const publicKey = await this.getPublicKey();
+      
+      // Prepare request parameters
+      const timestamp = Date.now();
+      const nonce = this.generateNonce();
+      const message = `${eventType}:${fileId}:${timestamp}:${nonce}`;
+      
+      // Create ring signature
+      const ringSignature = await this.createRingSignature(message);
+      
+      // Make request to anonymous audit endpoint
+      await this.makeRequest(
+        `/api/files/audit/anonymous-log`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            eventType,
+            fileId,
+            publicKey,
+            ringSignature,
+            timestamp,
+            nonce,
+            metadata: metadata || {}
+          }),
+        }
+      );
+      
+      console.log(`[Anonymous Audit] Event ${eventType} logged successfully`);
+    } catch (error) {
+      console.error('[Anonymous Audit] Error logging event:', error);
+      // Don't throw - audit logging is best-effort
+    }
+  }
 }
 
 // ============================================================================

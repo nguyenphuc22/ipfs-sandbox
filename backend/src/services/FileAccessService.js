@@ -9,6 +9,7 @@
 
 const { PrismaClient } = require('@prisma/client');
 const { ringSignatureService } = require('./RingSignatureService');
+const { secureLog, maskHashForLogging } = require('../utils/monitoring');
 
 class FileAccessService {
   constructor(ringService, prismaClient) {
@@ -35,7 +36,7 @@ class FileAccessService {
     }
 
     // 2. Verify nonce uniqueness
-    if (!this.ringService.verifyNonce(nonce)) {
+    if (!await this.ringService.verifyNonce(nonce)) {
       throw new Error('Nonce has already been used');
     }
 
@@ -114,7 +115,8 @@ class FileAccessService {
       }
     });
 
-    console.log(`[Anonymous Access] Listed ${files.length} files for publicKeyHash: ${publicKeyHash.substring(0, 16)}...`);
+    const maskedPublicKeyHash = maskHashForLogging(publicKeyHash, 'publicKeyHash');
+    secureLog('FileAccessService', `Listed ${files.length} files for publicKeyHash: ${maskedPublicKeyHash}`, 'info', { publicKeyHash, fileCount: files.length });
 
     return files;
   }
@@ -139,7 +141,7 @@ class FileAccessService {
     }
 
     // 2. Verify nonce uniqueness
-    if (!this.ringService.verifyNonce(nonce)) {
+    if (!await this.ringService.verifyNonce(nonce)) {
       throw new Error('Nonce has already been used');
     }
 
@@ -221,7 +223,8 @@ class FileAccessService {
       }
     });
 
-    console.log(`[Access Negotiation] Granted access to file ${fileId} for publicKeyHash: ${publicKeyHash.substring(0, 16)}...`);
+    const maskedPublicKeyHash = maskHashForLogging(publicKeyHash, 'publicKeyHash');
+    secureLog('FileAccessService', `Granted access to file ${fileId} for publicKeyHash: ${maskedPublicKeyHash}`, 'info', { fileId, publicKeyHash });
 
     // 10. Return manifest (no master key - user manages their own keys)
     return {
@@ -274,7 +277,7 @@ class FileAccessService {
     }
 
     // 2. Verify nonce uniqueness
-    if (!this.ringService.verifyNonce(nonce)) {
+    if (!await this.ringService.verifyNonce(nonce)) {
       throw new Error('Nonce has already been used');
     }
 
@@ -324,7 +327,69 @@ class FileAccessService {
       }
     });
 
-    console.log(`[Integrity Alert] Chunk ${chunkIndex} mismatch for file ${fileId} reported by publicKeyHash: ${publicKeyHash.substring(0, 16)}...`);
+    const maskedPublicKeyHash = maskHashForLogging(publicKeyHash, 'publicKeyHash');
+    secureLog('FileAccessService', `Chunk ${chunkIndex} mismatch for file ${fileId} reported by publicKeyHash: ${maskedPublicKeyHash}`, 'info', { fileId, chunkIndex, publicKeyHash, expectedHash, actualHash });
+  }
+
+  /**
+   * Log anonymous audit event
+   *
+   * @param {Object} params - Audit parameters
+   * @param {string} params.eventType - Type of audit event
+   * @param {string} params.fileId - ID of the file
+   * @param {string} params.publicKey - User's public key
+   * @param {string} params.ringSignature - Ring signature
+   * @param {string} params.timestamp - Request timestamp
+   * @param {string} params.nonce - Request nonce
+   * @param {Object} params.metadata - Additional metadata
+   * @returns {Promise<void>}
+   */
+  async logAnonymousAuditEvent(params) {
+    const {
+      eventType, fileId, publicKey, ringSignature,
+      timestamp, nonce, metadata
+    } = params;
+
+    // 1. Verify timestamp freshness
+    if (!this.ringService.verifyTimestamp(timestamp)) {
+      throw new Error('Request timestamp is invalid or too old');
+    }
+
+    // 2. Verify nonce uniqueness
+    if (!await this.ringService.verifyNonce(nonce)) {
+      throw new Error('Nonce has already been used');
+    }
+
+    // 3. Verify ring signature
+    const message = `audit:${eventType}:${fileId}:${timestamp}:${nonce}`;
+    const isValid = await this.ringService.verifyRingSignature({
+      publicKey,
+      signature: ringSignature,
+      message,
+      ringPublicKeys: await this.ringService.getAllPublicKeys(),
+    });
+
+    if (!isValid) {
+      throw new Error('Invalid ring signature');
+    }
+
+    // 4. Hash public key
+    const publicKeyHash = this.ringService.hashPublicKey(publicKey);
+
+    // 5. Create audit log (no userId)
+    await this.prisma.anonymousAuditLog.create({
+      data: {
+        eventType: eventType,
+        fileId: fileId,
+        publicKeyHash: publicKeyHash,
+        ringSignature: ringSignature,
+        timestamp: new Date(),
+        metadata: JSON.stringify(metadata || {}),
+      }
+    });
+
+    const maskedPublicKeyHash = maskHashForLogging(publicKeyHash, 'publicKeyHash');
+    secureLog('FileAccessService', `${eventType} event logged for file ${fileId} by publicKeyHash: ${maskedPublicKeyHash}`, 'info', { eventType, fileId, publicKeyHash });
   }
 }
 

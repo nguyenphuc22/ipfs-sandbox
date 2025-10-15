@@ -233,7 +233,6 @@ const IPFSDemo: React.FC<IPFSDemoProps> = ({ identity }) => {
         {/* File List with integrated CRUD */}
         <View style={styles.section}>
           <IPFSFileList
-            ownerUserId={identity.userId}
             ownerPublicKey={identity.publicKey}
             onFileDeleted={handleFileDeleted}
             externalFiles={allFiles}

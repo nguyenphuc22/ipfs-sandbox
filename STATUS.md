@@ -1,6 +1,19 @@
 # Current Demo Status
 
-- Backend: Upload pipeline (AOT generation, chunk encryption, anonymous revocation) vẫn ổn định. Download flow mới trả manifest/policy và xác nhận quyền; master key & chunk keys do client giữ. Registry hiện **chỉ lưu displayName + publicKey** và tự sinh identifier, đồng thời API `/api/files/user/:id/files` đã hỗ trợ filter theo ownership public key.
-- Mobile: Đã có màn hình khởi tạo một lần để nhập display name + sinh khóa cục bộ, đồng bộ hóa ring context và lưu identity vào AsyncStorage. Danh sách file trên Home tự động load theo public key hiện tại; upload demo vẫn ổn định trong direct gateway mode.
-- Dependencies: `@noble/secp256k1` tiếp tục là nền tảng crypto chính; theo dõi cập nhật trước khi hoàn thiện download proof-of-concept.
-- Pending (Demo Roadmap): hoàn thiện chunk streaming API, chia sẻ khóa P2P (QR/Deep link), retry UX + integrity alert, audit timeline modal, tùy chọn cache mã hóa cục bộ + TTL tự động.
+## Backend
+- ✅ `anonymous-endpoints-addition.js` mount trước `files.js`, `FileAccessService` truy vấn `AnonymousFileAccess` bằng `accessorPublicKeyHash` và trả manifest không chứa `userId`.
+- ✅ `RingSignatureService` đã tích hợp kiểm chứng LSAG đầy đủ + lưu toàn bộ nonce/keyImage để chống replay theo `issue_plan.md#task-5` (44 tests pass).
+- ✅ Prisma migrations (20251009154345, 20251014120425) đã loại bỏ toàn bộ PII khỏi bảng `User`; `revocationService.executePartialReencryption()` và `revokeAccessByPublicKeyHash()` chỉ nhận `revokedPublicKeyHash`.
+- ⚠️ Chưa có checklist/test thủ công xác nhận anonymous router luôn mount trước legacy routes và không expose path cũ (thiếu `backend/test-anonymous-routes-priority.md`).
+
+## Mobile
+- ✅ UI (`IPFSFileList`, `FileViewer`), services (`AnonymousFileAccessService`, `IPFSService`) và integration test `mobile/src/tests/anonymous-flow.integration.test.ts` hoạt động với anonymous payloads (publicKey + ringSignature + timestamp + nonce).
+- ⚠️ Hook danh tính (`useAOTIdentity`) vẫn sinh/persist `userId` (xem `mobile/src/hooks/useAOTIdentity.ts`), `AuthService.registerUser()` trả `user.userId`, và nhiều consumer kiểm tra `identity.userId` → UI vẫn phụ thuộc `userId`, trái với thiết kế tại `ANONYMOUS_DOWNLOAD_REDESIGN.md#31`.
+
+## Data & Audit Layer
+- ✅ `fileChunkService` tạo `AnonymousFileAccess` mặc định bằng `hash(publicKey)` khi upload, toàn bộ audit/revocation log sử dụng `maskHashForLogging`.
+- ✅ `AnonymousAuditLog` ghi đầy đủ event list/access/integrity/revoke mà không chứa `userId`.
+
+## Documentation Gaps
+- ⚠️ `DOWNLOAD_FLOW_FINAL.md` và `SYSTEM_ARCHITECTURE.md` vẫn mô tả luồng dựa trên `userId` (`/api/files/my-files`, JWT, ownerDisplayName) → chưa phản ánh flow ẩn danh mới.
+- ⚠️ Chưa có checklist triển khai (Docs/QA) cho việc mount anonymous router và xác nhận UI bỏ hoàn toàn `userId`.

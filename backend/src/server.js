@@ -38,6 +38,9 @@ app.use('/api/files', require('./routes/files')); // Legacy routes (will only ha
 
 app.use('/api/signatures', require('./routes/signatures'));
 
+// Monitoring routes for dashboard and security checks
+app.use('/api/monitoring', require('./routes/monitoring'));
+
 // Error handling
 app.use((err, req, res, next) => {
     console.error(err.stack);

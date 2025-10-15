@@ -7,6 +7,11 @@ import {
   AnonymousRevocationPayload,
   AnonymousRevocationResponse,
 } from './GatewayApiService';
+import { 
+  AnonymousFileAccessService, 
+  AccessibleFile,
+  createAnonymousFileAccessService 
+} from './AnonymousFileAccessService';
 import { API_CONFIG } from '../config/api';
 
 export interface IPFSServiceConfig {
@@ -16,6 +21,7 @@ export interface IPFSServiceConfig {
 
 export class IPFSService {
   private apiService: GatewayApiService;
+  private anonymousService: AnonymousFileAccessService;
   private config: IPFSServiceConfig;
 
   constructor(config: IPFSServiceConfig = {}) {
@@ -31,6 +37,8 @@ export class IPFSService {
           baseUrl: this.config.gatewayUrl!,
           timeout: this.config.timeout,
         });
+        
+    this.anonymousService = createAnonymousFileAccessService();
   }
 
   // Health and connectivity
@@ -141,45 +149,52 @@ export class IPFSService {
     }
   }
 
-  // User-specific file operations
+  // User-specific file operations (now uses anonymous service with explicit parameters)
   async getUserFiles(
-    options: { userId?: string; publicKey?: string },
+    options: { 
+      publicKey?: string; 
+      ringSignature?: string; 
+      timestamp?: number; 
+      nonce?: string 
+    },
   ): Promise<{ success: boolean; files?: FileData[]; error?: string }> {
-    const { userId, publicKey } = options;
+    const { publicKey, ringSignature, timestamp, nonce } = options;
 
-    if (!publicKey && !userId) {
-      return { success: false, error: 'Public key or user ID is required to load files' };
+    // For anonymous access, all required parameters must be provided
+    if (!publicKey || !ringSignature || timestamp === undefined || !nonce) {
+      return { 
+        success: false, 
+        error: 'Public key, ring signature, timestamp, and nonce are required for anonymous access' 
+      };
     }
 
     try {
-      const response = await this.apiService.getUserFiles({ userId, publicKey });
-      if (!response.success) {
-        return {
-          success: false,
-          error: response.error || 'Failed to get user files',
-        };
-      }
-
-      const records = Array.isArray(response.files) ? response.files : [];
+      // Use anonymous service's new method that accepts explicit parameters
+      const records = await this.anonymousService.listAccessibleFilesWithParams({
+        publicKey,
+        ringSignature,
+        timestamp,
+        nonce
+      });
+      
       const allowedStatuses: FileStatus[] = ['uploading', 'completed', 'error', 'active', 'revoked'];
 
-      const files: FileData[] = records.map((record) => {
-        const status = typeof record.status === 'string' ? (record.status as FileStatus) : 'active';
+      const files: FileData[] = records.map((record: AccessibleFile) => {
+        const status = record.ownershipStatus as FileStatus || 'active';
         return {
-          id: record.id,
-          name: record.fileName || record.name || 'Unknown file',
-          size: record.totalSize ?? record.size ?? 0,
-          uploadTime: record.createdAt ? new Date(record.createdAt) : new Date(),
+          id: record.fileId,
+          name: record.fileName,
+          size: record.fileSize,
+          uploadTime: record.grantedAt ? new Date(record.grantedAt) : new Date(),
           status: allowedStatuses.includes(status) ? status : 'active',
-          ipfsHash: record.cid || undefined,
-          ownershipPublicKey: record.ownershipPublicKey || undefined,
-          mimeType: record.mimeType || undefined,
+          ownershipPublicKey: record.ownerPublicKey,
+          mimeType: undefined, // Anonymous access doesn't expose full details
           grantedAt: record.grantedAt || undefined,
-          keyStatus: record.keyStatus,
-          hasLocalKey: record.hasLocalKey,
+          keyStatus: undefined,
+          hasLocalKey: undefined,
           chunkCount: record.chunkCount,
-          uploaderName: record.uploader?.username || record.ownerIdentifier || undefined,
-          metadataHash: record.metadataHash,
+          uploaderName: undefined, // Anonymous access - no user details
+          metadataHash: undefined, // Anonymous access - no metadata hash
         };
       });
 

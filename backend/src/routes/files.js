@@ -277,10 +277,36 @@ router.post('/revoke-with-reencryption', async (req, res) => {
 
         console.log('[Route] Starting partial re-encryption revocation...');
 
-        // Execute partial re-encryption
+        // Convert targetUserId to publicKeyHash if provided
+        let revokedPublicKeyHash = null;
+        if (targetUserId) {
+            const { PrismaClient } = require('@prisma/client');
+            const prisma = new PrismaClient();
+            const targetUser = await prisma.user.findUnique({
+                where: { id: targetUserId },
+                select: { publicKey: true }
+            });
+
+            if (!targetUser || !targetUser.publicKey) {
+                return res.status(400).json({
+                    error: 'Target user not found or does not have a public key'
+                });
+            }
+
+            // Hash the public key
+            const crypto = require('crypto');
+            revokedPublicKeyHash = crypto
+                .createHash('sha256')
+                .update(targetUser.publicKey)
+                .digest('hex');
+
+            await prisma.$disconnect();
+        }
+
+        // Execute partial re-encryption with publicKeyHash (not userId)
         const result = await executePartialReencryption(
             fileId,
-            targetUserId,
+            revokedPublicKeyHash,
             ownershipProof,
             securityLevel
         );

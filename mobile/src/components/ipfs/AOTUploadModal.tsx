@@ -600,7 +600,7 @@ export const AOTUploadModal: React.FC<AOTUploadModalProps> = ({
               const isSelected = ringMembers.includes(normalized);
               return (
                 <TouchableOpacity
-                  key={member.userId || member.publicKey}
+                  key={member.publicKey}
                   style={styles.memberItem}
                   onPress={() => toggleMember(member.publicKey)}
                 >

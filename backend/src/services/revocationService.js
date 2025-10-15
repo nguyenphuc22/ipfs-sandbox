@@ -16,6 +16,7 @@ const {
   decryptChunkKeys,
   computeChunkHash,
 } = require('../utils/chunkingUtils');
+const { maskHashForLogging, secureLog } = require('../utils/monitoring');
 
 const IPFS_API_URL = process.env.IPFS_API_URL || 'http://127.0.0.1:5001';
 
@@ -68,7 +69,7 @@ function selectChunksForReencryption(chunkCount, securityLevel = 'standard') {
 /**
  * Execute partial re-encryption for revocation (with prisma injection)
  * @param {string} fileId - File ID
- * @param {string} revokedUserId - User ID to revoke
+ * @param {string} revokedPublicKeyHash - Hash of public key to revoke (if null, full revocation)
  * @param {Object} ownershipProof - Schnorr proof
  * @param {string} securityLevel - Security level (standard/high/maximum)
  * @param {Object} prismaClient - Prisma client instance (optional, for dependency injection)
@@ -76,13 +77,13 @@ function selectChunksForReencryption(chunkCount, securityLevel = 'standard') {
  */
 async function executePartialReencryption(
   fileId,
-  revokedUserId,
+  revokedPublicKeyHash,
   ownershipProof,
   securityLevel = 'standard',
   prismaClient
 ) {
   try {
-    console.log(`[Revocation] Starting partial re-encryption for file ${fileId}`);
+    secureLog('RevocationService', `Starting partial re-encryption for file ${fileId}`, 'info', { fileId });
 
     // 1. Get file and chunks
     const prisma = prismaClient || new PrismaClient();
@@ -109,7 +110,7 @@ async function executePartialReencryption(
       securityLevel
     );
 
-    console.log(`[Revocation] Selected ${chunksToReencrypt.length}/${file.chunkCount} chunks for re-encryption`);
+    secureLog('RevocationService', `Selected ${chunksToReencrypt.length}/${file.chunkCount} chunks for re-encryption`, 'info', { fileId, chunksCount: chunksToReencrypt.length, totalChunks: file.chunkCount });
 
     // 3. Decrypt current encrypted chunk keys
     const encryptedChunkKeysData = JSON.parse(file.encryptedChunkKeys);
@@ -125,11 +126,11 @@ async function executePartialReencryption(
     for (const chunkIndex of chunksToReencrypt) {
       const chunk = file.chunks.find(c => c.chunkIndex === chunkIndex);
       if (!chunk) {
-        console.warn(`[Revocation] Chunk ${chunkIndex} not found, skipping`);
+        secureLog('RevocationService', `Chunk ${chunkIndex} not found, skipping`, 'warn', { fileId, chunkIndex });
         continue;
       }
 
-      console.log(`[Revocation] Re-encrypting chunk ${chunkIndex}...`);
+      secureLog('RevocationService', `Re-encrypting chunk ${chunkIndex}`, 'info', { fileId, chunkIndex });
 
       try {
         // Download encrypted chunk from IPFS
@@ -178,7 +179,7 @@ async function executePartialReencryption(
         );
 
         const newCid = uploadResponse.data.Hash;
-        console.log(`[Revocation] Chunk ${chunkIndex} re-uploaded: ${newCid}`);
+        secureLog('RevocationService', `Chunk ${chunkIndex} re-uploaded to IPFS`, 'info', { fileId, chunkIndex, newCid });
 
         reencryptedChunks.push({
           index: chunkIndex,
@@ -188,14 +189,14 @@ async function executePartialReencryption(
         });
 
       } catch (error) {
-        console.error(`[Revocation] Failed to re-encrypt chunk ${chunkIndex}:`, error.message);
+        secureLog('RevocationService', `Failed to re-encrypt chunk ${chunkIndex}: ${error.message}`, 'error', { fileId, chunkIndex, error: error.message });
         // Continue with other chunks
       }
     }
 
     // 5. Update chunk records in database
     for (const chunk of reencryptedChunks) {
-      await this.prisma.fileChunk.update({
+      await prisma.fileChunk.update({
         where: {
           fileId_chunkIndex: {
             fileId,
@@ -221,42 +222,25 @@ async function executePartialReencryption(
     const newEncryptedChunkKeys = encryptChunkKeys(updatedChunkKeysObject, newMasterKey);
 
     // 7. Update file record
-    await this.prisma.file.update({
+    await prisma.file.update({
       where: { id: fileId },
       data: {
         encryptedChunkKeys: JSON.stringify(newEncryptedChunkKeys),
       },
     });
 
-    // 8. Revoke anonymous access (find by userId if needed, though ideally should use publicKeyHash)
-    let revokedPublicKeyHash = null;
-    if (revokedUserId) {
-      // Find user's publicKey from the user record
-      const user = await this.prisma.user.findUnique({
-        where: { id: revokedUserId },
-        select: { publicKey: true }
+    // 8. Revoke anonymous access using the provided publicKeyHash
+    if (revokedPublicKeyHash) {
+      await prisma.anonymousFileAccess.updateMany({
+        where: {
+          fileId,
+          accessorPublicKeyHash: revokedPublicKeyHash,
+          status: 'active',
+        },
+        data: {
+          status: 'revoked',
+        },
       });
-      
-      if (user && user.publicKey) {
-        revokedPublicKeyHash = crypto
-          .createHash('sha256')
-          .update(user.publicKey)
-          .digest('hex');
-          
-        await this.prisma.anonymousFileAccess.updateMany({
-          where: {
-            fileId,
-            accessorPublicKeyHash: revokedPublicKeyHash,
-            status: 'active',
-          },
-          data: {
-            status: 'revoked',
-            revokedAt: new Date(),
-          },
-        });
-      } else {
-        console.warn(`[Revocation] Could not find public key for user ${revokedUserId}, skipping access revocation`);
-      }
     }
 
     // 9. Update key status for remaining users with anonymous access
@@ -268,12 +252,10 @@ async function executePartialReencryption(
     }
 
     for (const access of remainingAccess) {
-      await this.prisma.anonymousFileAccess.update({
+      await prisma.anonymousFileAccess.update({
         where: { id: access.id },
         data: {
           keyStatus: 'awaiting-offline-redistribution',
-          hasLocalKey: false,
-          keyIssuedAt: null,
           keyPackageFingerprint: newKeyFingerprint,
         },
       });
@@ -281,11 +263,11 @@ async function executePartialReencryption(
 
     // 10. Create revocation record
     const revocationId = crypto.randomUUID();
-    await this.prisma.anonymousRevocation.create({
+    await prisma.anonymousRevocation.create({
       data: {
         id: revocationId,
         fileId,
-        revokedUserId,
+        revokedPublicKeyHash,
         proofR: ownershipProof.R,
         proofS: ownershipProof.s,
         proofMessage: ownershipProof.message,
@@ -301,7 +283,7 @@ async function executePartialReencryption(
     });
 
     // 11. Update file last revocation info
-    await this.prisma.file.update({
+    await prisma.file.update({
       where: { id: fileId },
       data: {
         lastRevocationId: revocationId,
@@ -309,7 +291,30 @@ async function executePartialReencryption(
       },
     });
 
-    console.log(`[Revocation] Partial re-encryption completed: ${reencryptedChunks.length} chunks`);
+    // 12. Create audit log for revocation event with masked publicKeyHash
+    const maskedPublicKeyHash = revokedPublicKeyHash ? maskHashForLogging(revokedPublicKeyHash, 'publicKeyHash') : 'ALL_USERS';
+    await prisma.anonymousAuditLog.create({
+      data: {
+        eventType: 'revocation',
+        fileId: fileId,
+        publicKeyHash: revokedPublicKeyHash || null,
+        metadata: JSON.stringify({
+          revocationId,
+          revokedPublicKeyHash: revokedPublicKeyHash || 'full_revocation',
+          chunksReencrypted: reencryptedChunks.length,
+          totalChunks: file.chunkCount,
+          percentage: Math.round((reencryptedChunks.length / file.chunkCount) * 100),
+          securityLevel,
+        })
+      }
+    });
+
+    secureLog('RevocationService', `Partial re-encryption completed for publicKeyHash: ${maskedPublicKeyHash} - ${reencryptedChunks.length} chunks`, 'info', {
+      fileId,
+      revocationId,
+      publicKeyHash: revokedPublicKeyHash,
+      chunksReencrypted: reencryptedChunks.length
+    });
 
     return {
       success: true,
@@ -321,7 +326,80 @@ async function executePartialReencryption(
     };
 
   } catch (error) {
-    console.error('[Revocation] Partial re-encryption error:', error);
+    secureLog('RevocationService', `Partial re-encryption error: ${error.message}`, 'error', { fileId, revokedPublicKeyHash, error: error.message });
+    throw error;
+  }
+}
+
+/**
+ * Revoke access by publicKeyHash without re-encryption
+ * Simple revocation for quick access denial
+ */
+async function revokeAccessByPublicKeyHash(fileId, publicKeyHash, reason = 'revoked', prismaClient) {
+  try {
+    const prisma = prismaClient || new PrismaClient();
+
+    secureLog('RevocationService', `Revoking access for publicKeyHash on file ${fileId}`, 'info', { fileId, publicKeyHash });
+
+    // Revoke anonymous access
+    await prisma.anonymousFileAccess.updateMany({
+      where: {
+        fileId,
+        accessorPublicKeyHash: publicKeyHash,
+        status: 'active',
+      },
+      data: {
+        status: 'revoked',
+      },
+    });
+
+    // Create revocation record
+    const revocationId = crypto.randomUUID();
+    await prisma.anonymousRevocation.create({
+      data: {
+        id: revocationId,
+        fileId,
+        revokedPublicKeyHash: publicKeyHash,
+        proofR: 'quick-revoke-no-proof',
+        proofS: 'quick-revoke-no-proof',
+        proofMessage: `Quick revocation: ${reason}`,
+        proofTimestamp: new Date(),
+        chunksReencrypted: JSON.stringify([]),
+        revocationStrategy: JSON.stringify({
+          type: 'quick-revoke',
+          reason,
+        }),
+      },
+    });
+
+    // Create audit log
+    const maskedPublicKeyHash = maskHashForLogging(publicKeyHash, 'publicKeyHash');
+    await prisma.anonymousAuditLog.create({
+      data: {
+        eventType: 'revocation',
+        fileId: fileId,
+        publicKeyHash: publicKeyHash,
+        metadata: JSON.stringify({
+          revocationId,
+          reason,
+          type: 'quick-revoke',
+        })
+      }
+    });
+
+    secureLog('RevocationService', `Access revoked for publicKeyHash: ${maskedPublicKeyHash}`, 'info', {
+      fileId,
+      revocationId,
+      publicKeyHash
+    });
+
+    return {
+      success: true,
+      revocationId,
+      message: 'Access revoked successfully',
+    };
+  } catch (error) {
+    secureLog('RevocationService', `Revoke access error: ${error.message}`, 'error', { fileId, publicKeyHash, error: error.message });
     throw error;
   }
 }
@@ -332,7 +410,6 @@ async function executePartialReencryption(
 async function getRevocationHistory(fileId, prismaClient) {
   try {
     const prisma = prismaClient || new PrismaClient();
-    const ownPrisma = !prismaClient; // Track if we created our own instance
     const revocations = await prisma.anonymousRevocation.findMany({
       where: { fileId },
       orderBy: { createdAt: 'desc' },
@@ -340,13 +417,13 @@ async function getRevocationHistory(fileId, prismaClient) {
 
     return revocations.map(rev => ({
       id: rev.id,
-      revokedUserId: rev.revokedUserId,
+      revokedPublicKeyHash: maskHashForLogging(rev.revokedPublicKeyHash, 'publicKeyHash'), // Mask hash in response
       chunksReencrypted: JSON.parse(rev.chunksReencrypted),
       strategy: JSON.parse(rev.revocationStrategy || '{}'),
       timestamp: rev.createdAt,
     }));
   } catch (error) {
-    console.error('[Revocation] Get history error:', error);
+    secureLog('RevocationService', `Get revocation history error: ${error.message}`, 'error', { fileId, error: error.message });
     throw error;
   }
 }
@@ -355,8 +432,17 @@ async function getRevocationHistory(fileId, prismaClient) {
 // These functions can accept an optional prisma client parameter
 // If no prisma is provided, they will create their own instance (for backward compatibility)
 
+const revocationService = {
+  selectChunksForReencryption,
+  executePartialReencryption,
+  revokeAccessByPublicKeyHash,
+  getRevocationHistory,
+};
+
 module.exports = {
   selectChunksForReencryption,
   executePartialReencryption,
+  revokeAccessByPublicKeyHash,
   getRevocationHistory,
+  revocationService,
 };

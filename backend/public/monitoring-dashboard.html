@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anonymous System Monitoring Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .metric-card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .metric-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 12px rgba(0,0,0,0.15);
+        }
+
+        .metric-label {
+            font-size: 0.9em;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+
+        .metric-value {
+            font-size: 2.5em;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 4px;
+        }
+
+        .metric-subtitle {
+            font-size: 0.85em;
+            color: #999;
+        }
+
+        .alert-card {
+            background: #fff3cd;
+            border-left: 4px solid #ff9800;
+        }
+
+        .alert-card .metric-value {
+            color: #ff9800;
+        }
+
+        .danger-card {
+            background: #ffe6e6;
+            border-left: 4px solid #f44336;
+        }
+
+        .danger-card .metric-value {
+            color: #f44336;
+        }
+
+        .success-card {
+            background: #e8f5e9;
+            border-left: 4px solid #4caf50;
+        }
+
+        .success-card .metric-value {
+            color: #4caf50;
+        }
+
+        .section {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .section-title {
+            font-size: 1.5em;
+            margin-bottom: 16px;
+            color: #667eea;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 8px;
+        }
+
+        .activity-list {
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        .activity-item {
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .activity-item:last-child {
+            border-bottom: none;
+        }
+
+        .activity-type {
+            font-weight: 600;
+            color: #667eea;
+            text-transform: capitalize;
+        }
+
+        .activity-hash {
+            font-family: monospace;
+            color: #666;
+            font-size: 0.9em;
+        }
+
+        .activity-time {
+            color: #999;
+            font-size: 0.85em;
+        }
+
+        .controls {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .btn {
+            background: white;
+            color: #667eea;
+            border: 2px solid #667eea;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: 600;
+            transition: all 0.2s;
+            margin: 0 8px;
+        }
+
+        .btn:hover {
+            background: #667eea;
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: white;
+            font-size: 1.2em;
+        }
+
+        .error {
+            background: #f44336;
+            color: white;
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .timestamp {
+            text-align: center;
+            color: white;
+            margin-top: 20px;
+            font-size: 0.9em;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .loading-dot {
+            animation: pulse 1.5s infinite;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔒 Anonymous System Monitoring Dashboard</h1>
+
+        <div class="controls">
+            <button class="btn" onclick="refreshDashboard()">🔄 Refresh All</button>
+            <button class="btn" onclick="checkReplayAttacks()">🛡️ Check Replay Attacks</button>
+            <button class="btn" onclick="checkFailedSignatures()">⚠️ Check Failed Signatures</button>
+        </div>
+
+        <div id="error-container"></div>
+        <div id="loading" class="loading">Loading dashboard data<span class="loading-dot">...</span></div>
+
+        <!-- Main Metrics -->
+        <div id="metrics" class="metrics-grid" style="display: none;">
+            <!-- Metrics will be inserted here dynamically -->
+        </div>
+
+        <!-- Recent Activity -->
+        <div id="activity-section" class="section" style="display: none;">
+            <h2 class="section-title">📊 Recent Activity</h2>
+            <div id="activity-list" class="activity-list">
+                <!-- Activity items will be inserted here -->
+            </div>
+        </div>
+
+        <!-- Security Alerts -->
+        <div id="security-section" class="section" style="display: none;">
+            <h2 class="section-title">🚨 Security Alerts</h2>
+            <div id="security-content">
+                <!-- Security alerts will be inserted here -->
+            </div>
+        </div>
+
+        <div class="timestamp" id="last-updated"></div>
+    </div>
+
+    <script>
+        const API_BASE = '/api/monitoring';
+        let autoRefreshInterval;
+
+        async function fetchJSON(endpoint) {
+            const response = await fetch(`${API_BASE}${endpoint}`);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return response.json();
+        }
+
+        function showError(message) {
+            const errorContainer = document.getElementById('error-container');
+            errorContainer.innerHTML = `<div class="error">❌ ${message}</div>`;
+            setTimeout(() => {
+                errorContainer.innerHTML = '';
+            }, 5000);
+        }
+
+        function formatTimestamp(timestamp) {
+            return new Date(timestamp).toLocaleString();
+        }
+
+        function maskHash(hash) {
+            if (!hash) return 'N/A';
+            return hash.substring(0, 16) + '...';
+        }
+
+        async function loadDashboardMetrics() {
+            try {
+                const data = await fetchJSON('/dashboard');
+
+                const metricsHTML = `
+                    <div class="metric-card success-card">
+                        <div class="metric-label">Active Access Grants</div>
+                        <div class="metric-value">${data.activeAccessGrants || 0}</div>
+                        <div class="metric-subtitle">Currently active</div>
+                    </div>
+
+                    <div class="metric-card">
+                        <div class="metric-label">Access Events</div>
+                        <div class="metric-value">${data.accessEvents || 0}</div>
+                        <div class="metric-subtitle">Total negotiations</div>
+                    </div>
+
+                    <div class="metric-card">
+                        <div class="metric-label">File List Queries</div>
+                        <div class="metric-value">${data.listEvents || 0}</div>
+                        <div class="metric-subtitle">Total queries</div>
+                    </div>
+
+                    <div class="metric-card ${data.integrityAlerts > 0 ? 'alert-card' : ''}">
+                        <div class="metric-label">Integrity Alerts</div>
+                        <div class="metric-value">${data.integrityAlerts || 0}</div>
+                        <div class="metric-subtitle">Reported issues</div>
+                    </div>
+
+                    <div class="metric-card ${data.failedSignatureAttempts > 5 ? 'danger-card' : 'alert-card'}">
+                        <div class="metric-label">Failed Signatures</div>
+                        <div class="metric-value">${data.failedSignatureAttempts || 0}</div>
+                        <div class="metric-subtitle">Invalid attempts</div>
+                    </div>
+
+                    <div class="metric-card ${data.nonceReuseAttempts > 0 ? 'danger-card' : 'success-card'}">
+                        <div class="metric-label">Nonce Reuse Attempts</div>
+                        <div class="metric-value">${data.nonceReuseAttempts || 0}</div>
+                        <div class="metric-subtitle">Replay attacks blocked</div>
+                    </div>
+
+                    <div class="metric-card alert-card">
+                        <div class="metric-label">Recent Revocations</div>
+                        <div class="metric-value">${data.recentRevocations || 0}</div>
+                        <div class="metric-subtitle">Last 24 hours</div>
+                    </div>
+                `;
+
+                document.getElementById('metrics').innerHTML = metricsHTML;
+                document.getElementById('metrics').style.display = 'grid';
+            } catch (error) {
+                showError(`Failed to load metrics: ${error.message}`);
+            }
+        }
+
+        async function loadRecentActivity() {
+            try {
+                const activities = await fetchJSON('/recent-activity?limit=20');
+
+                if (!activities || activities.length === 0) {
+                    document.getElementById('activity-list').innerHTML = '<p style="text-align: center; color: #999;">No recent activity</p>';
+                    return;
+                }
+
+                const activityHTML = activities.map(activity => `
+                    <div class="activity-item">
+                        <div>
+                            <div class="activity-type">${activity.eventType.replace(/_/g, ' ')}</div>
+                            <div class="activity-hash">Hash: ${maskHash(activity.publicKeyHash)}</div>
+                            ${activity.fileId ? `<div class="activity-hash">File: ${activity.fileId.substring(0, 12)}...</div>` : ''}
+                        </div>
+                        <div class="activity-time">${formatTimestamp(activity.timestamp)}</div>
+                    </div>
+                `).join('');
+
+                document.getElementById('activity-list').innerHTML = activityHTML;
+                document.getElementById('activity-section').style.display = 'block';
+            } catch (error) {
+                showError(`Failed to load activity: ${error.message}`);
+            }
+        }
+
+        async function checkReplayAttacks() {
+            try {
+                const data = await fetchJSON('/replay-attacks');
+
+                let alertHTML = `
+                    <p><strong>Replay Attack Detection (Last 5 minutes)</strong></p>
+                    <p>Total nonce reuse attempts: <strong>${data.replayAttemptCount || 0}</strong></p>
+                `;
+
+                if (data.replayAttemptCount > 0) {
+                    alertHTML += '<p style="color: #f44336; margin-top: 10px;">⚠️ Replay attacks detected and blocked!</p>';
+                } else {
+                    alertHTML += '<p style="color: #4caf50; margin-top: 10px;">✅ No replay attacks detected</p>';
+                }
+
+                document.getElementById('security-content').innerHTML = alertHTML;
+                document.getElementById('security-section').style.display = 'block';
+            } catch (error) {
+                showError(`Failed to check replay attacks: ${error.message}`);
+            }
+        }
+
+        async function checkFailedSignatures() {
+            try {
+                const data = await fetchJSON('/failed-signatures');
+
+                let alertHTML = `
+                    <p><strong>Failed Signature Detection (Last 10 minutes)</strong></p>
+                    <p>Total failed signatures: <strong>${data.failedSignatureCount || 0}</strong></p>
+                `;
+
+                if (data.failedSignatureCount > 5) {
+                    alertHTML += '<p style="color: #f44336; margin-top: 10px;">⚠️ High number of failed signatures detected!</p>';
+
+                    if (data.suspiciousPatterns && Object.keys(data.suspiciousPatterns).length > 0) {
+                        alertHTML += '<p style="margin-top: 10px;"><strong>Suspicious patterns:</strong></p><ul>';
+                        for (const [hash, count] of Object.entries(data.suspiciousPatterns)) {
+                            alertHTML += `<li>${maskHash(hash)}: ${count} failures</li>`;
+                        }
+                        alertHTML += '</ul>';
+                    }
+                } else {
+                    alertHTML += '<p style="color: #4caf50; margin-top: 10px;">✅ Normal signature verification activity</p>';
+                }
+
+                document.getElementById('security-content').innerHTML = alertHTML;
+                document.getElementById('security-section').style.display = 'block';
+            } catch (error) {
+                showError(`Failed to check signatures: ${error.message}`);
+            }
+        }
+
+        async function refreshDashboard() {
+            document.getElementById('loading').style.display = 'block';
+
+            try {
+                await Promise.all([
+                    loadDashboardMetrics(),
+                    loadRecentActivity()
+                ]);
+
+                document.getElementById('last-updated').textContent = `Last updated: ${formatTimestamp(new Date())}`;
+            } catch (error) {
+                showError(`Dashboard refresh failed: ${error.message}`);
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+
+        // Initial load
+        refreshDashboard();
+
+        // Auto-refresh every 30 seconds
+        autoRefreshInterval = setInterval(refreshDashboard, 30000);
+
+        // Clean up on page unload
+        window.addEventListener('beforeunload', () => {
+            clearInterval(autoRefreshInterval);
+        });
+    </script>
+</body>
+</html>

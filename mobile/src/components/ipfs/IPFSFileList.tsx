@@ -5,19 +5,24 @@ import { useTheme } from '../../styles';
 import { FileData } from '../../types';
 import { FileViewer } from './FileViewer';
 import { normalizeHex } from '../../utils/aotCrypto';
+import { createAnonymousFileAccessService } from '../../services/AnonymousFileAccessService';
 
 interface IPFSFileListProps {
   onFileDeleted?: (fileId: string) => void;
   externalFiles?: FileData[];
-  ownerUserId?: string;
   ownerPublicKey?: string;
+  anonymousAuth?: {
+    ringSignature: string;
+    timestamp: number;
+    nonce: string;
+  };
 }
 
 export const IPFSFileList: React.FC<IPFSFileListProps> = ({
   onFileDeleted,
   externalFiles = [],
-  ownerUserId,
   ownerPublicKey,
+  anonymousAuth,
 }) => {
   const { colors } = useTheme();
   const { listFiles, deleteFile, getUserFiles } = useIPFS();
@@ -83,11 +88,45 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
 
       try {
         let result;
-        if (ownerUserId || ownerPublicKey) {
+        if (ownerPublicKey && anonymousAuth) {
+          // Use anonymous authentication with provided parameters
           result = await getUserFiles({
-            userId: ownerUserId,
             publicKey: ownerPublicKey,
+            ringSignature: anonymousAuth.ringSignature,
+            timestamp: anonymousAuth.timestamp,
+            nonce: anonymousAuth.nonce
           });
+        } else if (ownerPublicKey) {
+          // Use AnonymousFileAccessService to generate proper auth parameters
+          console.log('IPFSFileList: Using AnonymousFileAccessService to fetch files');
+          const anonymousService = createAnonymousFileAccessService();
+
+          // Check if identity is set up
+          const hasIdentity = await anonymousService.hasIdentity();
+          if (!hasIdentity) {
+            console.warn('IPFSFileList: No anonymous identity found, falling back to listFiles');
+            result = await listFiles();
+          } else {
+            // Get files using proper anonymous authentication
+            const accessibleFiles = await anonymousService.listAccessibleFiles();
+
+            // Transform to match expected format
+            result = {
+              success: true,
+              files: accessibleFiles.map(file => ({
+                id: file.fileId,
+                name: file.fileName,
+                size: file.fileSize,
+                ipfsHash: file.fileId, // fileId is the IPFS hash
+                uploadTime: new Date(file.uploadedAt),
+                status: 'active' as const,
+                ownershipPublicKey: file.ownerPublicKey,
+                chunkCount: file.chunkCount,
+                mimeType: file.mimeType,
+                grantedAt: file.grantedAt,
+              }))
+            };
+          }
         } else {
           result = await listFiles();
         }
@@ -97,9 +136,9 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
         }
 
         if (result.success && result.files) {
-          const filesList = Array.isArray(result.files) ? result.files : [];
-          const filtered = normalizedOwnerKey
-            ? filesList.filter((file) =>
+          const filesList: FileData[] = Array.isArray(result.files) ? result.files : [];
+          const filtered: FileData[] = normalizedOwnerKey
+            ? filesList.filter((file: FileData) =>
                 file.ownershipPublicKey
                   ? normalizeHex(file.ownershipPublicKey) === normalizedOwnerKey
                   : true,
@@ -121,7 +160,7 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
         }
       }
     },
-    [getUserFiles, listFiles, normalizedOwnerKey, ownerPublicKey, ownerUserId],
+    [getUserFiles, listFiles, normalizedOwnerKey, ownerPublicKey, anonymousAuth],
   );
 
   useEffect(() => {

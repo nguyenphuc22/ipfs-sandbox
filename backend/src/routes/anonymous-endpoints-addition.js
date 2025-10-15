@@ -6,31 +6,44 @@
 const express = require('express');
 const { FileAccessService } = require('../services/FileAccessService');
 const { RingSignatureService } = require('../services/RingSignatureService');
+const { secureLog, maskHashForLogging } = require('../utils/monitoring');
 
-// Get Prisma instance from shared context (passed from server.js)
-let prisma;
+// Properly declare Router at the top
+const router = express.Router();
+
+// Store dependencies for dependency injection
+let prismaInstance;
 let fileAccessService;
 
-// Function to initialize with shared Prisma instance
+/**
+ * Initialize router with dependency injection
+ * @param {PrismaClient} prismaClient - Shared Prisma instance from server.js
+ * @returns {express.Router} Configured router instance
+ */
 function init(prismaClient) {
-    prisma = prismaClient;
-    const ringSignatureService = new RingSignatureService(prisma);
-    fileAccessService = new FileAccessService(ringSignatureService, prisma);
+    prismaInstance = prismaClient;
+    
+    // Create services with dependency injection
+    const ringSignatureService = new RingSignatureService(prismaInstance);
+    fileAccessService = new FileAccessService(ringSignatureService, prismaInstance);
+    
+    // Return the configured router
     return router;
 }
-
-const router = express.Router();
 
 /**
  * POST /api/files/anonymous-list
  * List files accessible by public key (anonymous)
  */
 router.post('/anonymous-list', async (req, res) => {
+    const startTime = Date.now();
+    
     try {
         const { publicKey, ringSignature, timestamp, nonce } = req.body;
 
         // Validate input
         if (!publicKey || !ringSignature || !timestamp || !nonce) {
+            log('AnonymousList', `Missing required fields in request from IP: ${req.ip}`, 'warn');
             return res.status(400).json({
                 success: false,
                 error: 'Missing required fields: publicKey, ringSignature, timestamp, nonce'
@@ -47,6 +60,11 @@ router.post('/anonymous-list', async (req, res) => {
         // Use FileAccessService to handle the logic
         const files = await fileAccessService.listAccessibleFiles(params);
 
+        const duration = Date.now() - startTime;
+        const publicKeyHash = fileAccessService.ringService.hashPublicKey(publicKey);
+        const maskedPublicKeyHash = maskHashForLogging(publicKeyHash, 'publicKeyHash');
+        secureLog('AnonymousList', `Successfully listed ${files.length} files for publicKeyHash: ${maskedPublicKeyHash} [${duration}ms]`, 'info', { publicKeyHash });
+
         return res.json({
             success: true,
             files: files,
@@ -54,7 +72,9 @@ router.post('/anonymous-list', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('[Anonymous List] Error:', error);
+        const duration = Date.now() - startTime;
+        secureLog('AnonymousList', `Error processing list request: ${error.message} [${duration}ms]`, 'error', { ip: req.ip });
+        
         return res.status(500).json({
             success: false,
             error: 'Internal server error',
@@ -68,12 +88,15 @@ router.post('/anonymous-list', async (req, res) => {
  * Negotiate access to specific file (anonymous)
  */
 router.post('/:fileId/anonymous-access', async (req, res) => {
+    const startTime = Date.now();
+    
     try {
         const { fileId } = req.params;
         const { publicKey, ringSignature, timestamp, nonce } = req.body;
 
         // Validate input
         if (!publicKey || !ringSignature || !timestamp || !nonce) {
+            secureLog('AnonymousAccess', `Missing required fields for file ${fileId} from IP: ${req.ip}`, 'warn', { fileId, ip: req.ip });
             return res.status(400).json({
                 success: false,
                 error: 'Missing required fields'
@@ -91,13 +114,20 @@ router.post('/:fileId/anonymous-access', async (req, res) => {
         // Use FileAccessService to handle the logic
         const result = await fileAccessService.negotiateAccess(params);
 
+        const duration = Date.now() - startTime;
+        const publicKeyHash = fileAccessService.ringService.hashPublicKey(publicKey);
+        const maskedPublicKeyHash = maskHashForLogging(publicKeyHash, 'publicKeyHash');
+        secureLog('AnonymousAccess', `Access negotiation successful for file ${fileId} and publicKeyHash: ${maskedPublicKeyHash} [${duration}ms]`, 'info', { fileId, publicKeyHash });
+
         return res.json({
             success: true,
             ...result
         });
 
     } catch (error) {
-        console.error('[Anonymous Access] Error:', error);
+        const duration = Date.now() - startTime;
+        secureLog('AnonymousAccess', `Error negotiating access for file ${fileId}: ${error.message} [${duration}ms]`, 'error', { fileId, ip: req.ip });
+        
         return res.status(500).json({
             success: false,
             error: 'Internal server error',
@@ -111,6 +141,8 @@ router.post('/:fileId/anonymous-access', async (req, res) => {
  * Report chunk integrity issue (anonymous)
  */
 router.post('/:fileId/anonymous-integrity-alert', async (req, res) => {
+    const startTime = Date.now();
+    
     try {
         const { fileId } = req.params;
         const {
@@ -121,6 +153,7 @@ router.post('/:fileId/anonymous-integrity-alert', async (req, res) => {
 
         // Validate input
         if (!publicKey || !ringSignature || !timestamp || !nonce || chunkIndex === undefined || expectedHash === undefined) {
+            secureLog('IntegrityAlert', `Missing required fields for integrity alert on file ${fileId} from IP: ${req.ip}`, 'warn', { fileId, ip: req.ip });
             return res.status(400).json({
                 success: false,
                 error: 'Missing required fields'
@@ -142,6 +175,11 @@ router.post('/:fileId/anonymous-integrity-alert', async (req, res) => {
         // Use FileAccessService to handle the logic
         await fileAccessService.reportIntegrityAlert(params);
 
+        const duration = Date.now() - startTime;
+        const publicKeyHash = fileAccessService.ringService.hashPublicKey(publicKey);
+        const maskedPublicKeyHash = maskHashForLogging(publicKeyHash, 'publicKeyHash');
+        secureLog('IntegrityAlert', `Integrity alert recorded for file ${fileId}, chunk ${chunkIndex}, by publicKeyHash: ${maskedPublicKeyHash} [${duration}ms]`, 'info', { fileId, chunkIndex, publicKeyHash });
+
         return res.json({
             success: true,
             message: 'Integrity alert recorded',
@@ -149,7 +187,66 @@ router.post('/:fileId/anonymous-integrity-alert', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('[Integrity Alert] Error:', error);
+        const duration = Date.now() - startTime;
+        secureLog('IntegrityAlert', `Error recording integrity alert for file ${fileId}, chunk ${chunkIndex}: ${error.message} [${duration}ms]`, 'error', { fileId, chunkIndex, ip: req.ip });
+        
+        return res.status(500).json({
+            success: false,
+            error: 'Internal server error',
+            details: error.message
+        });
+    }
+});
+
+/**
+ * POST /api/audit/anonymous-log
+ * Log audit event (anonymous)
+ */
+router.post('/audit/anonymous-log', async (req, res) => {
+    const startTime = Date.now();
+    
+    try {
+        const {
+            eventType, fileId, publicKey, ringSignature,
+            timestamp, nonce, metadata
+        } = req.body;
+
+        // Validate input
+        if (!eventType || !fileId || !publicKey || !ringSignature || !timestamp || !nonce) {
+            secureLog('AnonymousAuditLog', `Missing required fields for audit event ${eventType} from IP: ${req.ip}`, 'warn', { eventType, fileId, ip: req.ip });
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required fields'
+            });
+        }
+
+        const params = {
+            eventType,
+            fileId,
+            publicKey,
+            ringSignature,
+            timestamp,
+            nonce,
+            metadata: metadata || {}
+        };
+
+        // Use FileAccessService to handle the logic
+        await fileAccessService.logAnonymousAuditEvent(params);
+
+        const duration = Date.now() - startTime;
+        const publicKeyHash = fileAccessService.ringService.hashPublicKey(publicKey);
+        const maskedPublicKeyHash = maskHashForLogging(publicKeyHash, 'publicKeyHash');
+        secureLog('AnonymousAuditLog', `Audit event ${eventType} logged for file ${fileId} by publicKeyHash: ${maskedPublicKeyHash} [${duration}ms]`, 'info', { eventType, fileId, publicKeyHash });
+
+        return res.json({
+            success: true,
+            message: 'Audit event logged'
+        });
+
+    } catch (error) {
+        const duration = Date.now() - startTime;
+        secureLog('AnonymousAuditLog', `Error logging audit event ${eventType}: ${error.message} [${duration}ms]`, 'error', { eventType, ip: req.ip });
+        
         return res.status(500).json({
             success: false,
             error: 'Internal server error',

@@ -1,6 +1,3 @@
-// Prisma schema for IPFS AOT System with Chunking
-// Implements full thesis architecture with chunk-based storage
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -10,206 +7,117 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ============================================================================
-// USER MANAGEMENT
-// ============================================================================
-
 model User {
-  id           String   @id @default(uuid())
-  username     String   @unique
-  email        String   @unique
-  passwordHash String
-  publicKey    String? // User's public key for encryption
-  secretKey    String? // DEPRECATED: Should not store secret keys
-  role         String   @default("user")
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  // Relations
-  uploadedFiles File[]           @relation("FileUploader")
+  id            String      @id @default(uuid())
+  publicKey     String      @unique
+  displayLabel  String?
+  role          String      @default("user")
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  uploadedFiles File[]      @relation("FileUploader")
   signatures    Signature[]
 }
 
-// ============================================================================
-// FILE MANAGEMENT WITH AOT & CHUNKING
-// ============================================================================
-
 model File {
-  id String @id @default(uuid())
-
-  // Basic file info
-  fileName   String
-  totalSize  Int
-  mimeType   String?
-  chunkCount Int     @default(0)
-
-  // Metadata
-  metadata     String? // JSON metadata
-  metadataHash String // Hash of metadata for verification
-
-  // Encryption
-  encryptedChunkKeys String // Encrypted JSON: { "0": "key0", "1": "key1", ... }
-
-  // Ring Signature for Upload Authentication
-  ringSignature    String?
-  ringPublicKeys   String? // JSON array of public keys in ring
-  escrowedIdentity String? // Encrypted identity for adjudicator
-
-  // Schnorr Anonymous Ownership Token
-  ownershipPublicKey String // Q = k·G (Schnorr public key)
-  ownershipCreatedAt DateTime @default(now())
-
-  // Upload info
-  uploaderId String
-  uploader   User   @relation("FileUploader", fields: [uploaderId], references: [id])
-
-  // Status
-  status    String   @default("active") // active, revoked, deleted
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Revocation tracking
-  lastRevocationId String?
-  lastRevocationAt DateTime?
-
-  // Relations
-  chunks          FileChunk[]
-  signatures      Signature[]
-  anonymousAccess AnonymousFileAccess[] // NEW: Anonymous access control
-  sharingRequests AnonymousSharingRequest[] // NEW: Anonymous sharing
-  revocations     AnonymousRevocation[]
-  integrityAlerts IntegrityAlert[]
+  id                 String                    @id @default(uuid())
+  fileName           String
+  totalSize          Int
+  mimeType           String?
+  chunkCount         Int                       @default(0)
+  metadata           String?
+  metadataHash       String
+  encryptedChunkKeys String
+  ringSignature      String?
+  ringPublicKeys     String?
+  escrowedIdentity   String?
+  ownershipPublicKey String
+  ownershipCreatedAt DateTime                  @default(now())
+  uploaderId         String
+  status             String                    @default("active")
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+  lastRevocationId   String?
+  lastRevocationAt   DateTime?
+  anonymousAccess    AnonymousFileAccess[]
+  revocations        AnonymousRevocation[]
+  sharingRequests    AnonymousSharingRequest[]
+  uploader           User                      @relation("FileUploader", fields: [uploaderId], references: [id])
+  chunks             FileChunk[]
+  integrityAlerts    IntegrityAlert[]
+  signatures         Signature[]
 
   @@index([ownershipPublicKey])
   @@index([uploaderId])
   @@index([status])
 }
 
-// ============================================================================
-// CHUNK STORAGE
-// ============================================================================
-
 model FileChunk {
-  id     String @id @default(uuid())
-  fileId String
-  file   File   @relation(fields: [fileId], references: [id], onDelete: Cascade)
-
-  // Chunk identification
-  chunkIndex Int // 0-based index
-  chunkHash  String // SHA-256 hash of decrypted chunk (for integrity)
-
-  // IPFS storage
-  ipfsCid String // CID of encrypted chunk in IPFS
-  size    Int // Size in bytes
-
-  // Metadata
+  id          String   @id @default(uuid())
+  fileId      String
+  chunkIndex  Int
+  chunkHash   String
+  ipfsCid     String
+  size        Int
   encryptedAt DateTime @default(now())
   createdAt   DateTime @default(now())
+  file        File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
 
   @@unique([fileId, chunkIndex])
   @@index([ipfsCid])
 }
 
-// ============================================================================
-// ACCESS CONTROL (DEPRECATED - Use AnonymousFileAccess)
-// ============================================================================
-
-
-
-// ============================================================================
-// ANONYMOUS REVOCATION WITH SCHNORR PROOF
-// ============================================================================
-
 model AnonymousRevocation {
-  id     String @id @default(uuid())
-  fileId String
-  file   File   @relation(fields: [fileId], references: [id], onDelete: Cascade)
-
-  // Target user to revoke (can be null for full revocation)
-  revokedUserId String?
-
-  // Schnorr Ownership Proof
-  proofR         String // R = r·G (commitment point, 65 bytes hex)
-  proofS         String // s = r + e·k (response scalar, 32 bytes hex)
-  proofMessage   String // Message signed (fileId:timestamp:targetUser)
-  proofTimestamp DateTime
-
-  // Ring signature for anonymity
-  ringSignature  String?
-  ringPublicKeys String? // JSON array
-
-  // Re-encryption details
-  chunksReencrypted  String // JSON array of chunk indices re-encrypted
-  revocationStrategy String? // JSON: strategy details
-
-  // Metadata
-  createdAt        DateTime @default(now())
-  executedBySystem Boolean  @default(false)
+  id                   String   @id @default(uuid())
+  fileId               String
+  revokedPublicKeyHash String?
+  proofR               String
+  proofS               String
+  proofMessage         String
+  proofTimestamp       DateTime
+  ringSignature        String?
+  ringPublicKeys       String?
+  chunksReencrypted    String
+  revocationStrategy   String?
+  createdAt            DateTime @default(now())
+  executedBySystem     Boolean  @default(false)
+  file                 File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
 
   @@index([fileId])
-  @@index([revokedUserId])
+  @@index([revokedPublicKeyHash])
   @@index([createdAt])
 }
 
-// ============================================================================
-// INTEGRITY & AUDIT
-// ============================================================================
-
 model IntegrityAlert {
-  id     String @id @default(uuid())
-  fileId String
-  file   File   @relation(fields: [fileId], references: [id], onDelete: Cascade)
-
-  // Alert details
-  chunkIndex   Int
-  expectedHash String
-  actualHash   String?
-
-  // Reporter - UPDATED: Use publicKeyHash for anonymity
-  reportedByPublicKeyHash String // SHA256(publicKey) - anonymous reporter
-  reportedAt              DateTime @default(now())
-
-  // Resolution
-  resolved   Boolean   @default(false)
-  resolvedAt DateTime?
-  resolution String? // What action was taken
+  id                      String    @id @default(uuid())
+  fileId                  String
+  chunkIndex              Int
+  expectedHash            String
+  actualHash              String?
+  reportedByPublicKeyHash String
+  reportedAt              DateTime  @default(now())
+  resolved                Boolean   @default(false)
+  resolvedAt              DateTime?
+  resolution              String?
+  file                    File      @relation(fields: [fileId], references: [id], onDelete: Cascade)
 
   @@index([fileId])
   @@index([resolved])
   @@index([reportedByPublicKeyHash])
 }
 
-
-
-// ============================================================================
-// ANONYMOUS FILE ACCESS (NEW - Replaces UserFileAccess)
-// ============================================================================
-
-// ✅ NEW: Anonymous file access using publicKeyHash instead of userId
-// This preserves anonymity while allowing access control
 model AnonymousFileAccess {
-  id String @id @default(uuid())
-
-  // ✅ ANONYMOUS: Use hash of public key, not userId
-  accessorPublicKeyHash String // SHA256(publicKey) - no direct identity link
+  id                    String    @id @default(uuid())
+  accessorPublicKeyHash String
   fileId                String
-  file                  File   @relation(fields: [fileId], references: [id], onDelete: Cascade)
-
-  // Access metadata
-  grantedAt DateTime  @default(now())
-  expiresAt DateTime? // Optional expiration
-
-  // Proof tracking
-  lastAccessProof String? // Latest ring signature
-  lastAccessAt    DateTime?
-  accessCount     Int       @default(0)
-
-  // Key management (client-side, not stored on server)
-  keyStatus             String  @default("client-managed")
-  keyPackageFingerprint String? // Hash of key package for audit
-
-  // Status
-  status String @default("active") // active, revoked
+  grantedAt             DateTime  @default(now())
+  expiresAt             DateTime?
+  lastAccessProof       String?
+  lastAccessAt          DateTime?
+  accessCount           Int       @default(0)
+  keyStatus             String    @default("client-managed")
+  keyPackageFingerprint String?
+  status                String    @default("active")
+  file                  File      @relation(fields: [fileId], references: [id], onDelete: Cascade)
 
   @@unique([accessorPublicKeyHash, fileId])
   @@index([accessorPublicKeyHash])
@@ -217,31 +125,16 @@ model AnonymousFileAccess {
   @@index([status])
 }
 
-// ============================================================================
-// ANONYMOUS AUDIT LOG (NEW - Replaces AuditLog)
-// ============================================================================
-
-// ✅ NEW: Anonymous audit logging using publicKeyHash
 model AnonymousAuditLog {
-  id String @id @default(uuid())
-
-  // Event details
-  eventType String // access_negotiation, chunk_download, integrity_alert, etc.
-  fileId    String?
-
-  // ✅ ANONYMOUS: Use publicKeyHash, not userId
-  publicKeyHash     String? // SHA256(publicKey) - anonymous actor
-  deviceFingerprint String? // Hash of device info (not deviceId)
-
-  // Cryptographic proof
-  ringSignature  String? // Ring signature proof of action
-  ringPublicKeys String? // JSON array of public keys in ring
-
-  // Event metadata (no PII)
-  metadata String? // JSON with event-specific data
-
-  // Timing
-  timestamp DateTime @default(now())
+  id                String   @id @default(uuid())
+  eventType         String
+  fileId            String?
+  publicKeyHash     String?
+  deviceFingerprint String?
+  ringSignature     String?
+  ringPublicKeys    String?
+  metadata          String?
+  timestamp         DateTime @default(now())
 
   @@index([publicKeyHash])
   @@index([eventType])
@@ -249,32 +142,18 @@ model AnonymousAuditLog {
   @@index([fileId])
 }
 
-// ============================================================================
-// ANONYMOUS SHARING REQUEST (NEW)
-// ============================================================================
-
-// ✅ NEW: Anonymous file sharing requests
 model AnonymousSharingRequest {
-  id String @id @default(uuid())
-
-  fileId String
-  file   File   @relation(fields: [fileId], references: [id])
-
-  // ✅ ANONYMOUS: Use publicKeyHash for both parties
-  sharerPublicKeyHash    String // Hash of file sharer
-  recipientPublicKeyHash String // Hash of recipient
-
-  // Cryptographic proofs
-  ownershipProof String // Schnorr proof from owner
-  ringSignature  String // Ring signature
-
-  // Metadata (no key material stored)
-  keyPackageFingerprint String? // Fingerprint for audit
-
-  // Status
-  status      String    @default("pending") // pending, accepted, rejected
-  requestedAt DateTime  @default(now())
-  respondedAt DateTime?
+  id                     String    @id @default(uuid())
+  fileId                 String
+  sharerPublicKeyHash    String
+  recipientPublicKeyHash String
+  ownershipProof         String
+  ringSignature          String
+  keyPackageFingerprint  String?
+  status                 String    @default("pending")
+  requestedAt            DateTime  @default(now())
+  respondedAt            DateTime?
+  file                   File      @relation(fields: [fileId], references: [id])
 
   @@index([sharerPublicKeyHash])
   @@index([recipientPublicKeyHash])
@@ -282,20 +161,16 @@ model AnonymousSharingRequest {
   @@index([status])
 }
 
-// ============================================================================
-// LEGACY SIGNATURE SUPPORT (Keep for backward compatibility)
-// ============================================================================
-
 model Signature {
   id           String   @id @default(uuid())
   fileId       String
-  file         File     @relation(fields: [fileId], references: [id])
   signerId     String
-  signer       User     @relation(fields: [signerId], references: [id])
-  ringUserIds  String // JSON array of user IDs in the ring
-  signature    String // The ring signature data
+  ringUserIds  String
+  signature    String
   isOpened     Boolean  @default(false)
-  openingProof String? // Proof when signature is opened
+  openingProof String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  signer       User     @relation(fields: [signerId], references: [id])
+  file         File     @relation(fields: [fileId], references: [id])
 }

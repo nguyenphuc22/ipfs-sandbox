@@ -6,12 +6,10 @@ export interface AOTIdentity {
   publicKey: string;
   privateKey: string;
   escrowedIdentity?: string | null;
-  userId?: string;
   registeredAt?: string;
 }
 
 export interface RegisteredRingMember {
-  userId: string;
   identifier: string;
   publicKey: string;
   displayName?: string;

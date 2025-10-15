@@ -16,6 +16,7 @@ import {
 import type { ViewStyle } from 'react-native';
 import { useTheme } from '../../styles';
 import type { FileData } from '../../types';
+import { anonymousFileAccessService } from '../../services/AnonymousFileAccessService';
 
 // Download phases as per thesis (client-managed keys)
 type DownloadPhase = 'idle' | 'access' | 'waitingKey' | 'keys' | 'chunks' | 'ready';
@@ -280,8 +281,19 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
       retries: (chunk.retries || 0) + 1,
     });
 
-    // TODO: Report integrity alert to backend
-    // await apiService.reportIntegrityAlert(file.id, { chunkIndex, ... });
+    // Report integrity alert to backend using anonymous service
+    try {
+      await anonymousFileAccessService.reportIntegrityAlert({
+        fileId: file.id,
+        chunkIndex: chunkIndex,
+        expectedHash: chunk.hash || '', // This would be the expected hash
+        actualHash: null, // Actual hash after verification (would be computed after download)
+        retryCount: chunk.retries ? (chunk.retries + 1) : 1,
+      });
+    } catch (error) {
+      console.warn('[SecureDownloadScreen] Failed to report integrity alert:', error);
+      // Don't fail the retry just because we couldn't report the alert
+    }
 
     // Retry download
     // ... (similar to startChunkDownload for single chunk)
