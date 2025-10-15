@@ -5,6 +5,8 @@ import { AOTIdentity, RegisteredRingMember, RingContext } from '../types';
 import { generateKeyPair, initializeCrypto, toCompressedPublicKey } from '../utils/aotCrypto';
 
 const STORAGE_KEY = 'aot_identity_v1';
+const PUBLIC_KEY_STORAGE_KEY = 'aot_public_key';
+const SECRET_KEY_STORAGE_KEY = 'aot_secret_key';
 
 const createRandomIdentifier = () => `user-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -47,17 +49,39 @@ export const useAOTIdentity = (): UseAOTIdentityResult => {
   const authServiceRef = useRef(new AuthService());
   const initializedRef = useRef(false);
 
+  const syncKeyMaterial = useCallback(async (value: AOTIdentity | null) => {
+    if (!value) {
+      await AsyncStorage.multiRemove([PUBLIC_KEY_STORAGE_KEY, SECRET_KEY_STORAGE_KEY]);
+      return;
+    }
+
+    const entries: [string, string][] = [];
+    if (value.publicKey) {
+      entries.push([PUBLIC_KEY_STORAGE_KEY, value.publicKey]);
+    }
+    if (value.privateKey) {
+      entries.push([SECRET_KEY_STORAGE_KEY, value.privateKey]);
+    }
+
+    if (entries.length > 0) {
+      await AsyncStorage.multiSet(entries);
+    } else {
+      await AsyncStorage.multiRemove([PUBLIC_KEY_STORAGE_KEY, SECRET_KEY_STORAGE_KEY]);
+    }
+  }, []);
+
   const loadStoredIdentity = useCallback(async () => {
     try {
       const stored = await AsyncStorage.getItem(STORAGE_KEY);
       const parsed = deserializeIdentity(stored);
       if (parsed) {
         setIdentity(parsed);
+        await syncKeyMaterial(parsed);
       }
     } catch (err) {
       console.warn('Failed to load stored AOT identity:', err);
     }
-  }, []);
+  }, [syncKeyMaterial]);
 
   useEffect(() => {
     if (!initializedRef.current) {
@@ -69,8 +93,11 @@ export const useAOTIdentity = (): UseAOTIdentityResult => {
 
   const persistIdentity = useCallback(async (value: AOTIdentity) => {
     setIdentity(value);
-    await AsyncStorage.setItem(STORAGE_KEY, serializeIdentity(value));
-  }, []);
+    await Promise.all([
+      AsyncStorage.setItem(STORAGE_KEY, serializeIdentity(value)),
+      syncKeyMaterial(value),
+    ]);
+  }, [syncKeyMaterial]);
 
   const resolveIdentityFromContext = useCallback(
     async (draft: AOTIdentity): Promise<{ identity: AOTIdentity; context: RingContext }> => {

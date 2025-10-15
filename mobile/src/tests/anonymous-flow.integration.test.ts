@@ -21,6 +21,8 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
   setItem: jest.fn(),
   removeItem: jest.fn(),
   clear: jest.fn(),
+  multiSet: jest.fn(),
+  multiRemove: jest.fn(),
 }));
 
 // Mock fetch for API calls

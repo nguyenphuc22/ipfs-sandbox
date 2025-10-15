@@ -12,6 +12,8 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
   getItem: jest.fn(),
   setItem: jest.fn(),
   removeItem: jest.fn(),
+  multiSet: jest.fn(),
+  multiRemove: jest.fn(),
 }));
 
 describe('AnonymousFileAccessService - Integration Smoke Test', () => {
@@ -28,16 +30,6 @@ describe('AnonymousFileAccessService - Integration Smoke Test', () => {
 
   it('should complete the full anonymous flow: init identity → fetch list → access negotiation → integrity alert', async () => {
     // Step 1: Initialize identity (set public/secret keys in storage)
-    (AsyncStorage.getItem as jest.MockedFunction<typeof AsyncStorage.getItem>)
-      .mockResolvedValueOnce(null) // For hasIdentity check first call
-      .mockResolvedValueOnce(mockPublicKey) // for getPublicKey
-      .mockResolvedValueOnce(mockSecretKey); // for getSecretKey
-
-    (AsyncStorage.setItem as jest.MockedFunction<typeof AsyncStorage.setItem>)
-      .mockResolvedValueOnce(Promise.resolve()) // for setting public key
-      .mockResolvedValueOnce(Promise.resolve()); // for setting secret key
-
-    // Verify that identity exists
     (AsyncStorage.getItem as jest.MockedFunction<typeof AsyncStorage.getItem>)
       .mockImplementation((key: string) => {
         if (key === 'aot_public_key') return Promise.resolve(mockPublicKey);
@@ -150,8 +142,7 @@ describe('AnonymousFileAccessService - Integration Smoke Test', () => {
   it('should fail gracefully when identity is not initialized', async () => {
     // Mock that no identity exists
     (AsyncStorage.getItem as jest.MockedFunction<typeof AsyncStorage.getItem>)
-      .mockResolvedValueOnce(null) // public key not found
-      .mockResolvedValueOnce(null); // secret key not found
+      .mockImplementation(() => Promise.resolve(null));
 
     const hasIdentity = await anonymousService.hasIdentity();
     expect(hasIdentity).toBe(false);

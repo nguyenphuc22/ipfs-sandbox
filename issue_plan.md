@@ -103,3 +103,25 @@
 - ✅ `SYSTEM_ARCHITECTURE.md` đã cập nhật tất cả thuật ngữ cũ - UX table (dòng 482) sử dụng `AnonymousFileAccess` và `accessorPublicKeyHash`.
 - ✅ `New_Thesis.md` đã cập nhật tất cả references - diagram (dòng 211), code snippets (318, 732, 826, 887, 1074), và revocation payload (dòng 445) đều dùng `targetPublicKeyHash` và `AnonymousFileAccess`.
 - ✅ Tất cả documentation đã được đồng bộ với anonymous implementation - không còn userId/targetUser references.
+
+## Task 9 – Anonymous Upload Alignment 🚧 **ĐANG THIẾU**
+- [ ] **Bỏ phụ thuộc `userId` trong upload route**
+  - Refactor `backend/src/routes/files-legacy-upload.js` (`/chunked-upload`) để không còn sinh `userId` từ `getUserByPublicKey`
+  - Tính trực tiếp `uploaderPublicKeyHash = SHA256(ownershipPublicKey)` và truyền xuống service thay cho `userId`
+  - Xoá các trường `ownerUserId`/`ownerIdentifier` khỏi record tạo mới trong `aotStorage`
+- [ ] **Cập nhật service `uploadFileWithChunks` dùng publicKey hash**
+  - Đổi chữ ký hàm nhận `{ uploaderPublicKeyHash, ownershipPublicKey }` thay vì `userId`
+  - Bỏ truy vấn `prisma.user.findUnique({ id: userId })`; thay bằng hash đã tính để tạo `AnonymousFileAccess`
+  - Đảm bảo audit log `metadata` không bị mất thông tin (ghi rõ publicKey & schnorr proof)
+- [ ] **Điều chỉnh schema Prisma & migration**
+  - Thêm cột `uploaderPublicKeyHash` cho bảng `File`, cho phép `uploaderId` nullable hoặc loại bỏ hoàn toàn quan hệ `User`
+  - Cập nhật các chỉ mục liên quan (ví dụ `@@index([uploaderPublicKeyHash])`)
+  - Tạo migration mới và script chuyển dữ liệu cũ (`uploaderId` → hash từ `User.publicKey` nếu tồn tại)
+- [ ] **Đồng bộ test & seed**
+  - Cập nhật toàn bộ e2e/unit test dưới `backend/src/services/__tests__` để không tạo `prisma.user`
+  - Thêm case kiểm tra: upload thành công khi chỉ có `ownershipPublicKey` (không user record)
+  - Làm sạch seed/demo (`backend/data/aot-records.json`) để xóa `ownerUserId`, chỉ lưu `ownershipPublicKey`
+- [ ] **Cập nhật tài liệu**
+  - Ghi lại flow upload ẩn danh mới trong `DOWNLOAD_FLOW_FINAL.md` & `SYSTEM_ARCHITECTURE.md`
+  - Thêm cảnh báo trong `New_Thesis.md` về việc lưu `uploaderPublicKeyHash` thay vì `uploaderId`
+  - Cập nhật checklist trong `backend/test-anonymous-routes-priority.md` để xác minh upload không cần `userId`
