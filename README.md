@@ -1,6 +1,6 @@
 # IPFS ID-RS Sandbox
 
-A comprehensive IPFS (InterPlanetary File System) Identity-based Ring Signatures sandbox environment with private network support, featuring a secure gateway architecture and cross-platform mobile application with dual-mode operation.
+A comprehensive IPFS (InterPlanetary File System) Identity-based Ring Signatures sandbox environment with private network support, featuring a secure gateway architecture and cross-platform mobile application.
 
 ## 🏗️ System Architecture
 
@@ -15,7 +15,7 @@ This project implements a complete IPFS private network with the following compo
 
 ### Mobile Application
 - **React Native**: Cross-platform mobile app (iOS/Android)
-- **Dual-Mode Operation**: Online (gateway integration) and Offline (mock layer)
+- **Direct Gateway Mode**: Real-time integration with the secured backend
 - **File Management**: Document picker, image picker, and comprehensive file operations
 - **IPFS Integration**: Complete CRUD operations with private IPFS network
 - **Modern UI**: TypeScript-based with theme support and real-time status monitoring
@@ -121,11 +121,6 @@ curl http://localhost:3000/api/files/YOUR_HASH
 - **IPFS Gateway**: `http://localhost:8080` ✅ WORKING (Public gateway interface)
 - **Storage Nodes**: Internal-only (no external ports) ✅ HEALTHY
 
-### Mobile App Modes
-- **🌐 Online Mode**: Direct gateway integration with real IPFS operations
-- **📱 Offline Mode**: Full-featured mock layer for development and testing
-- **🔄 Mode Switching**: Real-time switching between online and offline modes
-
 ## 🔒 Security Architecture
 
 ### Private Network Design
@@ -139,26 +134,24 @@ curl http://localhost:3000/api/files/YOUR_HASH
 - Private network access controls
 - API endpoint protection
 - File encryption at rest
+- Pseudonymous registry that stores only display labels and public keys while private keys stay on-device
 
 ## 📱 Mobile Application Features
 
-### Dual-Mode Operation
+### Identity & Key Management
+- One-time initialization screen prompts the user for a display name and generates a Schnorr key pair locally
+- Registration sends only the display name and public key to the gateway; the private key never leaves the device
+- Identity metadata is cached securely with support for restoring server-issued identifiers on subsequent launches
+- Home screen file listings automatically filter by the active identity's public key so each user sees only their content
 
-#### 🌐 Online Mode (Gateway Integration)
-- **Real IPFS Operations**: Direct connection to gateway at `localhost:3000`
+### Gateway Integration Highlights
+- **Real IPFS Operations**: Direct connection to the gateway at `localhost:3000`
 - **Network Configurations**:
   - iOS Simulator: `localhost:3000`
   - Android Emulator: `10.0.2.2:3000`
-  - Physical Device: Actual IP address (e.g., `192.168.1.100:3000`)
+  - Physical Device: Actual host IP (e.g., `192.168.1.100:3000`)
 - **Health Monitoring**: Real-time connection status and error handling
 - **Progress Tracking**: Live upload/download progress indicators
-
-#### 📱 Offline Mode (Mock Layer)
-- **Complete UI Testing**: All features work without gateway connectivity
-- **Mock IPFS Operations**: Realistic simulation with generated hashes
-- **Configurable Delays**: Simulate network latency for testing
-- **Error Simulation**: Test error handling scenarios
-- **Development Benefits**: No dependency on backend services
 
 ### File Operations (CRUD)
 - **📤 Upload**: Single and multiple files with progress tracking
@@ -200,21 +193,15 @@ cd mobile/
 npm install
 cd ios && pod install && cd ..  # iOS only
 
-# Start in mock mode (default)
+# Launch iOS app
 npm run ios
 ```
 
-#### Online Mode Setup
-1. **Start Gateway**: `docker compose up -d` (from root directory)
-2. **Launch App**: App starts in mock mode
-3. **Switch to Online**: Tap "Switch to Online" in the connection status panel
-4. **Configure Network**: Ensure proper IP configuration for your platform
-
 #### Development Workflow
-- **Mock Mode**: Develop UI and test functionality offline
-- **Online Mode**: Test real gateway integration and network handling
-- **Error Testing**: Use both modes to test various error scenarios
-- **Fast Iteration**: Mock mode provides immediate feedback
+- **Start Gateway**: `docker compose up -d` (from the repository root)
+- **Launch App**: `npm run ios` / `npm run android`
+- **Verify Connection**: Check the connection status widget in the app
+- **Exercise Flows**: Upload, download, and revoke through the live gateway
 
 ### Docker Operations
 ```bash
@@ -258,20 +245,11 @@ curl http://localhost:3000/api/files/Qmek5MHc59XAf8JjCXiDwKNBx81QGnzxJ9k6jsTVEAC
 ```
 
 ### Mobile App Testing
-
-#### Mock Mode Testing (Default)
-1. **Launch App**: Starts automatically in mock mode
-2. **Upload Files**: Generates mock IPFS hashes instantly
-3. **List Files**: Shows uploaded files with metadata
-4. **Delete Files**: Removes from mock storage
-5. **Test Errors**: Simulate network failures
-
-#### Online Mode Testing
 1. **Start Gateway**: `docker compose up -d`
-2. **Switch Mode**: Tap "Switch to Online" in app
-3. **Upload Real Files**: Get actual IPFS hashes
-4. **Download Files**: Retrieve from IPFS network
-5. **Test Connection**: Monitor health status and error recovery
+2. **Launch App**: `npm run ios` / `npm run android`
+3. **Upload Real Files**: Provide metadata + Schnorr proofs to hit `/api/files/aot-upload`
+4. **Download Files**: Retrieve via in-app viewer or `download` action
+5. **Monitor Connection**: Use the connection widget for health checks and diagnostics
 
 ### System Health Check
 ```bash
@@ -311,7 +289,6 @@ ipfs-sandbox/
 │   │   │   └── ipfs/       # IPFS-specific components
 │   │   ├── services/
 │   │   │   ├── GatewayApiService.ts    # Real API communication
-│   │   │   ├── MockApiService.ts       # Mock layer
 │   │   │   └── IPFSService.ts         # Unified wrapper
 │   │   ├── hooks/
 │   │   │   └── useIPFS.ts             # Main IPFS hook
@@ -347,15 +324,8 @@ LIBP2P_FORCE_PNET=1
 ```typescript
 // Online mode configuration
 const onlineConfig = {
-  useMockApi: false,
   gatewayUrl: 'http://localhost:3000',
   timeout: 30000
-};
-
-// Mock mode configuration
-const mockConfig = {
-  useMockApi: true,
-  mockDelay: 1000
 };
 ```
 
@@ -480,11 +450,6 @@ cd android && ./gradlew clean && cd ..             # Android
 npx react-native doctor
 ```
 
-**Mock mode not working:**
-- Verify app entry point uses `AppWithIPFS`
-- Check `useIPFS` hook configuration
-- Ensure mock service initialization
-
 ### Logs and Monitoring
 ```bash
 # All containers
@@ -508,12 +473,11 @@ docker logs ipfs-sandbox-gateway-1 -f
 - ✅ Database operations functional
 
 ### ✅ Mobile Application
-- ✅ Dual-mode operation (Online/Offline)
+- ✅ Direct gateway integration (online mode)
 - ✅ Complete CRUD functionality
 - ✅ Real-time connection monitoring
 - ✅ File upload with progress tracking
 - ✅ Error handling and recovery
-- ✅ Mock layer for offline development
 - ✅ TypeScript type safety
 - ✅ Modern UI with theme support
 

@@ -2,3 +2,5 @@ export * from './file';
 export * from './theme';
 export * from './common';
 export * from './filePicker';
+export * from './aot';
+export * from './download';

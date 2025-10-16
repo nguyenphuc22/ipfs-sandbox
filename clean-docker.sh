@@ -43,6 +43,17 @@ else
     echo -e "${BLUE}ℹ️  No project volumes found${NC}"
 fi
 
+# Remove local persisted SQLite databases
+if [ -d "./backend/data" ]; then
+    echo -e "${YELLOW}🗃️  Removing local backend persisted data...${NC}"
+    rm -f ./backend/data/*.db
+    rm -f ./backend/data/database.sqlite
+    rm -f ./backend/data/aot-records.json
+    rm -f ./backend/data/aot-records-backup.json
+    rm -f ./backend/data/*.log
+    echo -e "${GREEN}✅ Local backend data directory reset${NC}"
+fi
+
 # Remove project images
 echo -e "${YELLOW}🖼️  Removing project images...${NC}"
 image_ids=$(docker images --format "{{.Repository}}:{{.Tag}} {{.ID}}" | grep -E "ipfs-sandbox" | awk '{print $2}' 2>/dev/null)

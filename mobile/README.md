@@ -1,18 +1,24 @@
 # IPFS Sandbox Mobile App
 
-React Native mobile application for the IPFS ID-RS (Identity-based Ring Signatures) system with comprehensive file management capabilities and dual-mode operation (Online/Offline).
+React Native mobile application for the IPFS ID-RS (Identity-based Ring Signatures) system with comprehensive file management capabilities and real-time gateway integration.
 
 ## ✅ Status: Production Ready
 
-A complete mobile app featuring document picker, image picker, file validation, IPFS integration, and offline development support with mock data layer.
+A complete mobile app featuring document picker, image picker, file validation, and hardened IPFS gateway integration.
 
 ## 🚀 Features
 
-### Dual-Mode Operation
-- **🌐 Online Mode**: Direct integration with IPFS gateway for real file operations
-- **📱 Offline Mode**: Full-featured mock layer for UI development and testing
-- **🔄 Mode Switching**: Seamless switching between online and offline modes
-- **📊 Connection Status**: Real-time connection monitoring and health checks
+### Identity Onboarding
+- One-time initialization screen captures a display name and generates Schnorr key pairs locally
+- Registration shares only the display name and public key with the gateway; private keys remain on-device via secure storage
+- Restores server-generated identifiers/ring context on future launches to keep the identity consistent
+- Home screen file list is automatically filtered by the active public key so users only see their own uploads
+
+### Gateway Integration
+- **Direct Gateway Access**: Real operations through the secured backend at `localhost:3000`
+- **Connection Monitoring**: Real-time health checks and diagnostics
+- **Progress Tracking**: Upload/download progress indicators with error recovery
+- **Multi-Platform Support**: Works across iOS, Android, and simulators/emulators
 
 ### File Management
 - **Document Picker**: Select files from device storage with type filtering
@@ -21,20 +27,13 @@ A complete mobile app featuring document picker, image picker, file validation, 
 - **File List Management**: Display, organize, and manage selected files
 - **Mixed File Support**: Documents, images, media files, and custom types
 
-### IPFS Integration (Online Mode)
+### IPFS Integration
 - **Gateway Connection**: Direct integration with IPFS gateway at `localhost:3000`
 - **File Upload**: Upload files to private IPFS network with progress tracking
 - **File Download**: Retrieve files by IPFS hash with blob handling
 - **Metadata Management**: File info, IPFS hash, and metadata storage
 - **CRUD Operations**: Complete Create, Read, Update, Delete functionality
 - **Ring Signatures**: Create, verify, and manage cryptographic signatures
-
-### Mock Layer (Offline Mode)
-- **Simulated Operations**: All IPFS operations work offline with mock data
-- **Realistic Responses**: Generate mock IPFS hashes and responses
-- **Network Simulation**: Configurable delays and error simulation
-- **Data Persistence**: In-memory storage for development and testing
-- **Error Testing**: Simulate network errors, timeouts, and failures
 
 ### UI/UX
 - **Modern Design**: Clean, responsive interface with Material Design principles
@@ -115,7 +114,7 @@ Or open the `android/` folder in Android Studio and run.
 ```typescript
 // Example usage in online mode
 const { uploadFile, downloadFile, listFiles, deleteFile } = useIPFS({
-  config: { useMockApi: false, gatewayUrl: 'http://localhost:3000' }
+  config: { gatewayUrl: 'http://localhost:3000' }
 });
 
 // Upload file to IPFS
@@ -132,49 +131,9 @@ const downloadResult = await downloadFile('QmXXXXX...');
 - **IPFS Test**: `GET http://localhost:3000/api/files/test-ipfs`
 - **File Upload**: `POST http://localhost:3000/api/files/upload`
 - **File Download**: `GET http://localhost:3000/api/files/{hash}`
-- **List Files**: `GET http://localhost:3000/api/files`
 - **Delete File**: `DELETE http://localhost:3000/api/files/{hash}`
-- **User Files**: `GET http://localhost:3000/api/users/files`
+- **User Files (filtered)**: `GET http://localhost:3000/api/files/user/{userId}/files?publicKey={hexPublicKey}`
 - **Signatures**: `GET/POST http://localhost:3000/api/signatures`
-
-## 📱 Offline Mode (Mock Layer)
-
-### Offline Mode Features
-
-Perfect for UI development and testing without requiring gateway connectivity.
-
-#### Mock Data Layer
-- **Realistic Simulation**: Generates authentic-looking IPFS hashes and responses
-- **Configurable Delays**: Simulate network latency (default: 1000ms)
-- **Error Simulation**: Test error handling with simulated failures
-- **Data Persistence**: In-memory storage maintains state during session
-
-#### Mock Operations
-```typescript
-// Example usage in offline mode
-const { uploadFile, switchToMockMode, clearMockData } = useIPFS({
-  config: { useMockApi: true, mockDelay: 500 }
-});
-
-// All operations work identically to online mode
-const result = await uploadFile(pickedFile);
-// Returns: { success: true, data: FileData } with mock IPFS hash
-
-// Switch modes dynamically
-switchToMockMode(1000); // Enable mock mode with 1s delay
-switchToOnlineMode('http://localhost:3000'); // Switch to online
-```
-
-#### Mock Data Management
-- **Clear Data**: `clearMockData()` - Reset all mock file storage
-- **Inspect Data**: `getMockData()` - View current mock file collection
-- **Add Test Data**: Programmatically add mock files for testing
-
-### Development Benefits
-- **No Dependencies**: Develop UI without running backend services
-- **Fast Iteration**: Immediate feedback without network delays
-- **Error Testing**: Simulate various error conditions
-- **Offline Development**: Work anywhere without network connectivity
 
 ## Development
 
@@ -182,9 +141,9 @@ switchToOnlineMode('http://localhost:3000'); // Switch to online
 
 ```
 mobile/
-├── App.tsx                          # Original demo app
-├── AppWithIPFS.tsx                  # Full IPFS integration demo
-├── index.js                        # Entry point (configured for IPFS demo)
+├── App.tsx                          # Thin wrapper around AppWithIPFS
+├── AppWithIPFS.tsx                  # Full IPFS integration experience
+├── index.js                        # Entry point (registers AppWithIPFS)
 ├── src/
 │   ├── components/
 │   │   ├── common/                  # Reusable UI components
@@ -203,16 +162,14 @@ mobile/
 │   │       └── index.ts
 │   ├── services/
 │   │   ├── FilePickerService.ts     # File picker abstraction
-│   │   ├── FileService.ts           # Legacy file operations
 │   │   ├── PermissionService.ts     # Permission handling
 │   │   ├── GatewayApiService.ts     # Direct gateway API communication
-│   │   ├── MockApiService.ts        # Mock layer implementation
 │   │   ├── IPFSService.ts           # Unified IPFS service wrapper
 │   │   └── index.ts
 │   ├── hooks/
 │   │   ├── useFilePicker.ts         # File picker hook
-│   │   ├── useFiles.ts              # File management hook
-│   │   ├── useSimpleFiles.ts        # Simple file operations
+│   │   ├── useFileStorage.ts        # Local persistence helpers
+│   │   ├── useEnhancedStorage.ts    # Persistent storage with metadata
 │   │   ├── useIPFS.ts               # Main IPFS operations hook
 │   │   └── index.ts
 │   ├── types/
@@ -271,74 +228,27 @@ Changes will automatically reflect via Fast Refresh.
 
 ## 🧪 Testing
 
-### Testing Modes
+### Connectivity Checklist
+- [ ] Gateway containers running (`docker compose up -d`)
+- [ ] `curl http://localhost:3000/health` returns `status: OK`
+- [ ] Mobile app connection widget reports "Connected"
 
-#### 1. Mock Mode Testing (Default)
-```typescript
-// App starts in mock mode for immediate testing
-const ipfsService = useIPFS({
-  config: { useMockApi: true, mockDelay: 1000 }
-});
-```
+### Functional Flows
+1. **Upload with AOT**
+   - Use `AOTDemoCard` to provide metadata, ownership keys, Schnorr proof, and ring signature
+   - Verify `/api/files/aot-upload` returns a `fileId`
+2. **Anonymous Revocation**
+   - Submit revocation payload with fresh Schnorr proof
+   - Confirm `/api/files/aot/revoke` responds with `revocationId`
+3. **Download / View**
+   - Use file list `View` button to stream from IPFS via the gateway
+4. **Health Regression**
+   - Stop gateway to ensure app surfaces connection errors, then restart and recover
 
-**Test Steps:**
-1. Launch app (starts in mock mode)
-2. Upload files → See generated mock IPFS hashes
-3. List files → View mock data collection
-4. Delete files → Remove from mock storage
-5. Test error scenarios → Use mock error simulation
-
-#### 2. Online Mode Testing
-```typescript
-// Switch to online mode for real gateway testing
-const { switchToOnlineMode } = useIPFS();
-switchToOnlineMode('http://localhost:3000');
-```
-
-**Prerequisites:**
-- Gateway system running (`docker compose up -d`)
-- Network connectivity to gateway
-- Proper IP configuration for device/emulator
-
-**Test Steps:**
-1. Ensure gateway is running and accessible
-2. Switch app to online mode
-3. Upload real files → Get actual IPFS hashes
-4. Download files → Retrieve from IPFS network
-5. Test connection loss scenarios
-
-### Network Configuration Testing
-
-#### iOS Simulator
-```typescript
-// Direct localhost access
-const config = { gatewayUrl: 'http://localhost:3000' };
-```
-
-#### Android Emulator
-```typescript
-// Use emulator host mapping
-const config = { gatewayUrl: 'http://10.0.2.2:3000' };
-```
-
-#### Physical Device
-```typescript
-// Use actual IP address
-const config = { gatewayUrl: 'http://192.168.1.100:3000' };
-```
-
-### Testing Checklist
-
-- [ ] **Mock Mode**: All operations work offline
-- [ ] **Online Mode**: Gateway connectivity established
-- [ ] **File Upload**: Single and multiple files upload successfully
-- [ ] **File Download**: Files download and display correctly
-- [ ] **File Listing**: All uploaded files appear in list
-- [ ] **File Deletion**: Files can be removed from storage
-- [ ] **Progress Tracking**: Upload progress displays correctly
-- [ ] **Error Handling**: Network errors handled gracefully
-- [ ] **Mode Switching**: Can switch between mock and online modes
-- [ ] **Connection Status**: Status indicator reflects actual state
+### Network Configuration
+- **iOS Simulator**: `http://localhost:3000`
+- **Android Emulator**: `http://10.0.2.2:3000`
+- **Physical Device**: `http://<host-ip>:3000`
 
 ## Environment Setup
 
@@ -409,11 +319,6 @@ curl http://10.0.2.2:3000/health
 curl http://192.168.1.100:3000/health
 ```
 
-#### **Mock mode not working:**
-- Verify app is using `AppWithIPFS` as entry point
-- Check `useIPFS` hook configuration
-- Ensure mock service is properly initialized
-
 #### **File upload failures:**
 - Check network connectivity to gateway
 - Verify file permissions on device
@@ -460,7 +365,7 @@ curl http://localhost:3000/api/files/test-ipfs
 
 ### IPFS Integration
 - **Custom API Layer**: Direct gateway communication
-- **Mock Layer**: Complete offline simulation
+- **Ownership Proofs**: Schnorr + LSAG validation pipeline
 - **File Handling**: Multipart upload and blob download
 - **Progress Tracking**: Real-time upload progress
 
@@ -478,8 +383,7 @@ curl http://localhost:3000/api/files/test-ipfs
 
 ### ✅ Completed Features
 - ✅ Complete IPFS gateway integration
-- ✅ Dual-mode operation (Online/Offline)
-- ✅ Mock layer for offline development
+- ✅ AOT upload + anonymous revocation flows
 - ✅ File upload/download with progress tracking
 - ✅ Real-time connection monitoring
 - ✅ CRUD operations for file management
@@ -520,11 +424,6 @@ const {
   getSignatures,
   createSignature,
   verifySignature,
-  
-  // Mode switching
-  switchToMockMode,
-  switchToOnlineMode,
-  
   // Connection management
   checkConnection,
   
@@ -538,15 +437,7 @@ const {
 ### Service Configuration
 
 ```typescript
-// Mock mode configuration
-const mockConfig = {
-  useMockApi: true,
-  mockDelay: 1000, // Simulate 1s network delay
-};
-
-// Online mode configuration
 const onlineConfig = {
-  useMockApi: false,
   gatewayUrl: 'http://localhost:3000',
   timeout: 30000, // 30 second timeout
 };
@@ -562,4 +453,4 @@ const onlineConfig = {
 
 ---
 
-**Status**: ✅ **Production Ready** - Complete IPFS integration with dual-mode operation, comprehensive testing, and full CRUD functionality.
+**Status**: ✅ **Production Ready** - Complete IPFS integration with comprehensive testing and full CRUD functionality.

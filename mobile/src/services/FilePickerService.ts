@@ -47,7 +47,7 @@ export class FilePickerService {
     }
 
     const pickerTypes: string[] = [];
-    
+
     fileTypes.forEach(type => {
       switch (type) {
         case 'pdf':
@@ -94,7 +94,7 @@ export class FilePickerService {
     return pickerTypes.length > 0 ? pickerTypes : [types.allFiles];
   }
 
-  private shouldUseDocumentPicker(fileTypes?: FileType[]): boolean {
+  private shouldUseDocumentPicker(_fileTypes?: FileType[]): boolean {
     // Always use document picker to avoid permission issues
     return true;
   }
@@ -277,7 +277,7 @@ export class FilePickerService {
 
   async pickFiles(options: FilePickerOptions = {}): Promise<PickedFile[]> {
     console.log('pickFiles called with options:', options);
-    
+
     // Determine which picker to use based on file types
     if (this.shouldUseDocumentPicker(options.type)) {
       console.log('Using document picker');
@@ -332,17 +332,17 @@ export class FilePickerService {
 
   getFileTypeFromMimeType(mimeType: string): FileType {
     // Image types
-    if (mimeType.startsWith('image/')) return 'images';
+    if (mimeType.startsWith('image/')) {return 'images';}
 
     // Video types
-    if (mimeType.startsWith('video/')) return 'video';
+    if (mimeType.startsWith('video/')) {return 'video';}
 
     // Audio types
-    if (mimeType.startsWith('audio/')) return 'audio';
+    if (mimeType.startsWith('audio/')) {return 'audio';}
 
     // Document types
-    if (mimeType === 'application/pdf') return 'pdf';
-    if (mimeType === 'application/msword' || 
+    if (mimeType === 'application/pdf') {return 'pdf';}
+    if (mimeType === 'application/msword' ||
         mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
       return 'docx';
     }
@@ -354,9 +354,9 @@ export class FilePickerService {
         mimeType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation') {
       return 'pptx';
     }
-    if (mimeType === 'text/plain') return 'txt';
-    if (mimeType === 'text/csv') return 'csv';
-    if (mimeType === 'application/zip') return 'zip';
+    if (mimeType === 'text/plain') {return 'txt';}
+    if (mimeType === 'text/csv') {return 'csv';}
+    if (mimeType === 'application/zip') {return 'zip';}
 
     return 'allFiles';
   }

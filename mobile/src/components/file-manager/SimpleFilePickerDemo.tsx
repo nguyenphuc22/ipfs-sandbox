@@ -28,7 +28,7 @@ export const SimpleFilePickerDemo: React.FC = () => {
         type: ['images'],
         allowMultiSelection: true,
       });
-      
+
       if (files.length > 0) {
         Alert.alert('Success', `Selected ${files.length} image(s)`);
       }
@@ -42,7 +42,7 @@ export const SimpleFilePickerDemo: React.FC = () => {
       const file = await pickSingleFile({
         type: ['images'],
       });
-      
+
       if (file) {
         Alert.alert('Success', `Selected: ${file.name}`);
       }
@@ -56,7 +56,7 @@ export const SimpleFilePickerDemo: React.FC = () => {
       const files = await pickMedia({
         allowMultiSelection: true,
       });
-      
+
       if (files.length > 0) {
         Alert.alert('Success', `Selected ${files.length} media file(s)`);
       }
@@ -66,10 +66,10 @@ export const SimpleFilePickerDemo: React.FC = () => {
   };
 
   const getFileIcon = (file: PickedFile): string => {
-    if (!file.name) return '📄';
-    
+    if (!file.name) {return '📄';}
+
     const extension = file.name.split('.').pop()?.toLowerCase();
-    
+
     switch (extension) {
       case 'jpg':
       case 'jpeg':
@@ -86,11 +86,11 @@ export const SimpleFilePickerDemo: React.FC = () => {
   };
 
   const formatFileSize = (size: number | null): string => {
-    if (!size) return 'Unknown size';
-    
-    if (size < 1024) return `${size} B`;
-    if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-    if (size < 1024 * 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+    if (!size) {return 'Unknown size';}
+
+    if (size < 1024) {return `${size} B`;}
+    if (size < 1024 * 1024) {return `${(size / 1024).toFixed(1)} KB`;}
+    if (size < 1024 * 1024 * 1024) {return `${(size / (1024 * 1024)).toFixed(1)} MB`;}
     return `${(size / (1024 * 1024 * 1024)).toFixed(1)} GB`;
   };
 
@@ -124,7 +124,7 @@ export const SimpleFilePickerDemo: React.FC = () => {
   return (
     <ScrollView style={styles.container}>
       <Text style={styles.title}>Image Picker Test</Text>
-      
+
       {state.error && (
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>

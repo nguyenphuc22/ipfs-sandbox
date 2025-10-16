@@ -156,9 +156,10 @@ To integrate with your existing IPFS file manager:
 ```tsx
 // In your existing component
 import { useFilePicker } from '../hooks/useFilePicker';
+import { useIPFS } from '../hooks/useIPFS';
 
 const FileManager = () => {
-  const { uploadFile } = useFiles(); // Your existing hook
+  const { uploadFile } = useIPFS();
   const { pickMixedFiles } = useFilePicker();
 
   const handleFileUpload = async () => {
@@ -184,7 +185,7 @@ const FileManager = () => {
 ## Testing the Implementation
 
 1. Use the `DocumentPickerDemo` component to test all functionality
-2. Replace your main App.tsx with `AppWithDemo.tsx` temporarily for testing
+2. Boot the primary experience via `AppWithIPFS.tsx`
 3. Test on both iOS and Android devices
 4. Test different file types and sizes
 5. Test permission handling

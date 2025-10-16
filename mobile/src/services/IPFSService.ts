@@ -1,64 +1,44 @@
-import { FileData, PickedFile } from '../types';
-import { GatewayApiService, createDefaultGatewayService } from './GatewayApiService';
-import { MockApiService, createMockGatewayService } from './MockApiService';
+import { FileData, FileStatus, PickedFile } from '../types';
+import {
+  GatewayApiService,
+  createDefaultGatewayService,
+  AOTUploadPayload,
+  AOTUploadResponse,
+  AnonymousRevocationPayload,
+  AnonymousRevocationResponse,
+} from './GatewayApiService';
+import { 
+  AnonymousFileAccessService, 
+  AccessibleFile,
+  createAnonymousFileAccessService 
+} from './AnonymousFileAccessService';
 import { API_CONFIG } from '../config/api';
 
 export interface IPFSServiceConfig {
-  useMockApi?: boolean;
   gatewayUrl?: string;
-  mockDelay?: number;
   timeout?: number;
 }
 
 export class IPFSService {
   private apiService: GatewayApiService;
+  private anonymousService: AnonymousFileAccessService;
   private config: IPFSServiceConfig;
 
   constructor(config: IPFSServiceConfig = {}) {
     this.config = {
-      useMockApi: false,
       gatewayUrl: API_CONFIG.baseUrl,
-      mockDelay: 1000,
       timeout: API_CONFIG.timeout || 30000,
       ...config,
     };
 
-    // Initialize appropriate service based on configuration
-    if (this.config.useMockApi) {
-      this.apiService = createMockGatewayService(this.config.mockDelay);
-    } else {
-      this.apiService = this.config.gatewayUrl === API_CONFIG.baseUrl 
-        ? createDefaultGatewayService()
-        : new GatewayApiService({
-            baseUrl: this.config.gatewayUrl!,
-            timeout: this.config.timeout,
-          });
-    }
-  }
-
-  // Switch between mock and real API
-  switchToMockApi(delay: number = 1000): void {
-    this.config.useMockApi = true;
-    this.config.mockDelay = delay;
-    this.apiService = createMockGatewayService(delay);
-  }
-
-  switchToRealApi(gatewayUrl?: string): void {
-    this.config.useMockApi = false;
-    if (gatewayUrl) {
-      this.config.gatewayUrl = gatewayUrl;
-    }
-    
-    this.apiService = this.config.gatewayUrl === API_CONFIG.baseUrl 
+    this.apiService = this.config.gatewayUrl === API_CONFIG.baseUrl
       ? createDefaultGatewayService()
       : new GatewayApiService({
           baseUrl: this.config.gatewayUrl!,
           timeout: this.config.timeout,
         });
-  }
-
-  isMockMode(): boolean {
-    return this.config.useMockApi || false;
+        
+    this.anonymousService = createAnonymousFileAccessService();
   }
 
   // Health and connectivity
@@ -67,9 +47,9 @@ export class IPFSService {
       const response = await this.apiService.checkHealth();
       return { isHealthy: true, response };
     } catch (error) {
-      return { 
-        isHealthy: false, 
-        error: error instanceof Error ? error.message : 'Unknown error' 
+      return {
+        isHealthy: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
       };
     }
   }
@@ -79,9 +59,9 @@ export class IPFSService {
       const response = await this.apiService.testIPFSConnection();
       return { isConnected: response.success, response };
     } catch (error) {
-      return { 
-        isConnected: false, 
-        error: error instanceof Error ? error.message : 'Unknown error' 
+      return {
+        isConnected: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
       };
     }
   }
@@ -90,7 +70,7 @@ export class IPFSService {
   async uploadFile(file: PickedFile): Promise<{ success: boolean; data?: FileData; error?: string }> {
     try {
       const response = await this.apiService.uploadFile(file);
-      
+
       if (response.success && response.hash) {
         const fileData: FileData = {
           id: file.id,
@@ -100,16 +80,24 @@ export class IPFSService {
           status: 'completed',
           ipfsHash: response.hash,
         };
-        
+
         return { success: true, data: fileData };
       } else {
         return { success: false, error: response.error || 'Upload failed' };
       }
     } catch (error) {
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Upload failed' 
+      return {
+        success: false,
+      error: error instanceof Error ? error.message : 'Upload failed',
       };
+    }
+  }
+
+  async uploadFileWithAOT(payload: AOTUploadPayload): Promise<AOTUploadResponse> {
+    try {
+      return await this.apiService.uploadFileWithAOT(payload);
+    } catch (error) {
+      throw error instanceof Error ? error : new Error('AOT upload failed');
     }
   }
 
@@ -118,9 +106,9 @@ export class IPFSService {
       const blob = await this.apiService.downloadFile(hash);
       return { success: true, blob };
     } catch (error) {
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Download failed' 
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Download failed',
       };
     }
   }
@@ -130,9 +118,9 @@ export class IPFSService {
       const metadata = await this.apiService.getFileMetadata(hash);
       return { success: true, metadata };
     } catch (error) {
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Failed to get metadata' 
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to get metadata',
       };
     }
   }
@@ -142,9 +130,9 @@ export class IPFSService {
       const files = await this.apiService.listFiles();
       return { success: true, files };
     } catch (error) {
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Failed to list files' 
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to list files',
       };
     }
   }
@@ -154,22 +142,67 @@ export class IPFSService {
       const result = await this.apiService.deleteFile(hash);
       return { success: result.success };
     } catch (error) {
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Delete failed' 
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Delete failed',
       };
     }
   }
 
-  // User-specific file operations
-  async getUserFiles(): Promise<{ success: boolean; files?: FileData[]; error?: string }> {
-    try {
-      const files = await this.apiService.getUserFiles();
-      return { success: true, files };
-    } catch (error) {
+  // User-specific file operations (now uses anonymous service with explicit parameters)
+  async getUserFiles(
+    options: { 
+      publicKey?: string; 
+      ringSignature?: string; 
+      timestamp?: number; 
+      nonce?: string 
+    },
+  ): Promise<{ success: boolean; files?: FileData[]; error?: string }> {
+    const { publicKey, ringSignature, timestamp, nonce } = options;
+
+    // For anonymous access, all required parameters must be provided
+    if (!publicKey || !ringSignature || timestamp === undefined || !nonce) {
       return { 
         success: false, 
-        error: error instanceof Error ? error.message : 'Failed to get user files' 
+        error: 'Public key, ring signature, timestamp, and nonce are required for anonymous access' 
+      };
+    }
+
+    try {
+      // Use anonymous service's new method that accepts explicit parameters
+      const records = await this.anonymousService.listAccessibleFilesWithParams({
+        publicKey,
+        ringSignature,
+        timestamp,
+        nonce
+      });
+      
+      const allowedStatuses: FileStatus[] = ['uploading', 'completed', 'error', 'active', 'revoked'];
+
+      const files: FileData[] = records.map((record: AccessibleFile) => {
+        const status = record.ownershipStatus as FileStatus || 'active';
+        return {
+          id: record.fileId,
+          name: record.fileName,
+          size: record.fileSize,
+          uploadTime: record.grantedAt ? new Date(record.grantedAt) : new Date(),
+          status: allowedStatuses.includes(status) ? status : 'active',
+          ownershipPublicKey: record.ownerPublicKey,
+          mimeType: undefined, // Anonymous access doesn't expose full details
+          grantedAt: record.grantedAt || undefined,
+          keyStatus: undefined,
+          hasLocalKey: undefined,
+          chunkCount: record.chunkCount,
+          uploaderName: undefined, // Anonymous access - no user details
+          metadataHash: undefined, // Anonymous access - no metadata hash
+        };
+      });
+
+      return { success: true, files };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to get user files',
       };
     }
   }
@@ -180,9 +213,9 @@ export class IPFSService {
       const signatures = await this.apiService.getSignatures();
       return { success: true, signatures };
     } catch (error) {
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Failed to get signatures' 
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to get signatures',
       };
     }
   }
@@ -192,9 +225,26 @@ export class IPFSService {
       const signature = await this.apiService.createSignature(data);
       return { success: true, signature };
     } catch (error) {
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Failed to create signature' 
+      return {
+        success: false,
+      error: error instanceof Error ? error.message : 'Failed to create signature',
+      };
+    }
+  }
+
+  async submitAnonymousRevocation(
+    payload: AnonymousRevocationPayload
+  ): Promise<{ success: boolean; response?: AnonymousRevocationResponse; error?: string }> {
+    try {
+      const response = await this.apiService.submitAnonymousRevocation(payload);
+      if (!response.success) {
+        return { success: false, error: response.error || 'Revocation failed' };
+      }
+      return { success: true, response };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Revocation failed',
       };
     }
   }
@@ -204,9 +254,9 @@ export class IPFSService {
       const result = await this.apiService.verifySignature(signatureId);
       return { success: true, result };
     } catch (error) {
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Failed to verify signature' 
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to verify signature',
       };
     }
   }
@@ -233,9 +283,9 @@ export class IPFSService {
           totalFailed++;
         }
       } catch (error) {
-        results.push({ 
-          file, 
-          error: error instanceof Error ? error.message : 'Upload failed' 
+        results.push({
+          file,
+          error: error instanceof Error ? error.message : 'Upload failed',
         });
         totalFailed++;
       }
@@ -256,31 +306,12 @@ export class IPFSService {
 
   updateConfig(newConfig: Partial<IPFSServiceConfig>): void {
     this.config = { ...this.config, ...newConfig };
-    
-    // Reinitialize service if API type changed
-    if (newConfig.useMockApi !== undefined) {
-      if (newConfig.useMockApi) {
-        this.switchToMockApi(this.config.mockDelay);
-      } else {
-        this.switchToRealApi(this.config.gatewayUrl);
-      }
-    }
-  }
-
-  // Mock-specific methods (only available in mock mode)
-  clearMockData(): boolean {
-    if (this.apiService instanceof MockApiService) {
-      this.apiService.clearMockFiles();
-      return true;
-    }
-    return false;
-  }
-
-  getMockData(): FileData[] | null {
-    if (this.apiService instanceof MockApiService) {
-      return this.apiService.getMockFiles();
-    }
-    return null;
+    this.apiService = this.config.gatewayUrl === API_CONFIG.baseUrl
+      ? createDefaultGatewayService()
+      : new GatewayApiService({
+          baseUrl: this.config.gatewayUrl!,
+          timeout: this.config.timeout,
+        });
   }
 }
 
@@ -289,11 +320,6 @@ export const createIPFSService = (config?: IPFSServiceConfig) => {
   return new IPFSService(config);
 };
 
-// Predefined configurations
-export const createOfflineIPFSService = () => {
-  return new IPFSService({ useMockApi: true, mockDelay: 500 });
-};
-
 export const createOnlineIPFSService = (gatewayUrl: string = API_CONFIG.baseUrl) => {
-  return new IPFSService({ useMockApi: false, gatewayUrl });
+  return new IPFSService({ gatewayUrl });
 };

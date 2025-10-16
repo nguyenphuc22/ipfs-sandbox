@@ -1,6 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { FileData, PickedFile } from '../types';
-import { IPFSService, createIPFSService, IPFSServiceConfig } from '../services';
+import {
+  IPFSService,
+  createIPFSService,
+  IPFSServiceConfig,
+} from '../services';
+import { AOTUploadPayload, AOTUploadResponse } from '../services/GatewayApiService';
 
 export interface UseIPFSOptions {
   config?: IPFSServiceConfig;
@@ -10,7 +15,6 @@ export interface UseIPFSOptions {
 export interface IPFSConnectionState {
   isConnected: boolean;
   isHealthy: boolean;
-  isMockMode: boolean;
   isConnecting: boolean;
   error: string | null;
   lastChecked: Date | null;
@@ -18,46 +22,28 @@ export interface IPFSConnectionState {
 
 export const useIPFS = (options: UseIPFSOptions = {}) => {
   const { config, autoConnect = true } = options;
-  
+
   // Service instance
   const serviceRef = useRef<IPFSService | null>(null);
-  
+  const autoConnectInitiated = useRef(false);
+
   // Connection state
   const [connectionState, setConnectionState] = useState<IPFSConnectionState>({
     isConnected: false,
     isHealthy: false,
-    isMockMode: config?.useMockApi || false,
     isConnecting: false,
     error: null,
     lastChecked: null,
   });
-  
+
   // File operations state
   const [isUploading, setIsUploading] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-  
-  // Initialize service
-  useEffect(() => {
-    if (!serviceRef.current) {
-      serviceRef.current = createIPFSService(config);
-      setConnectionState(prev => ({
-        ...prev,
-        isMockMode: serviceRef.current?.isMockMode() || false,
-      }));
-    }
-  }, [config]);
-
-  // Auto-connect on mount
-  useEffect(() => {
-    if (autoConnect && serviceRef.current && !connectionState.isConnecting) {
-      checkConnection();
-    }
-  }, [autoConnect]);
 
   // Check connection and health
   const checkConnection = useCallback(async () => {
-    if (!serviceRef.current) return;
+    if (!serviceRef.current) {return;}
 
     setConnectionState(prev => ({ ...prev, isConnecting: true, error: null }));
 
@@ -100,6 +86,18 @@ export const useIPFS = (options: UseIPFSOptions = {}) => {
     }
   }, []);
 
+  // Initialize service and trigger initial connection when requested
+  useEffect(() => {
+    if (!serviceRef.current) {
+      serviceRef.current = createIPFSService(config);
+    }
+
+    if (autoConnect && serviceRef.current && !autoConnectInitiated.current) {
+      autoConnectInitiated.current = true;
+      checkConnection();
+    }
+  }, [config, autoConnect, checkConnection]);
+
   // Upload file
   const uploadFile = useCallback(async (file: PickedFile): Promise<{
     success: boolean;
@@ -120,10 +118,10 @@ export const useIPFS = (options: UseIPFSOptions = {}) => {
       }, 200);
 
       const result = await serviceRef.current.uploadFile(file);
-      
+
       clearInterval(progressInterval);
       setUploadProgress(100);
-      
+
       setTimeout(() => {
         setUploadProgress(0);
         setIsUploading(false);
@@ -139,6 +137,39 @@ export const useIPFS = (options: UseIPFSOptions = {}) => {
       };
     }
   }, []);
+
+  const uploadFileWithAOT = useCallback(
+    async (payload: AOTUploadPayload): Promise<{
+      success: boolean;
+      response?: AOTUploadResponse;
+      error?: string;
+    }> => {
+      if (!serviceRef.current) {
+        return { success: false, error: 'IPFS service not initialized' };
+      }
+
+      setIsUploading(true);
+      setUploadProgress(0);
+
+      try {
+        const response = await serviceRef.current.uploadFileWithAOT(payload);
+        setUploadProgress(100);
+        setTimeout(() => {
+          setUploadProgress(0);
+          setIsUploading(false);
+        }, 500);
+        return { success: response.success, response };
+      } catch (error) {
+        setIsUploading(false);
+        setUploadProgress(0);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'AOT upload failed',
+        };
+      }
+    },
+    [],
+  );
 
   // Upload multiple files
   const uploadMultipleFiles = useCallback(async (files: PickedFile[]) => {
@@ -156,7 +187,7 @@ export const useIPFS = (options: UseIPFSOptions = {}) => {
 
     try {
       const result = await serviceRef.current.uploadMultipleFiles(files);
-      
+
       setUploadProgress(100);
       setTimeout(() => {
         setUploadProgress(0);
@@ -223,13 +254,19 @@ export const useIPFS = (options: UseIPFSOptions = {}) => {
     return serviceRef.current.deleteFile(hash);
   }, []);
 
-  // Get user files
-  const getUserFiles = useCallback(async () => {
+  // Get user files (anonymous)
+  const getUserFiles = useCallback(async (filters: { 
+    publicKey?: string; 
+    ringSignature?: string; 
+    timestamp?: number; 
+    nonce?: string 
+  }) => {
     if (!serviceRef.current) {
       return { success: false, error: 'IPFS service not initialized' };
     }
 
-    return serviceRef.current.getUserFiles();
+    // This now uses anonymous parameters instead of userId
+    return serviceRef.current.getUserFiles(filters);
   }, []);
 
   // Signature operations
@@ -257,50 +294,6 @@ export const useIPFS = (options: UseIPFSOptions = {}) => {
     return serviceRef.current.verifySignature(signatureId);
   }, []);
 
-  // Mode switching
-  const switchToMockMode = useCallback((delay: number = 1000) => {
-    if (serviceRef.current) {
-      serviceRef.current.switchToMockApi(delay);
-      setConnectionState(prev => ({
-        ...prev,
-        isMockMode: true,
-        isConnected: true,
-        isHealthy: true,
-        error: null,
-      }));
-    }
-  }, []);
-
-  const switchToOnlineMode = useCallback((gatewayUrl?: string) => {
-    if (serviceRef.current) {
-      serviceRef.current.switchToRealApi(gatewayUrl);
-      setConnectionState(prev => ({
-        ...prev,
-        isMockMode: false,
-        isConnected: false,
-        isHealthy: false,
-        error: null,
-      }));
-      // Auto-check connection after switching
-      setTimeout(checkConnection, 100);
-    }
-  }, [checkConnection]);
-
-  // Mock data management (only in mock mode)
-  const clearMockData = useCallback(() => {
-    if (serviceRef.current && connectionState.isMockMode) {
-      return serviceRef.current.clearMockData();
-    }
-    return false;
-  }, [connectionState.isMockMode]);
-
-  const getMockData = useCallback(() => {
-    if (serviceRef.current && connectionState.isMockMode) {
-      return serviceRef.current.getMockData();
-    }
-    return null;
-  }, [connectionState.isMockMode]);
-
   // Get current config
   const getConfig = useCallback(() => {
     return serviceRef.current?.getConfig() || null;
@@ -310,17 +303,13 @@ export const useIPFS = (options: UseIPFSOptions = {}) => {
   const updateConfig = useCallback((newConfig: Partial<IPFSServiceConfig>) => {
     if (serviceRef.current) {
       serviceRef.current.updateConfig(newConfig);
-      setConnectionState(prev => ({
-        ...prev,
-        isMockMode: serviceRef.current?.isMockMode() || false,
-      }));
     }
   }, []);
 
   return {
     // Connection state
     connectionState,
-    
+
     // File operations
     uploadFile,
     uploadMultipleFiles,
@@ -329,30 +318,25 @@ export const useIPFS = (options: UseIPFSOptions = {}) => {
     listFiles,
     deleteFile,
     getUserFiles,
-    
+
     // Signature operations
     getSignatures,
     createSignature,
     verifySignature,
-    
+
     // Connection management
     checkConnection,
-    
-    // Mode switching
-    switchToMockMode,
-    switchToOnlineMode,
-    
-    // Mock data management
-    clearMockData,
-    getMockData,
-    
+
     // Config management
     getConfig,
     updateConfig,
-    
+
     // Operation states
     isUploading,
     isDownloading,
     uploadProgress,
+
+    // Specialized operations
+    uploadFileWithAOT,
   };
 };

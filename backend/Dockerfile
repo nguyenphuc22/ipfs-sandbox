@@ -14,8 +14,8 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci --only=production
+# Install dependencies (include dev dependencies for Prisma CLI)
+RUN npm ci
 
 # Copy prisma schema first
 COPY prisma ./prisma

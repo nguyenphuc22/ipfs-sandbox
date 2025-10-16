@@ -14,8 +14,8 @@ interface SimpleFilePickerProps {
   onFilesSelected?: (files: PickedFile[]) => void;
 }
 
-export const SimpleFilePicker: React.FC<SimpleFilePickerProps> = ({ 
-  onFilesSelected 
+export const SimpleFilePicker: React.FC<SimpleFilePickerProps> = ({
+  onFilesSelected,
 }) => {
   const { theme } = useTheme();
   const {
@@ -51,10 +51,10 @@ export const SimpleFilePicker: React.FC<SimpleFilePickerProps> = ({
 
   const buttonStyle = [
     styles.selectButton,
-    { 
+    {
       backgroundColor: theme.colors.primary,
       opacity: state.isLoading ? 0.6 : 1,
-    }
+    },
   ];
 
   return (

@@ -109,7 +109,7 @@ describe('FilePickerService', () => {
     test('should distinguish between document and media files', () => {
       const pdfIsDocument = filePickerService.isDocumentFile(mockPDFFile);
       const pdfIsMedia = filePickerService.isMediaFile(mockPDFFile);
-      
+
       expect(pdfIsDocument).toBe(true);
       expect(pdfIsMedia).toBe(false);
     });

@@ -1,112 +1,43 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
-import { useIPFS, useEnhancedStorage } from '../../hooks';
-import { useFilePicker } from '../../hooks';
+import { useIPFS, useEnhancedStorage, useFilePicker } from '../../hooks';
 import { useTheme } from '../../styles';
-import { FileData } from '../../types';
+import { FileData, PickedFile } from '../../types';
+import { AOTUploadModal } from './AOTUploadModal';
 
 interface IPFSFileUploadProps {
   onUploadComplete?: (files: FileData[]) => void;
   onUploadError?: (error: string) => void;
-  multiple?: boolean;
 }
 
 export const IPFSFileUpload: React.FC<IPFSFileUploadProps> = ({
   onUploadComplete,
   onUploadError,
-  multiple = false,
 }) => {
-  const { uploadFile, uploadMultipleFiles, isUploading, uploadProgress, connectionState } = useIPFS();
+  const { uploadFileWithAOT, isUploading, uploadProgress } = useIPFS();
   const { pickFiles } = useFilePicker();
   const { saveFile } = useEnhancedStorage();
   const { colors } = useTheme();
-  const [uploadedFiles, setUploadedFiles] = useState<FileData[]>([]);
+  const [pendingFile, setPendingFile] = useState<PickedFile | null>(null);
+  const [modalVisible, setModalVisible] = useState(false);
 
   const handleFilePick = async () => {
     try {
-      const result = await pickFiles({ 
-        allowMultiSelection: multiple,
-        type: ['allFiles', 'pdf', 'images', 'doc', 'docx', 'txt', 'csv', 'zip'] 
+      const result = await pickFiles({
+        allowMultiSelection: false,
+        type: ['allFiles', 'pdf', 'images', 'doc', 'docx', 'txt', 'csv', 'zip'],
       });
 
       if (result.success && result.files && result.files.length > 0) {
-        if (multiple && result.files.length > 1) {
-          await handleMultipleFileUpload(result.files);
-        } else {
-          await handleSingleFileUpload(result.files[0]);
-        }
+        const file = result.files[0];
+        setPendingFile(file);
+        setModalVisible(true);
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to pick files';
       onUploadError?.(errorMessage);
       Alert.alert('Error', errorMessage);
     }
-  };
-
-  const handleSingleFileUpload = async (file: any) => {
-    try {
-      const result = await uploadFile(file);
-      
-      if (result.success && result.data) {
-        // Save to AsyncStorage for persistence
-        await saveFile(result.data);
-        
-        const newUploadedFiles = [result.data, ...uploadedFiles];
-        setUploadedFiles(newUploadedFiles);
-        onUploadComplete?.(newUploadedFiles);
-        
-        Alert.alert(
-          'Upload Successful',
-          `File "${result.data.name}" uploaded successfully!\nIPFS Hash: ${result.data.ipfsHash}`,
-          [{ text: 'OK' }]
-        );
-      } else {
-        throw new Error(result.error || 'Upload failed');
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Upload failed';
-      onUploadError?.(errorMessage);
-      Alert.alert('Upload Error', errorMessage);
-    }
-  };
-
-  const handleMultipleFileUpload = async (files: any[]) => {
-    try {
-      const result = await uploadMultipleFiles(files);
-      
-      if (result.success && result.totalSuccess > 0) {
-        const successfulFiles = result.results
-          .filter(r => r.data)
-          .map(r => r.data!);
-        
-        // Save all successful files to AsyncStorage for persistence
-        for (const file of successfulFiles) {
-          await saveFile(file);
-        }
-        
-        const newUploadedFiles = [...successfulFiles, ...uploadedFiles];
-        setUploadedFiles(newUploadedFiles);
-        onUploadComplete?.(newUploadedFiles);
-        
-        Alert.alert(
-          'Upload Complete',
-          `Successfully uploaded ${result.totalSuccess} out of ${files.length} files.${
-            result.totalFailed > 0 ? `\n${result.totalFailed} files failed to upload.` : ''
-          }`,
-          [{ text: 'OK' }]
-        );
-      } else {
-        throw new Error('All uploads failed');
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Upload failed';
-      onUploadError?.(errorMessage);
-      Alert.alert('Upload Error', errorMessage);
-    }
-  };
-
-  const clearUploadedFiles = () => {
-    setUploadedFiles([]);
   };
 
   const styles = StyleSheet.create({
@@ -221,7 +152,7 @@ export const IPFSFileUpload: React.FC<IPFSFileUploadProps> = ({
   return (
     <View style={styles.container}>
       <Text style={styles.title}>
-        {multiple ? 'Upload Multiple Files' : 'Upload File'} to IPFS
+        Upload File với AOT
       </Text>
 
       <TouchableOpacity
@@ -230,10 +161,7 @@ export const IPFSFileUpload: React.FC<IPFSFileUploadProps> = ({
         disabled={isUploading}
       >
         <Text style={styles.uploadButtonText}>
-          {isUploading 
-            ? 'Uploading...' 
-            : `Select ${multiple ? 'Files' : 'File'} to Upload`
-          }
+          {isUploading ? 'Uploading...' : 'Chọn file để upload'}
         </Text>
       </TouchableOpacity>
 
@@ -250,14 +178,31 @@ export const IPFSFileUpload: React.FC<IPFSFileUploadProps> = ({
         <View style={styles.progressContainer}>
           <Text style={styles.progressText}>Upload Progress</Text>
           <View style={styles.progressBar}>
-            <View 
-              style={[styles.progressFill, { width: `${uploadProgress}%` }]} 
+            <View
+              style={[styles.progressFill, { width: `${uploadProgress}%` }]}
             />
           </View>
         </View>
       )}
 
-      {/* Uploaded files section removed - files will appear in main file list below */}
+      <AOTUploadModal
+        visible={modalVisible}
+        file={pendingFile}
+        uploadFileWithAOT={uploadFileWithAOT}
+        onClose={() => {
+          setModalVisible(false);
+          setPendingFile(null);
+        }}
+        onUploaded={async (fileData: FileData) => {
+          await saveFile(fileData);
+          onUploadComplete?.([fileData]);
+          setModalVisible(false);
+          setPendingFile(null);
+        }}
+        onError={(message: string) => {
+          onUploadError?.(message);
+        }}
+      />
     </View>
   );
 };

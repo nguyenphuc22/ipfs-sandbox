@@ -16,6 +16,188 @@ export interface UploadResponse {
   error?: string;
 }
 
+export interface AOTUploadPayload {
+  file: PickedFile;
+  metadataHash: string;
+  ownershipPublicKey: string;
+  ringSignature?: string;
+  escrowedIdentity?: string;
+  ringMembers?: string[];
+  schnorr: {
+    R: string;
+    s: string;
+    message: string;
+    publicKey?: string;
+  };
+}
+
+export interface AOTUploadResponse {
+  success: boolean;
+  fileId?: string;
+  cid?: string;
+  name?: string;
+  fileName?: string;
+  size?: number;
+  totalSize?: number;
+  metadataHash?: string;
+  ownershipPublicKey?: string;
+  chunkCount?: number;
+  chunks?: Array<{
+    index: number;
+    cid: string;
+    hash: string;
+    size?: number;
+  }>;
+  secureKeyPackage?: {
+    masterKey: string;
+    chunkKeys: Record<number, string>;
+    keyPackageFingerprint?: string;
+  };
+  error?: string;
+}
+
+export interface ChunkedUploadResponse {
+  success: boolean;
+  fileId: string;
+  fileName: string;
+  totalSize: number;
+  chunkCount: number;
+  chunks: Array<{
+    index: number;
+    cid: string;
+    hash: string;
+  }>;
+  metadataHash: string;
+  ownershipPublicKey: string;
+  secureKeyPackage: {
+    masterKey: string;
+    chunkKeys: Record<number, string>;
+    keyPackageFingerprint: string;
+  };
+}
+
+export interface ClientChunkedUploadPayload {
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
+  chunkCount: number;
+  chunks: Array<{
+    index: number;
+    cid: string;
+    hash: string;
+    size: number;
+  }>;
+  metadataHash: string;
+  ownershipPublicKey: string;
+  encryptedChunkKeys: {
+    encryptedData: string;
+    iv: string;
+    authTag: string;
+  };
+  keyPackageFingerprint: string;
+  ringSignature?: string;
+  escrowedIdentity?: string;
+  ringMembers?: string[];
+  schnorr: {
+    R: string;
+    s: string;
+    message: string;
+    publicKey: string;
+  };
+}
+
+export interface GatewayUserFileRecord {
+  id: string;
+  cid?: string;
+  fileName?: string;
+  name?: string;
+  totalSize?: number;
+  size?: number;
+  chunkCount?: number;
+  mimeType?: string;
+  status?: string;
+  ownershipPublicKey?: string;
+  grantedAt?: string;
+  createdAt?: string;
+  keyStatus?: string;
+  hasLocalKey?: boolean;
+  metadataHash?: string;
+  ownerIdentifier?: string | null;
+  // ✅ No uploader.username or PII - using anonymous access only
+}
+
+export interface GatewayUserFilesResponse {
+  success: boolean;
+  files?: GatewayUserFileRecord[];
+  error?: string;
+}
+
+export interface FileAccessResponse {
+  success: boolean;
+  fileId: string;
+  fileName: string;
+  totalSize: number;
+  chunkCount: number;
+  chunkManifest: Array<{
+    index: number;
+    cid: string;
+    hash: string;
+    size: number;
+  }>;
+  ownershipPolicy: {
+    ownershipPublicKey: string;
+    status: string;
+    revoked: boolean;
+    lastRevocationAt?: string;
+  };
+  grantedAt: string;
+  grantContext: {
+    keyStatus: string;
+    keyPackageFingerprint?: string;
+  };
+}
+
+export interface IntegrityAlertPayload {
+  chunkIndex: number;
+  expectedHash: string;
+  actualHash?: string;
+  publicKey: string;
+  ringSignature: string;
+  retryCount?: number;
+  timestamp: number;
+  nonce: string;
+}
+
+export interface AuditEventPayload {
+  eventType: 'download' | 'view' | 'share' | 'delete_cache' | 'access_request';
+  publicKey: string;
+  ringSignature: string;
+  timestamp: number;
+  nonce: string;
+  metadata?: Record<string, any>;
+}
+
+export interface AnonymousRevocationPayload {
+  fileId: string;
+  message: string;
+  targetUserId?: string;
+  ringSignature?: string;
+  ownershipProof: {
+    R: string;
+    s: string;
+    message: string;
+    publicKey: string;
+  };
+}
+
+export interface AnonymousRevocationResponse {
+  success: boolean;
+  revocationId?: string;
+  chunksToReencrypt?: number[];
+  note?: string;
+  error?: string;
+}
+
 export interface HealthResponse {
   status: string;
   timestamp: string;
@@ -34,6 +216,22 @@ export interface IPFSTestResponse {
   };
 }
 
+export interface FileViewResponse {
+  success: boolean;
+  content: string | ArrayBuffer;
+  contentType: string;
+  contentLength: number;
+  filename: string;
+}
+
+export interface FileMetadataResponse {
+  success: boolean;
+  hash: string;
+  metadata: {
+    [key: string]: string;
+  };
+}
+
 export class GatewayApiService {
   private config: GatewayApiConfig;
 
@@ -49,7 +247,7 @@ export class GatewayApiService {
     options: RequestInit = {}
   ): Promise<T> {
     const url = `${this.config.baseUrl}${endpoint}`;
-    
+
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
 
@@ -89,7 +287,7 @@ export class GatewayApiService {
 
   async uploadFile(file: PickedFile): Promise<UploadResponse> {
     const formData = new FormData();
-    
+
     // Create file object for upload
     const fileData = {
       uri: file.uri,
@@ -107,9 +305,6 @@ export class GatewayApiService {
         method: 'POST',
         body: formData,
         signal: controller.signal,
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
       });
 
       clearTimeout(timeoutId);
@@ -128,12 +323,142 @@ export class GatewayApiService {
     }
   }
 
+  async uploadFileWithAOT(payload: AOTUploadPayload): Promise<AOTUploadResponse> {
+    const { file, metadataHash, ownershipPublicKey, ringSignature, escrowedIdentity, ringMembers, schnorr } = payload;
+
+    console.log('[Gateway API] Starting AOT upload with file:', {
+      uri: file.uri,
+      name: file.name,
+      size: file.size,
+      type: file.type,
+    });
+
+    const formData = new FormData();
+
+    // React Native requires this specific format
+    const fileData = {
+      uri: file.uri,
+      type: file.type || 'application/octet-stream',
+      name: file.name || 'unknown',
+    } as any;
+
+    console.log('[Gateway API] File data prepared:', fileData);
+
+    formData.append('file', fileData);
+    formData.append('metadataHash', metadataHash);
+    formData.append('ownershipPublicKey', ownershipPublicKey);
+
+    if (ringSignature) {
+      formData.append('ringSignature', ringSignature);
+    }
+
+    if (escrowedIdentity) {
+      formData.append('escrowedIdentity', escrowedIdentity);
+    }
+
+    if (ringMembers && ringMembers.length > 0) {
+      console.log('[Gateway API] Appending ring members:', ringMembers);
+      formData.append('ringMembers', JSON.stringify(ringMembers));
+    }
+
+    formData.append('ownershipProofR', schnorr.R);
+    formData.append('ownershipProofS', schnorr.s);
+    formData.append('ownershipProofMessage', schnorr.message);
+    formData.append('ownershipProofPublicKey', schnorr.publicKey || ownershipPublicKey);
+
+    const url = `${this.config.baseUrl}/api/files/aot-upload`;
+    console.log('[Gateway API] Sending AOT upload request:', {
+      url,
+      fileName: file.name,
+      fileSize: file.size,
+      fileType: file.type,
+      fileUri: file.uri,
+      metadataHashLength: metadataHash.length,
+      ownershipPublicKeyLength: ownershipPublicKey.length,
+      hasRingSignature: !!ringSignature,
+      ringSignatureLength: ringSignature?.length,
+      ringMembersCount: ringMembers?.length,
+      schnorrRLength: schnorr.R.length,
+      schnorrSLength: schnorr.s.length,
+      schnorrMessageLength: schnorr.message.length,
+    });
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      console.log('[Gateway API] Request timeout after 30s');
+      controller.abort();
+    }, this.config.timeout);
+
+    try {
+      console.log('[Gateway API] Making fetch request to:', url);
+
+      const response = await fetch(url, {
+        method: 'POST',
+        body: formData,
+        signal: controller.signal,
+        // Don't set Content-Type header - let browser/RN set it with boundary
+      });
+
+      console.log('[Gateway API] Received response:', {
+        status: response.status,
+        ok: response.ok,
+        statusText: response.statusText,
+        headers: {
+          contentType: response.headers.get('content-type'),
+        },
+      });
+
+      clearTimeout(timeoutId);
+
+      // Try to read response as text first for debugging
+      const responseText = await response.text();
+      console.log('[Gateway API] Response text:', responseText.substring(0, 500));
+
+      let json;
+      try {
+        json = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error('[Gateway API] Failed to parse response as JSON:', parseError);
+        throw new Error(`Invalid JSON response: ${responseText.substring(0, 100)}`);
+      }
+
+      console.log('[Gateway API] Parsed JSON:', json);
+
+      if (!response.ok) {
+        console.error('[Gateway API] Upload failed:', {
+          status: response.status,
+          error: json?.error,
+          fullResponse: json,
+        });
+        throw new Error(json?.error || `Upload failed with status: ${response.status}`);
+      }
+
+      console.log('[Gateway API] Upload successful!');
+      return json;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      console.error('[Gateway API] Upload error details:', {
+        errorType: error instanceof Error ? error.constructor.name : typeof error,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          throw new Error('Upload request timed out after 30 seconds');
+        }
+        throw error;
+      }
+      throw new Error('AOT upload failed');
+    }
+  }
+
   async downloadFile(hash: string): Promise<Blob> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
 
     try {
-      const response = await fetch(`${this.config.baseUrl}/api/files/${hash}`, {
+      const response = await fetch(`${this.config.baseUrl}/api/files/${hash}?download=true`, {
         signal: controller.signal,
       });
 
@@ -153,8 +478,57 @@ export class GatewayApiService {
     }
   }
 
-  async getFileMetadata(hash: string): Promise<any> {
-    return this.makeRequest<any>(`/api/files/${hash}/metadata`);
+  async viewFile(hash: string, filename?: string): Promise<FileViewResponse> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
+
+    try {
+      // Use query parameter instead of route parameter (works around routing issue)
+      let url = `${this.config.baseUrl}/api/files/${hash}?view=true`;
+      if (filename) {
+        const encodedFilename = encodeURIComponent(filename);
+        url += `&filename=${encodedFilename}`;
+      }
+
+      const response = await fetch(url, {
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`View failed with status: ${response.status}`);
+      }
+
+      const contentType = response.headers.get('content-type') || 'application/octet-stream';
+  const contentLength = parseInt(response.headers.get('content-length') || '0', 10);
+
+      // Handle different content types
+      let content: string | ArrayBuffer;
+      if (contentType.startsWith('text/') || contentType === 'application/json') {
+        content = await response.text();
+      } else {
+        content = await response.arrayBuffer();
+      }
+
+      return {
+        success: true,
+        content,
+        contentType,
+        contentLength,
+        filename: filename || hash,
+      };
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error('File view failed');
+    }
+  }
+
+  async getFileMetadata(hash: string): Promise<FileMetadataResponse> {
+    return this.makeRequest<FileMetadataResponse>(`/api/files/metadata/${hash}`);
   }
 
   async listFiles(): Promise<FileData[]> {
@@ -169,8 +543,27 @@ export class GatewayApiService {
     });
   }
 
-  async getUserFiles(): Promise<FileData[]> {
-    return this.makeRequest<FileData[]>('/api/users/files');
+  async getUserFiles(
+    input: { publicKey: string; ringSignature: string; timestamp: number; nonce: string }
+  ): Promise<GatewayUserFilesResponse> {
+    const { publicKey, ringSignature, timestamp, nonce } = input;
+
+    // Validate all required parameters
+    if (!publicKey || !ringSignature || timestamp === undefined || !nonce) {
+      throw new Error('Missing required anonymous authentication parameters: publicKey, ringSignature, timestamp, nonce');
+    }
+
+    const payload = {
+      publicKey,
+      ringSignature,
+      timestamp,
+      nonce
+    };
+
+    return this.makeRequest<GatewayUserFilesResponse>('/api/files/anonymous-list', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
   }
 
   async getSignatures(): Promise<any[]> {
@@ -186,6 +579,252 @@ export class GatewayApiService {
 
   async verifySignature(signatureId: string): Promise<any> {
     return this.makeRequest<any>(`/api/signatures/${signatureId}/verify`);
+  }
+
+  async submitAnonymousRevocation(
+    payload: AnonymousRevocationPayload
+  ): Promise<AnonymousRevocationResponse> {
+    return this.makeRequest<AnonymousRevocationResponse>('/api/files/aot/revoke', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  // ============================================================================
+  // CHUNKED UPLOAD & DOWNLOAD (Thesis Implementation)
+  // ============================================================================
+
+  async uploadFileWithChunks(payload: AOTUploadPayload): Promise<ChunkedUploadResponse> {
+    const { file, metadataHash, ownershipPublicKey, ringSignature, escrowedIdentity, ringMembers, schnorr } = payload;
+
+    const formData = new FormData();
+    const fileData = {
+      uri: file.uri,
+      type: file.type || 'application/octet-stream',
+      name: file.name || 'unknown',
+    } as any;
+
+    formData.append('file', fileData);
+    formData.append('metadataHash', metadataHash);
+    formData.append('ownershipPublicKey', ownershipPublicKey);
+
+    if (ringSignature) {
+      formData.append('ringSignature', ringSignature);
+    }
+
+    if (escrowedIdentity) {
+      formData.append('escrowedIdentity', escrowedIdentity);
+    }
+
+    if (ringMembers && ringMembers.length > 0) {
+      formData.append('ringMembers', JSON.stringify(ringMembers));
+    }
+
+    formData.append('ownershipProofR', schnorr.R);
+    formData.append('ownershipProofS', schnorr.s);
+    formData.append('ownershipProofMessage', schnorr.message);
+    formData.append('ownershipProofPublicKey', schnorr.publicKey || ownershipPublicKey);
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
+
+    try {
+      const response = await fetch(`${this.config.baseUrl}/api/files/chunked-upload`, {
+        method: 'POST',
+        body: formData,
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      clearTimeout(timeoutId);
+
+      const json = await response.json();
+      if (!response.ok) {
+        throw new Error(json?.error || `Chunked upload failed with status: ${response.status}`);
+      }
+
+      return json;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error('Chunked upload failed');
+    }
+  }
+
+  async getFileAccess(
+    fileId: string, 
+    publicKey: string, 
+    ringSignature: string, 
+    timestamp: number, 
+    nonce: string
+  ): Promise<FileAccessResponse> {
+    const payload = {
+      fileId,
+      publicKey,
+      ringSignature,
+      timestamp,
+      nonce
+    };
+
+    return this.makeRequest<FileAccessResponse>(
+      `/api/files/${fileId}/anonymous-access`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }
+    );
+  }
+
+  async reportIntegrityAlert(
+    fileId: string,
+    payload: {
+      chunkIndex: number;
+      expectedHash: string;
+      actualHash?: string;
+      publicKey: string;
+      ringSignature: string;
+      retryCount?: number;
+      timestamp: number;
+      nonce: string;
+    }
+  ): Promise<{ success: boolean; message: string }> {
+    const anonymousPayload = {
+      fileId,
+      chunkIndex: payload.chunkIndex,
+      expectedHash: payload.expectedHash,
+      actualHash: payload.actualHash,
+      publicKey: payload.publicKey,
+      ringSignature: payload.ringSignature,
+      retryCount: payload.retryCount || 0,
+      timestamp: payload.timestamp,
+      nonce: payload.nonce,
+    };
+
+    return this.makeRequest<{ success: boolean; message: string }>(
+      `/api/files/${fileId}/anonymous-integrity-alert`,
+      {
+        method: 'POST',
+        body: JSON.stringify(anonymousPayload),
+      }
+    );
+  }
+
+  async logAuditEvent(
+    fileId: string,
+    payload: {
+      eventType: 'download' | 'view' | 'share' | 'delete_cache' | 'access_request';
+      publicKey: string;
+      ringSignature: string;
+      timestamp: number;
+      nonce: string;
+      metadata?: Record<string, any>;
+    }
+  ): Promise<{ success: boolean; message: string }> {
+    const anonymousPayload = {
+      eventType: payload.eventType,
+      fileId,
+      publicKey: payload.publicKey,
+      ringSignature: payload.ringSignature,
+      timestamp: payload.timestamp,
+      nonce: payload.nonce,
+      metadata: payload.metadata || {}
+    };
+
+    // Use the new anonymous audit logging endpoint (part of anonymous-endpoints-addition.js)
+    return this.makeRequest<{ success: boolean; message: string }>(
+      '/api/files/audit/anonymous-log',
+      {
+        method: 'POST',
+        body: JSON.stringify(anonymousPayload),
+      }
+    );
+  }
+
+  async listUserFiles(
+    publicKey: string,
+    ringSignature: string,
+    timestamp: number,
+    nonce: string
+  ): Promise<FileData[]> {
+    const payload = {
+      publicKey,
+      ringSignature,
+      timestamp,
+      nonce
+    };
+
+    const response = await this.makeRequest<{ success: boolean; files: FileData[] }>(
+      '/api/files/anonymous-list',
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }
+    );
+    return response.files || [];
+  }
+
+  /**
+   * Upload file with client-side chunking (Task A implementation)
+   *
+   * This method receives manifest and encrypted chunk keys from the client.
+   * The chunks have already been uploaded to IPFS by the client.
+   * Backend only stores metadata and validates ownership proofs.
+   */
+  async uploadWithClientChunking(
+    payload: ClientChunkedUploadPayload
+  ): Promise<ChunkedUploadResponse> {
+    console.log('[Gateway API] Uploading with client-side chunking:', {
+      fileName: payload.fileName,
+      fileSize: payload.fileSize,
+      chunkCount: payload.chunkCount,
+      chunksLength: payload.chunks.length,
+      hasRingSignature: !!payload.ringSignature,
+    });
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
+
+    try {
+      const response = await fetch(`${this.config.baseUrl}/api/files/client-chunked-upload`, {
+        method: 'POST',
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      clearTimeout(timeoutId);
+
+      const json = await response.json();
+
+      if (!response.ok) {
+        console.error('[Gateway API] Client-chunked upload failed:', json);
+        throw new Error(json?.error || `Upload failed with status: ${response.status}`);
+      }
+
+      console.log('[Gateway API] Client-chunked upload successful:', {
+        fileId: json.fileId,
+        chunkCount: json.chunkCount,
+      });
+
+      return json;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      console.error('[Gateway API] Client-chunked upload error:', error);
+
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          throw new Error('Upload request timed out');
+        }
+        throw error;
+      }
+      throw new Error('Client-chunked upload failed');
+    }
   }
 }
 

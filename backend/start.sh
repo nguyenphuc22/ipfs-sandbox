@@ -77,23 +77,30 @@ validate_ipfs_endpoints() {
 }
 
 # Function to initialize database with retry
-init_database() {
-    echo "Initializing database..."
+apply_prisma_schema() {
+    echo "Applying Prisma migrations..."
     max_attempts=3
     attempt=0
-    
+
     while [ $attempt -lt $max_attempts ]; do
-        if npx prisma db push --skip-generate; then
-            echo "Database initialized successfully"
+        if npx prisma migrate deploy --schema ./prisma/schema.prisma; then
+            echo "Prisma migrations applied successfully"
             return 0
         fi
-        
+
+        echo "Prisma migrate deploy failed (attempt $((attempt + 1)))"
+        echo "Falling back to prisma db push (attempt $((attempt + 1)))"
+        if npx prisma db push --skip-generate --schema ./prisma/schema.prisma; then
+            echo "Prisma schema pushed successfully"
+            return 0
+        fi
+
         attempt=$((attempt + 1))
-        echo "Database initialization attempt $attempt failed, retrying..."
+        echo "Schema application attempt $attempt failed, retrying..."
         sleep 2
     done
-    
-    echo "ERROR: Database initialization failed after $max_attempts attempts"
+
+    echo "ERROR: Prisma schema application failed after $max_attempts attempts"
     return 1
 }
 
@@ -119,7 +126,7 @@ if [ ! -f "/data/ipfs/config" ]; then
     ipfs config --json Swarm.RelayClient.Enabled true
     
     # Configure swarm addresses to listen on all interfaces
-    ipfs config Addresses.Swarm "[\"/ip4/0.0.0.0/tcp/4001\", \"/ip6/::/tcp/4001\"]"
+    ipfs config --json Addresses.Swarm "[\"/ip4/0.0.0.0/tcp/4001\", \"/ip6/::/tcp/4001\"]"
     
     # Enable CORS for API access
     ipfs config --json API.HTTPHeaders.Access-Control-Allow-Origin "[\"*\"]"
@@ -225,13 +232,11 @@ fi
 # Create data directory if it doesn't exist
 mkdir -p /app/data
 
-# Initialize database if needed
-if [ ! -f "/app/data/database.db" ]; then
-    if ! init_database; then
-        echo "FATAL: Database initialization failed"
-        kill $IPFS_PID 2>/dev/null || true
-        exit 1
-    fi
+# Always ensure database schema is up to date
+if ! apply_prisma_schema; then
+    echo "FATAL: Database schema application failed"
+    kill $IPFS_PID 2>/dev/null || true
+    exit 1
 fi
 
 # Start Node.js application
