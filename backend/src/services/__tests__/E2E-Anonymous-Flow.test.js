@@ -54,26 +54,8 @@ describe('E2E: Anonymous File Access Flow', () => {
     testPublicKeyHash1 = ringService.hashPublicKey(testPublicKey1);
     testPublicKeyHash2 = ringService.hashPublicKey(testPublicKey2);
 
-    // Create test users
-    await prisma.user.upsert({
-      where: { publicKey: testPublicKey1 },
-      create: {
-        publicKey: testPublicKey1,
-        displayLabel: 'E2E Test User 1',
-        role: 'user'
-      },
-      update: {}
-    });
-
-    await prisma.user.upsert({
-      where: { publicKey: testPublicKey2 },
-      create: {
-        publicKey: testPublicKey2,
-        displayLabel: 'E2E Test User 2',
-        role: 'user'
-      },
-      update: {}
-    });
+    // ✅ NO User creation - fully anonymous test
+    // Users are identified only by publicKeyHash, not User records
   });
 
   afterAll(async () => {
@@ -84,27 +66,19 @@ describe('E2E: Anonymous File Access Flow', () => {
       }).catch(() => {});
     }
 
-    await prisma.user.deleteMany({
-      where: {
-        publicKey: {
-          in: [testPublicKey1, testPublicKey2]
-        }
-      }
-    });
+    // ✅ No User cleanup needed - anonymous architecture
 
     await prisma.$disconnect();
   });
 
   /**
-   * Step 1: Upload file anonymously with AOT
+   * Step 1: Upload file anonymously with AOT (NO User record needed)
    */
-  it('Step 1: Should upload file anonymously with AOT', async () => {
-    // Get uploader user ID
-    const uploader = await prisma.user.findUnique({
-      where: { publicKey: testPublicKey1 }
-    });
+  it('Step 1: Should upload file anonymously with AOT (NO userId)', async () => {
+    // ✅ NO User query - fully anonymous upload
+    // Uploader identified only by publicKeyHash
 
-    // Create a test file
+    // Create a test file with anonymous architecture
     testFileId = `e2e-test-${Date.now()}`;
     const testFile = await prisma.file.create({
       data: {
@@ -117,7 +91,8 @@ describe('E2E: Anonymous File Access Flow', () => {
         metadataHash: crypto.randomBytes(32).toString('hex'),
         encryptedChunkKeys: JSON.stringify({ 0: crypto.randomBytes(32).toString('hex') }),
         ownershipPublicKey: testPublicKey1,
-        uploaderId: uploader.id,
+        uploaderPublicKeyHash: testPublicKeyHash1,  // ✅ Use publicKeyHash
+        uploaderId: null,                           // ✅ No userId
         status: 'active'
       }
     });
@@ -157,10 +132,11 @@ describe('E2E: Anonymous File Access Flow', () => {
       }
     });
 
-    // Verify file was created
+    // Verify file was created with anonymous architecture
     expect(testFile).toBeDefined();
     expect(testFile.id).toBe(testFileId);
-    expect(testFile.uploaderId).toBe(uploader.id);
+    expect(testFile.uploaderPublicKeyHash).toBe(testPublicKeyHash1);  // ✅ Has publicKeyHash
+    expect(testFile.uploaderId).toBeNull();                           // ✅ No userId
 
     // Verify upload audit log exists
     const uploadLog = await prisma.anonymousAuditLog.findFirst({

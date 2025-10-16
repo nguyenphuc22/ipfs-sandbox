@@ -245,7 +245,14 @@ router.post('/audit/anonymous-log', async (req, res) => {
 
     } catch (error) {
         const duration = Date.now() - startTime;
-        secureLog('AnonymousAuditLog', `Error logging audit event ${eventType}: ${error.message} [${duration}ms]`, 'error', { eventType, ip: req.ip });
+        const safeEventType = req.body?.eventType || 'unknown';
+        const safeFileId = req.body?.fileId || 'unknown';
+        secureLog(
+            'AnonymousAuditLog',
+            `Error logging audit event ${safeEventType}: ${error.message} [${duration}ms]`,
+            'error',
+            { eventType: safeEventType, fileId: safeFileId, ip: req.ip }
+        );
         
         return res.status(500).json({
             success: false,

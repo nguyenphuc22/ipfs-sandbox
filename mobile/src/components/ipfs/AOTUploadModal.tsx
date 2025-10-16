@@ -8,6 +8,7 @@ import {
   Text,
   TouchableOpacity,
   View,
+  SafeAreaView,
 } from 'react-native';
 import { useTheme } from '../../styles';
 import { FileData, PickedFile, RegisteredRingMember } from '../../types';
@@ -418,9 +419,17 @@ export const AOTUploadModal: React.FC<AOTUploadModalProps> = ({
           flex: 1,
           backgroundColor: colors.background,
         },
-        container: {
+        sheet: {
           flex: 1,
-          padding: 24,
+        },
+        scroll: {
+          flex: 1,
+        },
+        scrollContent: {
+          flexGrow: 1,
+          paddingHorizontal: 24,
+          paddingTop: 24,
+          paddingBottom: 32,
         },
         title: {
           fontSize: 20,
@@ -500,7 +509,14 @@ export const AOTUploadModal: React.FC<AOTUploadModalProps> = ({
         footer: {
           flexDirection: 'row',
           justifyContent: 'space-between',
-          marginTop: 12,
+        },
+        footerContainer: {
+          paddingHorizontal: 24,
+          paddingBottom: 24,
+          paddingTop: 12,
+          backgroundColor: colors.background,
+          borderTopWidth: StyleSheet.hairlineWidth,
+          borderTopColor: colors.border,
         },
         button: {
           flex: 1,
@@ -563,93 +579,100 @@ export const AOTUploadModal: React.FC<AOTUploadModalProps> = ({
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={styles.backdrop}>
-        <ScrollView contentContainerStyle={styles.container}>
-          <Text style={styles.title}>Hoàn tất Upload với AOT</Text>
+      <SafeAreaView style={styles.backdrop}>
+        <View style={styles.sheet}>
+          <ScrollView
+            style={styles.scroll}
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+          >
+            <Text style={styles.title}>Hoàn tất Upload với AOT</Text>
 
-          {identityError ? <Text style={styles.errorText}>{identityError}</Text> : null}
-          {localError ? <Text style={styles.errorText}>{localError}</Text> : null}
-          {ringWarning ? <Text style={styles.warningText}>{ringWarning}</Text> : null}
+            {identityError ? <Text style={styles.errorText}>{identityError}</Text> : null}
+            {localError ? <Text style={styles.errorText}>{localError}</Text> : null}
+            {ringWarning ? <Text style={styles.warningText}>{ringWarning}</Text> : null}
 
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Khóa của bạn</Text>
-            <View style={styles.keyContainer}>
-              <Text style={styles.keyLabel}>Public Key</Text>
-              <Text style={styles.keyValue}>{identity ? identity.publicKey : 'Đang tạo...'}</Text>
-              <Text style={[styles.keyLabel, styles.keyLabelSpacing]}>Secret Key</Text>
-              <Text style={styles.keyValue}>{identity ? identity.privateKey : 'Đang tạo...'}</Text>
-              {masterKey ? (
-                <View style={styles.pill}>
-                  <Text style={styles.pillText}>Master Key: {formatKey(masterKey)}</Text>
-                </View>
-              ) : null}
-              {metadataHash ? (
-                <View style={styles.pill}>
-                  <Text style={styles.pillText}>Metadata Hash: {formatKey(metadataHash)}</Text>
-                </View>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Khóa của bạn</Text>
+              <View style={styles.keyContainer}>
+                <Text style={styles.keyLabel}>Public Key</Text>
+                <Text style={styles.keyValue}>{identity ? identity.publicKey : 'Đang tạo...'}</Text>
+                <Text style={[styles.keyLabel, styles.keyLabelSpacing]}>Secret Key</Text>
+                <Text style={styles.keyValue}>{identity ? identity.privateKey : 'Đang tạo...'}</Text>
+                {masterKey ? (
+                  <View style={styles.pill}>
+                    <Text style={styles.pillText}>Master Key: {formatKey(masterKey)}</Text>
+                  </View>
+                ) : null}
+                {metadataHash ? (
+                  <View style={styles.pill}>
+                    <Text style={styles.pillText}>Metadata Hash: {formatKey(metadataHash)}</Text>
+                  </View>
+                ) : null}
+              </View>
+            </View>
+
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>
+                Chọn Public Key tham gia vòng ký ({ringMembers.length} người)
+              </Text>
+              {selectableMembers.map((member) => {
+                const normalized = normalizeHex(member.publicKey);
+                const isSelected = ringMembers.includes(normalized);
+                return (
+                  <TouchableOpacity
+                    key={member.publicKey}
+                    style={styles.memberItem}
+                    onPress={() => toggleMember(member.publicKey)}
+                  >
+                    <View style={styles.memberInfo}>
+                      <Text style={styles.memberName}>{member.displayName || member.identifier}</Text>
+                      <Text style={styles.memberKey}>{formatKey(member.publicKey)}</Text>
+                    </View>
+                    <View style={[styles.checkbox, isSelected && styles.checkboxFilled]}>
+                      {isSelected ? <View style={styles.checkboxIndicator} /> : null}
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+              {selectableMembers.length === 0 ? (
+                <Text style={styles.emptyMemberText}>
+                  Chưa có người dùng khác trong vòng ký. Bạn có thể upload với 1 thành viên.
+                </Text>
               ) : null}
             </View>
-          </View>
-
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>
-              Chọn Public Key tham gia vòng ký ({ringMembers.length} người)
-            </Text>
-            {selectableMembers.map((member) => {
-              const normalized = normalizeHex(member.publicKey);
-              const isSelected = ringMembers.includes(normalized);
-              return (
-                <TouchableOpacity
-                  key={member.publicKey}
-                  style={styles.memberItem}
-                  onPress={() => toggleMember(member.publicKey)}
-                >
-                  <View style={styles.memberInfo}>
-                    <Text style={styles.memberName}>{member.displayName || member.identifier}</Text>
-                    <Text style={styles.memberKey}>{formatKey(member.publicKey)}</Text>
-                  </View>
-                  <View style={[styles.checkbox, isSelected && styles.checkboxFilled]}>
-                    {isSelected ? <View style={styles.checkboxIndicator} /> : null}
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-            {selectableMembers.length === 0 ? (
-              <Text style={styles.emptyMemberText}>
-                Chưa có người dùng khác trong vòng ký. Bạn có thể upload với 1 thành viên.
-              </Text>
+            {(initializing || isLoading) && !submitting ? (
+              <ActivityIndicator style={styles.loaderSpacing} color={colors.primary} />
             ) : null}
-          </View>
+          </ScrollView>
 
-          <View style={styles.footer}>
-            <TouchableOpacity
-              style={[styles.button, styles.buttonSecondary]}
-              onPress={() => {
-                resetState();
-                onClose();
-              }}
-              disabled={submitting}
-            >
-              <Text style={styles.buttonSecondaryText}>Hủy</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.button, styles.buttonPrimary]}
-              onPress={handleUpload}
-              disabled={submitting || initializing || isLoading}
-            >
-              {submitting ? (
-                <ActivityIndicator color={colors.onPrimary} />
-              ) : (
-                <Text style={styles.buttonText}>Upload</Text>
-              )}
-            </TouchableOpacity>
+          <View style={styles.footerContainer}>
+            <View style={styles.footer}>
+              <TouchableOpacity
+                style={[styles.button, styles.buttonSecondary]}
+                onPress={() => {
+                  resetState();
+                  onClose();
+                }}
+                disabled={submitting}
+              >
+                <Text style={styles.buttonSecondaryText}>Hủy</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.button, styles.buttonPrimary]}
+                onPress={handleUpload}
+                disabled={submitting || initializing || isLoading}
+              >
+                {submitting ? (
+                  <ActivityIndicator color={colors.onPrimary} />
+                ) : (
+                  <Text style={styles.buttonText}>Upload</Text>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
-
-          {(initializing || isLoading) && !submitting ? (
-            <ActivityIndicator style={styles.loaderSpacing} color={colors.primary} />
-          ) : null}
-        </ScrollView>
-      </View>
+        </View>
+      </SafeAreaView>
     </Modal>
   );
 };

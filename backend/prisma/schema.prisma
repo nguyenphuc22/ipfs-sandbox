@@ -19,35 +19,37 @@ model User {
 }
 
 model File {
-  id                 String                    @id @default(uuid())
-  fileName           String
-  totalSize          Int
-  mimeType           String?
-  chunkCount         Int                       @default(0)
-  metadata           String?
-  metadataHash       String
-  encryptedChunkKeys String
-  ringSignature      String?
-  ringPublicKeys     String?
-  escrowedIdentity   String?
-  ownershipPublicKey String
-  ownershipCreatedAt DateTime                  @default(now())
-  uploaderId         String
-  status             String                    @default("active")
-  createdAt          DateTime                  @default(now())
-  updatedAt          DateTime                  @updatedAt
-  lastRevocationId   String?
-  lastRevocationAt   DateTime?
-  anonymousAccess    AnonymousFileAccess[]
-  revocations        AnonymousRevocation[]
-  sharingRequests    AnonymousSharingRequest[]
-  uploader           User                      @relation("FileUploader", fields: [uploaderId], references: [id])
-  chunks             FileChunk[]
-  integrityAlerts    IntegrityAlert[]
-  signatures         Signature[]
+  id                   String                    @id @default(uuid())
+  fileName             String
+  totalSize            Int
+  mimeType             String?
+  chunkCount           Int                       @default(0)
+  metadata             String?
+  metadataHash         String
+  encryptedChunkKeys   String
+  ringSignature        String?
+  ringPublicKeys       String?
+  escrowedIdentity     String?
+  ownershipPublicKey   String
+  ownershipCreatedAt   DateTime                  @default(now())
+  uploaderId           String?
+  uploaderPublicKeyHash String?
+  status               String                    @default("active")
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+  lastRevocationId     String?
+  lastRevocationAt     DateTime?
+  anonymousAccess      AnonymousFileAccess[]
+  revocations          AnonymousRevocation[]
+  sharingRequests      AnonymousSharingRequest[]
+  uploader             User?                     @relation("FileUploader", fields: [uploaderId], references: [id])
+  chunks               FileChunk[]
+  integrityAlerts      IntegrityAlert[]
+  signatures           Signature[]
 
   @@index([ownershipPublicKey])
   @@index([uploaderId])
+  @@index([uploaderPublicKeyHash])
   @@index([status])
 }
 

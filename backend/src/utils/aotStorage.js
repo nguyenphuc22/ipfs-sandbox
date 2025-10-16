@@ -1,7 +1,6 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { Point } = require('@noble/secp256k1');
 
 const DATA_DIR = path.join(__dirname, '../../data');
 const STORAGE_PATH = path.join(DATA_DIR, 'aot-records.json');
@@ -64,18 +63,33 @@ function canonicalizePublicKey(value) {
     const trimmed = value.trim().toLowerCase();
     const hex = trimmed.replace(/^0x/, '');
 
-    if (!VALID_PUBLIC_KEY_LENGTHS.has(hex.length)) {
+    if (!/^[0-9a-f]+$/.test(hex) || !VALID_PUBLIC_KEY_LENGTHS.has(hex.length)) {
         return null;
     }
 
-    try {
-        // Point.fromHex accepts x-only, compressed (02/03 prefix) and uncompressed (04 prefix) encodings.
-    const point = Point.fromHex(hex);
-    // Always persist the canonical compressed representation (02/03 prefix, 33 bytes)
-    return Buffer.from(point.toRawBytes(true)).toString('hex');
-    } catch (error) {
-        return null;
+    // Already compressed (33 bytes / 66 hex chars) with parity prefix
+    if (hex.length === 66 && (hex.startsWith('02') || hex.startsWith('03'))) {
+        return hex;
     }
+
+    // Uncompressed (04 || X || Y). Determine parity from Y to compress deterministically.
+    if (hex.length === 130 && hex.startsWith('04')) {
+        const x = hex.slice(2, 66);
+        const y = hex.slice(66);
+        if (!/^[0-9a-f]{64}$/.test(x) || !/^[0-9a-f]{64}$/.test(y)) {
+            return null;
+        }
+        const yLastByte = parseInt(y.slice(-2), 16);
+        const prefix = (yLastByte % 2 === 0) ? '02' : '03';
+        return `${prefix}${x}`;
+    }
+
+    // X-only (32 bytes / 64 hex chars). Assume even Y parity by default for deterministic hashing.
+    if (hex.length === 64) {
+        return `02${hex}`;
+    }
+
+    return null;
 }
 
 function isValidPublicKey(value) {

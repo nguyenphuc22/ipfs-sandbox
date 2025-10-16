@@ -12,7 +12,7 @@ async function loadSecpModule() {
 
 async function loadSha256() {
     if (!sha256Promise) {
-        sha256Promise = import('@noble/hashes/sha2.js').then(m => m.sha256);
+        sha256Promise = import('@noble/hashes/sha2.js').then((m) => m.sha256);
     }
     return sha256Promise;
 }

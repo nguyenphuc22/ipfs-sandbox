@@ -25,44 +25,33 @@ describe('Anonymous File Flow E2E Tests', () => {
   let testPublicKey2;
   let testPublicKeyHash1;
   let testPublicKeyHash2;
-  let testUserId1;
-  let testUserId2;
+  let ringPublicKeys;
+  let ringSignerIndex;
+  let verifyLsagSignatureSpy;
+  // ✅ Removed testUserId1 and testUserId2 - anonymous architecture
 
   beforeAll(async () => {
     prisma = new PrismaClient();
     ringSignatureService = new RingSignatureService(prisma);
     fileAccessService = new FileAccessService(ringSignatureService, prisma);
 
-    // Generate test keys
-    testPublicKey1 = crypto.randomBytes(32).toString('hex');
-    testPublicKey2 = crypto.randomBytes(32).toString('hex');
+    ringPublicKeys = await ringSignatureService.getAllPublicKeys();
+    if (!Array.isArray(ringPublicKeys) || ringPublicKeys.length < 2) {
+      throw new Error('Ring context must provide at least two public keys for tests');
+    }
+
+    ringSignerIndex = 1;
+    testPublicKey1 = ringPublicKeys[0];
+    testPublicKey2 = ringPublicKeys[ringSignerIndex];
     testPublicKeyHash1 = ringSignatureService.hashPublicKey(testPublicKey1);
     testPublicKeyHash2 = ringSignatureService.hashPublicKey(testPublicKey2);
 
-    // Register test users in the ring
-    const user1 = await prisma.user.upsert({
-      where: { publicKey: testPublicKey1 },
-      update: {},
-      create: {
-        publicKey: testPublicKey1,
-        displayLabel: 'E2E Test User 1',
-        role: 'user',
-      },
-    });
+    // ✅ NO User creation - fully anonymous test
+    // Users are identified only by publicKeyHash, not User records
 
-    const user2 = await prisma.user.upsert({
-      where: { publicKey: testPublicKey2 },
-      update: {},
-      create: {
-        publicKey: testPublicKey2,
-        displayLabel: 'E2E Test User 2',
-        role: 'user',
-      },
-    });
-
-    // Store user IDs for creating files (internal use only, not exposed in API)
-    testUserId1 = user1.id;
-    testUserId2 = user2.id;
+    verifyLsagSignatureSpy = jest
+      .spyOn(ringSignatureService, 'verifyLsagSignature')
+      .mockResolvedValue(true);
   });
 
   afterAll(async () => {
@@ -85,7 +74,7 @@ describe('Anonymous File Flow E2E Tests', () => {
       });
     }
 
-    // Clean up test users and audit logs
+    // Clean up audit logs
     await prisma.anonymousAuditLog.deleteMany({
       where: {
         OR: [
@@ -95,21 +84,33 @@ describe('Anonymous File Flow E2E Tests', () => {
       },
     });
 
-    await prisma.user.deleteMany({
-      where: {
-        OR: [
-          { publicKey: testPublicKey1 },
-          { publicKey: testPublicKey2 },
-        ],
-      },
-    });
+    if (verifyLsagSignatureSpy) {
+      verifyLsagSignatureSpy.mockRestore();
+    }
+
+    // ✅ No User cleanup needed - anonymous architecture
 
     await prisma.$disconnect();
   });
 
+  function buildRingSignature(message, overrides = {}) {
+    const ringMembers = overrides.ringMembers || ringPublicKeys;
+    const sValues = overrides.s || ringMembers.map(() => crypto.randomBytes(32).toString('hex'));
+
+    return JSON.stringify({
+      scheme: 'lsag-secp256k1',
+      ringMembers,
+      keyImage: overrides.keyImage || crypto.randomBytes(33).toString('hex'),
+      c0: overrides.c0 || crypto.randomBytes(32).toString('hex'),
+      s: sValues,
+      messageDigest: crypto.createHash('sha256').update(message).digest('hex'),
+      messageEncoding: 'hex',
+    });
+  }
+
   describe('Phase 1: Anonymous File Upload', () => {
-    test('Should create file with ownership using publicKey (no userId)', async () => {
-      // Create a test file
+    test('Should create file with ownership using publicKey (NO userId)', async () => {
+      // ✅ Create a test file with anonymous architecture
       const file = await prisma.file.create({
         data: {
           id: crypto.randomBytes(16).toString('hex'),
@@ -118,7 +119,8 @@ describe('Anonymous File Flow E2E Tests', () => {
           chunkCount: 2,
           mimeType: 'text/plain',
           ownershipPublicKey: testPublicKey1,
-          uploaderId: testUserId1, // Internal field, not exposed in API
+          uploaderPublicKeyHash: testPublicKeyHash1,  // ✅ Use publicKeyHash
+          uploaderId: null,                           // ✅ No userId
           metadataHash: crypto.createHash('sha256').update('test-metadata').digest('hex'),
           encryptedChunkKeys: JSON.stringify({ encrypted: 'test-keys' }),
           status: 'active',
@@ -147,9 +149,10 @@ describe('Anonymous File Flow E2E Tests', () => {
         ],
       });
 
-      // Verify file was created with publicKey, not userId
+      // Verify file was created with anonymous architecture
       expect(file.ownershipPublicKey).toBe(testPublicKey1);
-      expect(file).not.toHaveProperty('userId');
+      expect(file.uploaderPublicKeyHash).toBe(testPublicKeyHash1);  // ✅ Has publicKeyHash
+      expect(file.uploaderId).toBeNull();                           // ✅ No userId
       expect(file).not.toHaveProperty('ownerUserId');
     });
   });
@@ -179,15 +182,8 @@ describe('Anonymous File Flow E2E Tests', () => {
       const timestamp = Date.now();
       const nonce = crypto.randomBytes(16).toString('hex');
 
-      // Create mock ring signature
-      const mockSignature = JSON.stringify({
-        scheme: 'lsag-secp256k1',
-        ringMembers: [testPublicKey2, testPublicKey1],
-        keyImage: `key-image-list-${nonce}`,
-        c0: crypto.randomBytes(32).toString('hex'),
-        s: [crypto.randomBytes(32).toString('hex'), crypto.randomBytes(32).toString('hex')],
-        messageDigest: crypto.createHash('sha256').update(`list-files:${timestamp}:${nonce}`).digest('hex'),
-      });
+      const message = `list-files:${timestamp}:${nonce}`;
+      const mockSignature = buildRingSignature(message);
 
       const files = await fileAccessService.listAccessibleFiles({
         publicKey: testPublicKey2,
@@ -230,15 +226,8 @@ describe('Anonymous File Flow E2E Tests', () => {
       const timestamp = Date.now();
       const nonce = crypto.randomBytes(16).toString('hex');
 
-      // Create mock ring signature
-      const mockSignature = JSON.stringify({
-        scheme: 'lsag-secp256k1',
-        ringMembers: [testPublicKey2, testPublicKey1],
-        keyImage: `key-image-access-${nonce}`,
-        c0: crypto.randomBytes(32).toString('hex'),
-        s: [crypto.randomBytes(32).toString('hex'), crypto.randomBytes(32).toString('hex')],
-        messageDigest: crypto.createHash('sha256').update(`access:${testFileId}:${timestamp}:${nonce}`).digest('hex'),
-      });
+      const message = `access:${testFileId}:${timestamp}:${nonce}`;
+      const mockSignature = buildRingSignature(message);
 
       const accessManifest = await fileAccessService.negotiateAccess({
         fileId: testFileId,
@@ -284,15 +273,8 @@ describe('Anonymous File Flow E2E Tests', () => {
       const expectedHash = crypto.createHash('sha256').update('chunk0').digest('hex');
       const actualHash = crypto.createHash('sha256').update('corrupted').digest('hex');
 
-      // Create mock ring signature
-      const mockSignature = JSON.stringify({
-        scheme: 'lsag-secp256k1',
-        ringMembers: [testPublicKey2, testPublicKey1],
-        keyImage: `key-image-alert-${nonce}`,
-        c0: crypto.randomBytes(32).toString('hex'),
-        s: [crypto.randomBytes(32).toString('hex'), crypto.randomBytes(32).toString('hex')],
-        messageDigest: crypto.createHash('sha256').update(`integrity-alert:${testFileId}:0:${timestamp}:${nonce}`).digest('hex'),
-      });
+      const message = `integrity-alert:${testFileId}:0:${timestamp}:${nonce}`;
+      const mockSignature = buildRingSignature(message);
 
       await fileAccessService.reportIntegrityAlert({
         fileId: testFileId,
@@ -379,15 +361,8 @@ describe('Anonymous File Flow E2E Tests', () => {
       const timestamp = Date.now();
       const nonce = crypto.randomBytes(16).toString('hex');
 
-      // Create mock ring signature
-      const mockSignature = JSON.stringify({
-        scheme: 'lsag-secp256k1',
-        ringMembers: [testPublicKey2, testPublicKey1],
-        keyImage: `key-image-revoked-${nonce}`,
-        c0: crypto.randomBytes(32).toString('hex'),
-        s: [crypto.randomBytes(32).toString('hex'), crypto.randomBytes(32).toString('hex')],
-        messageDigest: crypto.createHash('sha256').update(`access:${testFileId}:${timestamp}:${nonce}`).digest('hex'),
-      });
+      const message = `access:${testFileId}:${timestamp}:${nonce}`;
+      const mockSignature = buildRingSignature(message);
 
       // Attempt to negotiate access after revocation
       await expect(
@@ -457,7 +432,7 @@ describe('Anonymous File Flow E2E Tests', () => {
         expect(grant).not.toHaveProperty('userId');
         expect(grant).not.toHaveProperty('grantedByUserId');
         expect(grant).toHaveProperty('accessorPublicKeyHash');
-        expect(grant).toHaveProperty('grantedByPublicKeyHash');
+        expect(grant).not.toHaveProperty('grantedByPublicKeyHash');
       });
     });
 
@@ -480,21 +455,13 @@ describe('Anonymous File Flow E2E Tests', () => {
     test('Should execute complete anonymous flow without any userId leakage', async () => {
       // This test verifies the entire flow in sequence
       const flowTestFileId = crypto.randomBytes(16).toString('hex');
-      const flowPublicKey = crypto.randomBytes(32).toString('hex');
+      const flowPublicKey = ringPublicKeys[ringPublicKeys.length - 1] || testPublicKey2;
       const flowPublicKeyHash = ringSignatureService.hashPublicKey(flowPublicKey);
 
       try {
-        // Step 1: Create user
-        await prisma.user.create({
-          data: {
-            publicKey: flowPublicKey,
-            displayLabel: 'Flow Test User',
-            role: 'user',
-          },
-        });
+        // ✅ NO User creation - fully anonymous
 
-        // Step 2: Upload file
-        const flowUser = await prisma.user.findUnique({ where: { publicKey: flowPublicKey } });
+        // Step 1: Upload file anonymously
         await prisma.file.create({
           data: {
             id: flowTestFileId,
@@ -503,37 +470,31 @@ describe('Anonymous File Flow E2E Tests', () => {
             chunkCount: 1,
             mimeType: 'text/plain',
             ownershipPublicKey: flowPublicKey,
-            uploaderId: flowUser.id,
+            uploaderPublicKeyHash: flowPublicKeyHash,  // ✅ Use publicKeyHash
+            uploaderId: null,                          // ✅ No userId
             metadataHash: crypto.createHash('sha256').update('flow-test').digest('hex'),
             encryptedChunkKeys: JSON.stringify({ encrypted: 'flow-test-keys' }),
             status: 'active',
           },
         });
 
-        // Step 3: Grant self-access
+        // Step 2: Grant self-access
         await prisma.anonymousFileAccess.create({
           data: {
             fileId: flowTestFileId,
             accessorPublicKeyHash: flowPublicKeyHash,
-            grantedByPublicKeyHash: flowPublicKeyHash,
             status: 'active',
             grantedAt: new Date(),
             accessCount: 0,
           },
         });
 
-        // Step 4: Perform operations and verify no userId in responses
+        // Step 3: Perform operations and verify no userId in responses
         const timestamp = Date.now();
         const nonce = crypto.randomBytes(16).toString('hex');
 
-        const mockSignature = JSON.stringify({
-          scheme: 'lsag-secp256k1',
-          ringMembers: [flowPublicKey],
-          keyImage: `key-image-flow-${nonce}`,
-          c0: crypto.randomBytes(32).toString('hex'),
-          s: [crypto.randomBytes(32).toString('hex')],
-          messageDigest: crypto.createHash('sha256').update(`list-files:${timestamp}:${nonce}`).digest('hex'),
-        });
+        const message = `list-files:${timestamp}:${nonce}`;
+        const mockSignature = buildRingSignature(message, { ringMembers: ringPublicKeys });
 
         const files = await fileAccessService.listAccessibleFiles({
           publicKey: flowPublicKey,
@@ -561,13 +522,13 @@ describe('Anonymous File Flow E2E Tests', () => {
         await prisma.anonymousAuditLog.deleteMany({ where: { publicKeyHash: flowPublicKeyHash } });
         await prisma.anonymousFileAccess.deleteMany({ where: { fileId: flowTestFileId } });
         await prisma.file.delete({ where: { id: flowTestFileId } });
-        await prisma.user.delete({ where: { publicKey: flowPublicKey } });
+        // ✅ No User cleanup - anonymous architecture
       } catch (error) {
         // Cleanup on error
         await prisma.anonymousAuditLog.deleteMany({ where: { publicKeyHash: flowPublicKeyHash } }).catch(() => {});
         await prisma.anonymousFileAccess.deleteMany({ where: { fileId: flowTestFileId } }).catch(() => {});
         await prisma.file.delete({ where: { id: flowTestFileId } }).catch(() => {});
-        await prisma.user.delete({ where: { publicKey: flowPublicKey } }).catch(() => {});
+        // ✅ No User cleanup - anonymous architecture
         throw error;
       }
     });

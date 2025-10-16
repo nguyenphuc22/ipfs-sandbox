@@ -102,6 +102,24 @@ Test tất cả anonymous endpoints có thể truy cập:
   **Expected:** 400/401 (not 404)
   **Result:** __________
 
+- [ ] **POST /api/files/aot-upload**
+  ```bash
+  curl -X POST http://localhost:3000/api/files/aot-upload \
+    -F "metadataHash=deadbeef" \
+    -F "ownershipPublicKey=0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
+  ```
+  **Expected:** 400 (not 404) when file missing
+  **Result:** __________
+
+- [ ] **POST /api/files/chunked-upload**
+  ```bash
+  curl -X POST http://localhost:3000/api/files/chunked-upload \
+    -F "metadataHash=feedface" \
+    -F "ownershipPublicKey=0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
+  ```
+  **Expected:** 400 (not 404) when file missing
+  **Result:** __________
+
 **Status:** ☐ ALL PASS ☐ SOME FAIL
 
 ---

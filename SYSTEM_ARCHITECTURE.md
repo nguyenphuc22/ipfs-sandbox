@@ -704,7 +704,8 @@ erDiagram
         int totalSize
         int chunkCount
         string ownershipPublicKey
-        string uploaderId FK
+        string uploaderPublicKeyHash "SHA256(ownershipPublicKey) - Anonymous"
+        string uploaderId FK "Optional - legacy support"
         string status
         datetime createdAt
         datetime updatedAt
@@ -772,6 +773,14 @@ erDiagram
     User ||--o{ Signature : "signs"
 ```
 
+> `User` entity is retained only for legacy migrations; the anonymous flow derives ring members from ring-context snapshots and file ownership metadata instead of user records.
+
+**Ring Context Derivation**
+
+- `backend/data/aot-records.json` now stores `publicKeyHash` for each sample identity and `uploaderPublicKeyHash = SHA256(ownershipPublicKey)` for seed files.
+- `aotStorage.getRingContext()` surfaces `config.ringMemberPublicKeys`, which `RingSignatureService.getAllPublicKeys()` merges with distinct `File.ownershipPublicKey` values so every uploader is included in the effective ring without querying `User`.
+- Anonymous flow tests consume this combined set, keeping ring members aligned with signed manifests.
+
 ### Data Flow Patterns
 
 ```mermaid
@@ -811,9 +820,9 @@ graph TB
     end
 
     subgraph "Database Persistence"
-        UserData["`**User Management**
-        - Authentication
-        - Key management`"]
+        UserData["`**Legacy User Registry**
+        - Retained for migration only
+        - Anonymous flow reads ring context seeds`"]
         
         FileDB["`**File Registry**
         - IPFS hash mapping

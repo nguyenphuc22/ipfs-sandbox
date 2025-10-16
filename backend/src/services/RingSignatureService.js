@@ -11,6 +11,7 @@
 const crypto = require('crypto');
 const { PrismaClient } = require('@prisma/client');
 const { verifyLsagRingSignature } = require('../utils/ringSignature');
+const { getRingContext } = require('../utils/aotStorage');
 
 class RingSignatureService {
   constructor(prismaClient, redisClient = null) {
@@ -213,22 +214,22 @@ class RingSignatureService {
       });
 
       if (existingKeyImage) {
-        console.warn('[Ring Signature] Key image already seen (double spend attempt?)');
+        console.warn('[Ring Signature] Key image already seen - treating as linked activity');
 
-        // Log the double spend attempt (use full key image for tracking)
+        // Record reuse for observability but do not block legitimate repeated activity
         await this.prisma.anonymousAuditLog.create({
           data: {
             eventType: 'key_image_verification',
             metadata: JSON.stringify({
-              keyImage: keyImage, // Store full key image for proper audit trail
+              keyImage: keyImage,
               reused: true,
               attemptedAt: now.toISOString()
             }),
             timestamp: now
           }
-        }).catch(() => {}); // Don't fail on logging error
+        }).catch(() => {});
 
-        return false;
+        return true;
       }
 
       // Store the key image in database (full key image for proper lookup)
@@ -295,23 +296,29 @@ class RingSignatureService {
    */
   async getAllPublicKeys() {
     try {
-      const users = await this.prisma.user.findMany({
-        select: {
-          publicKey: true,
-        },
-        where: {
-          publicKey: {
-            not: null,
+      const context = getRingContext?.() || {};
+      const contextKeys = Array.isArray(context.ringMemberPublicKeys) ? context.ringMemberPublicKeys : [];
+
+      let fileKeys = [];
+      if (this.prisma?.file?.findMany) {
+        const files = await this.prisma.file.findMany({
+          select: {
+            ownershipPublicKey: true,
           },
-        },
-      });
+        });
 
-      const publicKeys = users
-        .map(user => user.publicKey)
-        .filter(key => key !== null);
+        fileKeys = files
+          .map(file => file.ownershipPublicKey)
+          .filter(key => typeof key === 'string' && key.trim().length > 0);
+      }
 
-      console.log(`[Ring Signature] Fetched ${publicKeys.length} public keys for ring`);
-      return publicKeys;
+      const uniqueKeys = Array.from(new Set([
+        ...contextKeys,
+        ...fileKeys,
+      ].filter(key => typeof key === 'string' && key.trim().length > 0)));
+
+      console.log(`[Ring Signature] Fetched ${uniqueKeys.length} public keys for ring`);
+      return uniqueKeys;
 
     } catch (error) {
       console.error('[Ring Signature] Error fetching public keys:', error);

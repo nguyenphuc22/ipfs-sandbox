@@ -19,12 +19,12 @@ const { maskHashForLogging, secureLog } = require('../utils/monitoring');
 const IPFS_API_URL = process.env.IPFS_API_URL || 'http://127.0.0.1:5001';
 
 /**
- * Upload file with chunking and AOT
+ * Upload file with chunking and AOT (Anonymous)
  * @param {Object} params
  * @param {Buffer} params.fileBuffer - Complete file buffer
  * @param {string} params.fileName - Original filename
  * @param {string} params.mimeType - MIME type
- * @param {string} params.userId - Uploader user ID
+ * @param {string} params.uploaderPublicKeyHash - SHA256 hash of uploader's public key
  * @param {string} params.metadataHash - Metadata hash from client
  * @param {string} params.ownershipPublicKey - Schnorr public key
  * @param {Object} params.schnorrProof - {R, s, message, publicKey}
@@ -37,7 +37,7 @@ async function uploadFileWithChunks({
   fileBuffer,
   fileName,
   mimeType,
-  userId,
+  uploaderPublicKeyHash,
   metadataHash,
   ownershipPublicKey,
   schnorrProof,
@@ -87,7 +87,7 @@ async function uploadFileWithChunks({
       });
     }
 
-    // 3. Create file record in database with Prisma
+    // 3. Create file record in database with Prisma (Anonymous - using uploaderPublicKeyHash)
     const fileRecord = await prisma.file.create({
       data: {
         fileName,
@@ -101,7 +101,8 @@ async function uploadFileWithChunks({
         ringPublicKeys: ringPublicKeys.length > 0 ? JSON.stringify(ringPublicKeys) : null,
         escrowedIdentity,
         ownershipPublicKey,
-        uploaderId: userId,
+        uploaderPublicKeyHash,  // ✅ Use publicKeyHash instead of userId
+        uploaderId: null,       // ✅ No longer using userId
         status: 'active',
       },
     });
@@ -122,19 +123,8 @@ async function uploadFileWithChunks({
     console.log(`[ChunkService] ${chunkRecords.count} chunk records created`);
 
     // 5. Create anonymous access record for the uploader using public key hash
-    // First, get the uploader's public key to compute the hash
-    const uploader = await prisma.user.findUnique({
-      where: { id: userId }
-    });
-
-    if (!uploader || !uploader.publicKey) {
-      throw new Error('Uploader does not have a public key');
-    }
-
-    const accessorPublicKeyHash = crypto
-      .createHash('sha256')
-      .update(uploader.publicKey)
-      .digest('hex');
+    // ✅ Use uploaderPublicKeyHash directly - NO User table query needed
+    const accessorPublicKeyHash = uploaderPublicKeyHash;
 
     const keyPackageFingerprint = crypto
       .createHash('sha256')
@@ -152,16 +142,17 @@ async function uploadFileWithChunks({
       },
     });
 
-    // 6. Create anonymous audit log
+    // 6. Create anonymous audit log (✅ No userId)
     await prisma.anonymousAuditLog.create({
       data: {
         eventType: 'upload',
         fileId: fileRecord.id,
-        publicKeyHash: accessorPublicKeyHash,
+        publicKeyHash: uploaderPublicKeyHash,  // ✅ Use uploaderPublicKeyHash
         metadata: JSON.stringify({
           fileName,
           fileSize: totalSize,
           chunkCount: totalChunks,
+          ownershipPublicKey,  // ✅ Include publicKey instead of userId
           schnorrProof,
         }),
       },

@@ -1,17 +1,20 @@
 const express = require('express');
 const axios = require('axios');
+const multer = require('multer');
+const FormData = require('form-data');
 const crypto = require('crypto');
 const {
+    addFileRecord,
     getFileRecord,
     addRevocationRecord,
     listFileRecords,
     listFileRecordsByOwnershipKey,
     updateFileRecord,
     getRingContext,
-    getUserByPublicKey,
 } = require('../utils/aotStorage');
 const { verifyLsagRingSignature } = require('../utils/ringSignature');
 const {
+    uploadFileWithChunks,
     reportIntegrityAlert,
 } = require('../services/fileChunkService');
 const {
@@ -19,6 +22,12 @@ const {
     getRevocationHistory,
 } = require('../services/revocationService');
 const router = express.Router();
+
+// Configure multer for file uploads
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
+});
 
 // IPFS API endpoint - use internal container address
 const IPFS_API_URL = process.env.IPFS_API_URL || 'http://127.0.0.1:5001';
@@ -119,6 +128,306 @@ function normalizePublicKey(value) {
     }
     return value.trim().toLowerCase().replace(/^0x/, '');
 }
+
+// ============================================================================
+// UPLOAD ENDPOINTS (Anonymous Upload Flow)
+// ============================================================================
+
+router.post('/upload', upload.single('file'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: 'No file provided' });
+        }
+
+        const formData = new FormData();
+        formData.append('file', req.file.buffer, {
+            filename: req.file.originalname,
+            contentType: req.file.mimetype,
+        });
+
+        const response = await axios.post(`${IPFS_API_URL}/api/v0/add`, formData, {
+            headers: {
+                ...formData.getHeaders(),
+            },
+            maxContentLength: Infinity,
+            maxBodyLength: Infinity,
+        });
+
+        const ipfsResponse = response.data;
+        const hash = ipfsResponse.Hash;
+
+        res.json({
+            success: true,
+            hash,
+            name: req.file.originalname,
+            size: req.file.size,
+            ipfsUrl: `http://localhost:8080/ipfs/${hash}`,
+            apiUrl: `http://localhost:5001/api/v0/cat?arg=${hash}`,
+        });
+    } catch (error) {
+        console.error('[Route] Upload error:', error.message);
+        res.status(500).json({
+            error: 'Failed to upload file to IPFS',
+            details: error.message,
+        });
+    }
+});
+
+router.post('/aot-upload', upload.single('file'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: 'File is required' });
+        }
+
+        const metadataHash = (req.body.metadataHash || '').trim();
+        const ringSignature = (req.body.ringSignature || '').trim();
+        const escrowedIdentity = (req.body.escrowedIdentity || '').trim();
+        const ownershipPublicKey = (req.body.ownershipPublicKey || '').trim();
+        const ownershipProof = {
+            R: req.body.ownershipProofR || req.body['ownershipProof[R]'],
+            s: req.body.ownershipProofS || req.body['ownershipProof[s]'],
+            message: req.body.ownershipProofMessage || req.body['ownershipProof[message]'],
+            publicKey: req.body.ownershipProofPublicKey || ownershipPublicKey,
+        };
+
+        if (!metadataHash || !ownershipPublicKey) {
+            return res.status(400).json({ error: 'metadataHash and ownershipPublicKey are required' });
+        }
+
+        await verifySchnorrProof(ownershipProof, ownershipPublicKey);
+
+        const ringContext = getRingContext();
+        let ringMembers = ringContext.ringMemberPublicKeys || [];
+        const normalizedOwnerKey = normalizePublicKey(ownershipPublicKey);
+
+        const availableRingMap = new Map(
+            (ringContext.ringMemberPublicKeys || []).map((key) => [normalizePublicKey(key), key])
+        );
+
+        const requestedRingMembersRaw = req.body.ringMembers || req.body['ringMembers[]'];
+        if (requestedRingMembersRaw) {
+            let parsedRingMembers;
+            if (typeof requestedRingMembersRaw === 'string') {
+                try {
+                    parsedRingMembers = JSON.parse(requestedRingMembersRaw);
+                } catch (error) {
+                    parsedRingMembers = [requestedRingMembersRaw];
+                }
+            } else if (Array.isArray(requestedRingMembersRaw)) {
+                parsedRingMembers = requestedRingMembersRaw;
+            }
+
+            if (Array.isArray(parsedRingMembers) && parsedRingMembers.length > 0) {
+                const normalizedSet = new Set();
+                parsedRingMembers.forEach((value) => {
+                    if (typeof value === 'string') {
+                        normalizedSet.add(normalizePublicKey(value));
+                    }
+                });
+
+                if (!normalizedSet.has(normalizedOwnerKey)) {
+                    normalizedSet.add(normalizedOwnerKey);
+                }
+
+                ringMembers = Array.from(normalizedSet)
+                    .map((key) => availableRingMap.get(key) || key)
+                    .sort((a, b) => a.localeCompare(b));
+            }
+        }
+
+        if (ringMembers.length >= 2) {
+            const ringIncludesOwner = ringMembers
+                .map((member) => normalizePublicKey(member))
+                .includes(normalizedOwnerKey);
+            if (!ringIncludesOwner) {
+                return res.status(400).json({
+                    error: 'Ownership public key is not part of the registered ring',
+                });
+            }
+
+            if (!ringSignature) {
+                return res.status(400).json({
+                    error: 'ringSignature is required when a ring is configured',
+                });
+            }
+
+            await verifyLsagRingSignature({
+                message: metadataHash,
+                ringSignature,
+                expectedRingPublicKeys: ringMembers,
+            });
+        }
+
+        const parsedRingSignature = ringSignature
+            ? tryParseJson(ringSignature) || { raw: ringSignature }
+            : null;
+
+        const formData = new FormData();
+        formData.append('file', req.file.buffer, {
+            filename: req.file.originalname,
+            contentType: req.file.mimetype,
+        });
+
+        const response = await axios.post(`${IPFS_API_URL}/api/v0/add`, formData, {
+            headers: {
+                ...formData.getHeaders(),
+            },
+            maxContentLength: Infinity,
+            maxBodyLength: Infinity,
+        });
+
+        const ipfsResponse = response.data;
+        const hash = ipfsResponse.Hash;
+
+        const record = addFileRecord({
+            fileId: crypto.randomUUID(),
+            cid: hash,
+            name: req.file.originalname,
+            size: req.file.size,
+            metadataHash,
+            ownershipPublicKey,
+            ringSignature,
+            storedRingSignature: parsedRingSignature,
+            escrowedIdentity,
+            ringMembersUsed: ringMembers,
+            ringContextSnapshot: {
+                adjudicatorPublicKey: ringContext.adjudicatorPublicKey,
+                ringMemberPublicKeys: ringMembers,
+            },
+            createdAt: new Date().toISOString(),
+        });
+
+        res.status(201).json({
+            success: true,
+            fileId: record.fileId,
+            cid: record.cid,
+            name: record.name,
+            size: record.size,
+            metadataHash: record.metadataHash,
+            ownershipPublicKey: record.ownershipPublicKey,
+            ringMembers: record.ringMembersUsed,
+        });
+    } catch (error) {
+        console.error('[Route] AOT upload error:', error);
+        const message = error instanceof Error ? error.message : 'Failed to process AOT upload';
+        const statusCode = message.includes('Schnorr') || message.includes('mismatch')
+            ? 400
+            : 500;
+        res.status(statusCode).json({ success: false, error: message });
+    }
+});
+
+router.post('/chunked-upload', upload.single('file'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: 'File is required' });
+        }
+
+        const metadataHash = (req.body.metadataHash || '').trim();
+        const ringSignature = (req.body.ringSignature || '').trim();
+        const escrowedIdentity = (req.body.escrowedIdentity || '').trim();
+        const ownershipPublicKey = (req.body.ownershipPublicKey || '').trim();
+
+        const ownershipProof = {
+            R: req.body.ownershipProofR || req.body['ownershipProof[R]'],
+            s: req.body.ownershipProofS || req.body['ownershipProof[s]'],
+            message: req.body.ownershipProofMessage || req.body['ownershipProof[message]'],
+            publicKey: req.body.ownershipProofPublicKey || ownershipPublicKey,
+        };
+
+        if (!metadataHash || !ownershipPublicKey) {
+            return res.status(400).json({
+                error: 'metadataHash and ownershipPublicKey are required',
+            });
+        }
+
+        await verifySchnorrProof(ownershipProof, ownershipPublicKey);
+
+        const ringContext = getRingContext();
+        let ringMembers = ringContext.ringMemberPublicKeys || [];
+        const normalizedOwnerKey = normalizePublicKey(ownershipPublicKey);
+
+        const requestedRingMembersRaw = req.body.ringMembers || req.body['ringMembers[]'];
+        if (requestedRingMembersRaw) {
+            let parsedRingMembers;
+            if (typeof requestedRingMembersRaw === 'string') {
+                try {
+                    parsedRingMembers = JSON.parse(requestedRingMembersRaw);
+                } catch (error) {
+                    parsedRingMembers = [requestedRingMembersRaw];
+                }
+            } else if (Array.isArray(requestedRingMembersRaw)) {
+                parsedRingMembers = requestedRingMembersRaw;
+            }
+
+            if (Array.isArray(parsedRingMembers) && parsedRingMembers.length > 0) {
+                const normalizedSet = new Set();
+                parsedRingMembers.forEach((value) => {
+                    if (typeof value === 'string') {
+                        normalizedSet.add(normalizePublicKey(value));
+                    }
+                });
+
+                if (!normalizedSet.has(normalizedOwnerKey)) {
+                    normalizedSet.add(normalizedOwnerKey);
+                }
+
+                ringMembers = Array.from(normalizedSet).sort((a, b) => a.localeCompare(b));
+            }
+        }
+
+        if (ringMembers.length >= 2) {
+            const ringIncludesOwner = ringMembers
+                .map((member) => normalizePublicKey(member))
+                .includes(normalizedOwnerKey);
+
+            if (!ringIncludesOwner) {
+                return res.status(400).json({
+                    error: 'Ownership public key is not part of the registered ring',
+                });
+            }
+
+            if (!ringSignature) {
+                return res.status(400).json({
+                    error: 'ringSignature is required when a ring is configured',
+                });
+            }
+
+            await verifyLsagRingSignature({
+                message: metadataHash,
+                ringSignature,
+                expectedRingPublicKeys: ringMembers,
+            });
+        }
+
+        const uploaderPublicKeyHash = crypto
+            .createHash('sha256')
+            .update(ownershipPublicKey)
+            .digest('hex');
+
+        const result = await uploadFileWithChunks({
+            fileBuffer: req.file.buffer,
+            fileName: req.file.originalname,
+            mimeType: req.file.mimetype,
+            uploaderPublicKeyHash,
+            metadataHash,
+            ownershipPublicKey,
+            schnorrProof: ownershipProof,
+            ringSignature,
+            ringPublicKeys: ringMembers,
+            escrowedIdentity,
+        });
+
+        res.status(201).json(result);
+    } catch (error) {
+        console.error('[Route] Chunked upload error:', error);
+        const message = error instanceof Error ? error.message : 'Failed to process chunked upload';
+        const statusCode = message.includes('Schnorr') || message.includes('mismatch')
+            ? 400
+            : 500;
+        res.status(statusCode).json({ success: false, error: message });
+    }
+});
 
 // ============================================================================
 // DOWNLOAD ENDPOINTS (4-Phase Flow)

@@ -9,6 +9,12 @@
 
 import { API_CONFIG } from '../config/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  createLsagRingSignature,
+  normalizeHex,
+  toCompressedPublicKey,
+} from '../utils/aotCrypto';
+import { RingContext } from '../types';
 
 // ============================================================================
 // TYPES & INTERFACES
@@ -77,6 +83,8 @@ export interface IntegrityAlertParams {
 export class AnonymousFileAccessService {
   private baseUrl: string;
   private timeout: number;
+  private cachedRingMembers: string[] | null = null;
+  private cachedRingMembersFetchedAt = 0;
 
   constructor(baseUrl?: string, timeout: number = 30000) {
     this.baseUrl = baseUrl || API_CONFIG.baseUrl;
@@ -117,30 +125,185 @@ export class AnonymousFileAccessService {
            Math.random().toString(36).substring(2, 15);
   }
 
-  /**
-   * Create ring signature (simplified for demo)
-   *
-   * In production: Implement full LSAG or Borromean ring signature
-   * For demo: Simple JSON signature with timestamp and nonce
-   */
-  private async createRingSignature(message: string): Promise<string> {
-    // For demo: Create a simple signature structure
-    // In production: Use actual ring signature algorithm
+  private static readonly RING_MEMBERS_STORAGE_KEY = 'aot_ring_members_cache_v1';
+  private static readonly RING_CONTEXT_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-    const publicKey = await this.getPublicKey();
-    const secretKey = await this.getSecretKey();
+  private async loadPersistedRingMembers(): Promise<string[] | null> {
+    try {
+      const stored = await AsyncStorage.getItem(AnonymousFileAccessService.RING_MEMBERS_STORAGE_KEY);
+      if (!stored) {
+        return null;
+      }
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((key): key is string => typeof key === 'string');
+      }
+    } catch (error) {
+      console.warn('[Anonymous Access] Failed to parse cached ring members:', error);
+    }
+    return null;
+  }
 
-    const signature = {
-      message,
-      publicKey,
-      timestamp: Date.now(),
-      nonce: this.generateNonce(),
-      // For demo: Just include hash of secret key as "proof"
-      // In production: This would be the actual ring signature components
-      proof: `demo-sig-${message.substring(0, 16)}`,
+  private async persistRingMembers(members: string[]): Promise<void> {
+    try {
+      await AsyncStorage.setItem(
+        AnonymousFileAccessService.RING_MEMBERS_STORAGE_KEY,
+        JSON.stringify(members),
+      );
+    } catch (error) {
+      console.warn('[Anonymous Access] Failed to persist ring members cache:', error);
+    }
+  }
+
+  private normalizeRingMembers(rawMembers: string[], ownCompressedKey: string): string[] {
+    const seen = new Set<string>();
+    const normalized: string[] = [];
+
+    const appendIfValid = (key: string) => {
+      try {
+        const compressed = toCompressedPublicKey(key);
+        if (!seen.has(compressed)) {
+          seen.add(compressed);
+          normalized.push(compressed);
+        }
+      } catch (error) {
+        console.warn('[Anonymous Access] Ignoring invalid ring member key:', key, error);
+      }
     };
 
-    return JSON.stringify(signature);
+    rawMembers.forEach((key) => {
+      if (typeof key === 'string' && key.trim().length > 0) {
+        appendIfValid(key);
+      }
+    });
+
+    if (!seen.has(ownCompressedKey)) {
+      normalized.push(ownCompressedKey);
+    }
+
+    return normalized;
+  }
+
+  private async fetchRingContext(): Promise<RingContext | null> {
+    try {
+      const response = await this.makeRequest<{ success: boolean; context: RingContext }>(
+        '/api/auth/context',
+        { method: 'GET' },
+      );
+
+      if (response?.success && response.context) {
+        return response.context;
+      }
+    } catch (error) {
+      console.warn('[Anonymous Access] Failed to fetch ring context:', error);
+    }
+    return null;
+  }
+
+  private extractRingMembers(context: RingContext | null | undefined): string[] {
+    if (!context) {
+      return [];
+    }
+
+    const configMembers = Array.isArray(context.ringMemberPublicKeys)
+      ? context.ringMemberPublicKeys
+      : [];
+    const userMembers = Array.isArray(context.users)
+      ? context.users.map((user) => user.publicKey)
+      : [];
+
+    return [...configMembers, ...userMembers].filter(
+      (key): key is string => typeof key === 'string' && key.trim().length > 0,
+    );
+  }
+
+  private ensureSufficientRing(members: string[], ownKey: string): string[] {
+    if (members.includes(ownKey)) {
+      return members;
+    }
+    return [...members, ownKey];
+  }
+
+  private async getRingMembersForSigning(ownPublicKey: string): Promise<string[]> {
+    const now = Date.now();
+    const ownCompressedKey = toCompressedPublicKey(ownPublicKey);
+
+    const isCacheValid =
+      this.cachedRingMembers &&
+      now - this.cachedRingMembersFetchedAt < AnonymousFileAccessService.RING_CONTEXT_CACHE_TTL &&
+      Array.isArray(this.cachedRingMembers);
+
+    if (isCacheValid && this.cachedRingMembers) {
+      const ensured = this.ensureSufficientRing(this.cachedRingMembers, ownCompressedKey);
+      this.cachedRingMembers = ensured;
+      if (ensured.length >= 2) {
+        return ensured;
+      }
+    }
+
+    let ringMembers: string[] = [];
+
+    const context = await this.fetchRingContext();
+    if (context) {
+      const normalized = this.normalizeRingMembers(
+        this.extractRingMembers(context),
+        ownCompressedKey,
+      );
+      if (normalized.length >= 2) {
+        ringMembers = normalized;
+        this.cachedRingMembers = normalized;
+        this.cachedRingMembersFetchedAt = now;
+        await this.persistRingMembers(normalized);
+      }
+    }
+
+    if (ringMembers.length < 2) {
+      const persisted = await this.loadPersistedRingMembers();
+      if (persisted && persisted.length > 0) {
+        const normalizedPersisted = this.normalizeRingMembers(persisted, ownCompressedKey);
+        if (normalizedPersisted.length >= 2) {
+          ringMembers = normalizedPersisted;
+          this.cachedRingMembers = normalizedPersisted;
+          this.cachedRingMembersFetchedAt = now;
+        }
+      }
+    }
+
+    if (ringMembers.length < 2) {
+      throw new Error('Không tìm thấy đủ thành viên vòng ký để tạo chữ ký LSAG. Vui lòng làm mới danh sách thành viên hoặc thử lại sau.');
+    }
+
+    return ringMembers;
+  }
+
+  /**
+   * Create LSAG ring signature for anonymous requests
+   */
+  private async createRingSignature(message: string): Promise<string> {
+    const [publicKey, secretKey] = await Promise.all([
+      this.getPublicKey(),
+      this.getSecretKey(),
+    ]);
+
+    const normalizedPublicKey = toCompressedPublicKey(publicKey);
+    const ringMembers = await this.getRingMembersForSigning(normalizedPublicKey);
+
+    const normalizedRing = ringMembers.map((member) => normalizeHex(member));
+    const signerIndex = normalizedRing.findIndex(
+      (member) => member === normalizeHex(normalizedPublicKey),
+    );
+
+    const finalRing = signerIndex === -1 ? [...ringMembers, normalizedPublicKey] : ringMembers;
+    const finalSignerIndex = signerIndex === -1 ? finalRing.length - 1 : signerIndex;
+
+    const signaturePayload = await createLsagRingSignature({
+      message,
+      ringPublicKeys: finalRing,
+      signerIndex: finalSignerIndex,
+      signerPrivateKey: secretKey,
+    });
+
+    return JSON.stringify(signaturePayload);
   }
 
   /**
@@ -432,7 +595,7 @@ export class AnonymousFileAccessService {
       // Prepare request parameters
       const timestamp = Date.now();
       const nonce = this.generateNonce();
-      const message = `${eventType}:${fileId}:${timestamp}:${nonce}`;
+  const message = `audit:${eventType}:${fileId}:${timestamp}:${nonce}`;
       
       // Create ring signature
       const ringSignature = await this.createRingSignature(message);

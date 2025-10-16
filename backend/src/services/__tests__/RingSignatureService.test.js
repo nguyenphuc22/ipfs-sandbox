@@ -1,15 +1,24 @@
+const crypto = require('crypto');
 const { RingSignatureService } = require('../RingSignatureService');
-const { PrismaClient } = require('@prisma/client');
+
+jest.mock('../../utils/aotStorage', () => ({
+  getRingContext: jest.fn(),
+}));
+
+const { getRingContext } = require('../../utils/aotStorage');
 
 // Mock Prisma client for testing
 const mockPrisma = {
-  user: {
+  file: {
     findMany: jest.fn(),
   },
-  keyImage: {
-    findUnique: jest.fn(),
+  anonymousAuditLog: {
+    findFirst: jest.fn(),
     create: jest.fn(),
+    deleteMany: jest.fn(),
+    findMany: jest.fn(),
   },
+  $executeRaw: jest.fn(),
 };
 
 describe('RingSignatureService', () => {
@@ -18,7 +27,185 @@ describe('RingSignatureService', () => {
   beforeEach(() => {
     ringSignatureService = new RingSignatureService(mockPrisma);
     jest.clearAllMocks();
+
+    const auditLogEntries = [];
+    const storedNonces = new Map();
+    const storedKeyImages = new Map();
+
+    const toDate = (value) => (value instanceof Date ? value : new Date(value));
+
+    const matchesWhere = (entry, where = {}) => {
+      if (!where || Object.keys(where).length === 0) {
+        return true;
+      }
+
+      const { OR, AND, NOT, eventType, publicKeyHash, fileId, metadata, timestamp, ...rest } = where;
+
+      if (Object.keys(rest).length > 0) {
+        for (const key of Object.keys(rest)) {
+          if (entry[key] !== rest[key]) {
+            return false;
+          }
+        }
+      }
+
+      if (eventType && entry.eventType !== eventType) {
+        return false;
+      }
+
+      if (publicKeyHash && entry.publicKeyHash !== publicKeyHash) {
+        return false;
+      }
+
+      if (fileId && entry.fileId !== fileId) {
+        return false;
+      }
+
+      if (metadata?.contains) {
+        const target = typeof entry.metadata === 'string' ? entry.metadata : JSON.stringify(entry.metadata);
+        if (!target || !target.includes(metadata.contains)) {
+          return false;
+        }
+      }
+
+      if (timestamp) {
+        const value = toDate(entry.timestamp);
+        if (timestamp.gte && value < timestamp.gte) {
+          return false;
+        }
+        if (timestamp.gt && value <= timestamp.gt) {
+          return false;
+        }
+        if (timestamp.lte && value > timestamp.lte) {
+          return false;
+        }
+        if (timestamp.lt && value >= timestamp.lt) {
+          return false;
+        }
+      }
+
+      if (Array.isArray(AND) && !AND.every((clause) => matchesWhere(entry, clause))) {
+        return false;
+      }
+
+      if (Array.isArray(OR) && !OR.some((clause) => matchesWhere(entry, clause))) {
+        return false;
+      }
+
+      if (Array.isArray(NOT) && NOT.some((clause) => matchesWhere(entry, clause))) {
+        return false;
+      }
+
+      return true;
+    };
+
+    const applyOrder = (entries, orderBy) => {
+      if (!orderBy) {
+        return entries;
+      }
+
+      const specs = Array.isArray(orderBy) ? orderBy : [orderBy];
+
+      return [...entries].sort((a, b) => {
+        for (const spec of specs) {
+          const [field, direction] = Object.entries(spec)[0];
+          if (field === 'timestamp') {
+            const aTime = toDate(a.timestamp).getTime();
+            const bTime = toDate(b.timestamp).getTime();
+            if (aTime === bTime) {
+              continue;
+            }
+            return direction === 'desc' ? bTime - aTime : aTime - bTime;
+          }
+          if (a[field] === b[field]) {
+            continue;
+          }
+          if (a[field] === undefined) {
+            return 1;
+          }
+          if (b[field] === undefined) {
+            return -1;
+          }
+          return direction === 'desc' ? (b[field] > a[field] ? 1 : -1) : (a[field] > b[field] ? 1 : -1);
+        }
+        return 0;
+      });
+    };
+
+    const cloneEntry = (entry) => ({
+      ...entry,
+      timestamp: toDate(entry.timestamp),
+    });
+
+    const updateReplayCaches = (entry) => {
+      const parsed = typeof entry.metadata === 'string' ? safeParseJson(entry.metadata) : entry.metadata;
+      if (entry.eventType === 'nonce_verification' && parsed?.nonce) {
+        storedNonces.set(parsed.nonce, { timestamp: toDate(entry.timestamp), reused: parsed.reused === true });
+      }
+      if (entry.eventType === 'key_image_verification' && parsed?.keyImage) {
+        storedKeyImages.set(parsed.keyImage, { timestamp: toDate(entry.timestamp), reused: parsed.reused === true });
+      }
+    };
+
+    const rebuildReplayCaches = () => {
+      storedNonces.clear();
+      storedKeyImages.clear();
+      auditLogEntries.forEach(updateReplayCaches);
+    };
+
+    getRingContext.mockReturnValue({ ringMemberPublicKeys: [] });
+    mockPrisma.file.findMany.mockResolvedValue([]);
+    mockPrisma.$executeRaw.mockResolvedValue(0);
+
+    mockPrisma.anonymousAuditLog.findFirst.mockImplementation(async ({ where, orderBy } = {}) => {
+      const matches = auditLogEntries.filter((entry) => matchesWhere(entry, where));
+      if (matches.length === 0) {
+        return null;
+      }
+      const [first] = applyOrder(matches, orderBy);
+      return first ? cloneEntry(first) : null;
+    });
+
+    mockPrisma.anonymousAuditLog.create.mockImplementation(async ({ data }) => {
+      const entry = {
+        ...data,
+        timestamp: toDate(data.timestamp || new Date()),
+      };
+      auditLogEntries.push(entry);
+      updateReplayCaches(entry);
+      return cloneEntry(entry);
+    });
+
+    mockPrisma.anonymousAuditLog.deleteMany.mockImplementation(async ({ where } = {}) => {
+      const initialCount = auditLogEntries.length;
+      if (!where || Object.keys(where).length === 0) {
+        auditLogEntries.length = 0;
+        rebuildReplayCaches();
+        return { count: initialCount };
+      }
+
+      const remaining = auditLogEntries.filter((entry) => !matchesWhere(entry, where));
+      const deletedCount = initialCount - remaining.length;
+      auditLogEntries.length = 0;
+      auditLogEntries.push(...remaining);
+      rebuildReplayCaches();
+      return { count: deletedCount };
+    });
+
+    mockPrisma.anonymousAuditLog.findMany.mockImplementation(async ({ where, orderBy } = {}) => {
+      const matches = auditLogEntries.filter((entry) => matchesWhere(entry, where));
+      const ordered = applyOrder(matches, orderBy);
+      return ordered.map(cloneEntry);
+    });
   });
+
+  function safeParseJson(value) {
+    try {
+      return JSON.parse(value);
+    } catch (error) {
+      return null;
+    }
+  }
 
   describe('verifyRingSignature', () => {
     it('should reject invalid JSON signature', async () => {
@@ -170,6 +357,13 @@ describe('RingSignatureService', () => {
 
       // Simulate time passing by manually clearing the nonce from memory
       ringSignatureService.usedNonces.clear();
+      await mockPrisma.anonymousAuditLog.deleteMany({
+        where: {
+          timestamp: {
+            lt: new Date(Date.now() + ringSignatureService.NONCE_TTL_MS + 1000),
+          },
+        },
+      });
 
       const result2 = await ringSignatureService.verifyNonce('timeout-nonce');
       expect(result2).toBe(true);
@@ -196,49 +390,58 @@ describe('RingSignatureService', () => {
       expect(result2).toBe(true);
     });
 
-    it('should reject reused key images', async () => {
-      // First use of key image should be accepted
-      const result1 = await ringSignatureService.checkKeyImage('reused-key-image');
-      expect(result1).toBe(true);
+    it('should allow reused key images but record reuse metadata', async () => {
+      const keyImage = 'reused-key-image';
 
-      // Second use of same key image should be rejected (double spend prevention)
-      const result2 = await ringSignatureService.checkKeyImage('reused-key-image');
-      expect(result2).toBe(false);
+      // First use of key image should be accepted and stored
+      const firstResult = await ringSignatureService.checkKeyImage(keyImage);
+      expect(firstResult).toBe(true);
+
+      // Second use should also succeed, but mark the reuse in audit log
+      const secondResult = await ringSignatureService.checkKeyImage(keyImage);
+      expect(secondResult).toBe(true);
+
+      const createCalls = mockPrisma.anonymousAuditLog.create.mock.calls;
+      expect(createCalls.length).toBeGreaterThanOrEqual(2);
+
+      const reuseEntry = createCalls[createCalls.length - 1][0];
+      const metadata = JSON.parse(reuseEntry.data.metadata);
+      expect(metadata).toMatchObject({ keyImage, reused: true });
     });
   });
 
   describe('getAllPublicKeys', () => {
     it('should fetch public keys from database', async () => {
-      const mockUsers = [
-        { publicKey: 'pub-key-1' },
-        { publicKey: 'pub-key-2' },
-        { publicKey: null }, // Should be filtered out
-      ];
-      mockPrisma.user.findMany.mockResolvedValue(mockUsers);
+      getRingContext.mockReturnValue({
+        ringMemberPublicKeys: ['pub-key-1', 'pub-key-2'],
+      });
+      mockPrisma.file.findMany.mockResolvedValue([
+        { ownershipPublicKey: 'pub-key-2' },
+        { ownershipPublicKey: 'pub-key-3' },
+        { ownershipPublicKey: null },
+      ]);
 
       const result = await ringSignatureService.getAllPublicKeys();
 
-      expect(result).toEqual(['pub-key-1', 'pub-key-2']);
-      expect(mockPrisma.user.findMany).toHaveBeenCalledWith({
+      expect(result).toEqual(['pub-key-1', 'pub-key-2', 'pub-key-3']);
+      expect(getRingContext).toHaveBeenCalled();
+      expect(mockPrisma.file.findMany).toHaveBeenCalledWith({
         select: {
-          publicKey: true,
-        },
-        where: {
-          publicKey: {
-            not: null,
-          },
+          ownershipPublicKey: true,
         },
       });
     });
 
     it('should return empty array when no public keys found', async () => {
-      mockPrisma.user.findMany.mockResolvedValue([]);
+      getRingContext.mockReturnValue({ ringMemberPublicKeys: [] });
+      mockPrisma.file.findMany.mockResolvedValue([]);
       const result = await ringSignatureService.getAllPublicKeys();
       expect(result).toEqual([]);
     });
 
     it('should handle database errors gracefully', async () => {
-      mockPrisma.user.findMany.mockRejectedValue(new Error('DB Error'));
+      getRingContext.mockImplementation(() => { throw new Error('storage error'); });
+      mockPrisma.file.findMany.mockResolvedValue([]);
       const result = await ringSignatureService.getAllPublicKeys();
       expect(result).toEqual([]);
     });
@@ -246,42 +449,53 @@ describe('RingSignatureService', () => {
 
   describe('Integration: LSAG Signature Flow', () => {
     it('should process a complete LSAG signature verification with nonce and key image checks', async () => {
-      const publicKey = 'test-pub-key';
+      const publicKey = `02${'aa'.repeat(32)}`;
       const message = 'test-message-for-signature';
-      const ringPublicKeys = [publicKey, 'pub-key-2', 'pub-key-3'];
-      
-      // Create a properly formatted LSAG signature
-      const signature = JSON.stringify({
+      const ringPublicKeys = [
+        publicKey,
+        `03${'bb'.repeat(32)}`,
+        `02${'cc'.repeat(32)}`,
+      ];
+
+      const signaturePayload = {
         scheme: 'lsag-secp256k1',
         ringMembers: ringPublicKeys,
-        keyImage: 'unique-key-image-for-test',
-        c0: 'c0-hex-value-fits-64-characters-0123456789abcdef',
-        s: [
-          's1-hex-value-fits-64-characters-0123456789abcdef',
-          's2-hex-value-fits-64-characters-0123456789abcdef',
-          's3-hex-value-fits-64-characters-0123456789abcdef'
-        ],
-        messageDigest: require('crypto').createHash('sha256').update(message).digest('hex'),
-        messageEncoding: 'hex'
-      });
+        keyImage: `02${'dd'.repeat(32)}`,
+        c0: crypto.randomBytes(32).toString('hex'),
+        s: ringPublicKeys.map(() => crypto.randomBytes(32).toString('hex')),
+        messageDigest: crypto.createHash('sha256').update(message).digest('hex'),
+        messageEncoding: 'hex',
+      };
+      const signature = JSON.stringify(signaturePayload);
 
-      // First verification should pass
-      const result1 = await ringSignatureService.verifyRingSignature({
-        publicKey,
-        signature,
-        message,
-        ringPublicKeys,
-      });
-      expect(result1).toBe(true);
+      const verifySpy = jest
+        .spyOn(ringSignatureService, 'verifyLsagSignature')
+        .mockResolvedValue(true);
 
-      // Same signature with same key image should fail (double spend)
-      const result2 = await ringSignatureService.verifyRingSignature({
-        publicKey,
-        signature,
-        message,
-        ringPublicKeys,
-      });
-      expect(result2).toBe(false);
+      try {
+        const result1 = await ringSignatureService.verifyRingSignature({
+          publicKey,
+          signature,
+          message,
+          ringPublicKeys,
+        });
+        expect(result1).toBe(true);
+
+        const result2 = await ringSignatureService.verifyRingSignature({
+          publicKey,
+          signature,
+          message,
+          ringPublicKeys,
+        });
+        expect(result2).toBe(true);
+
+        const createCalls = mockPrisma.anonymousAuditLog.create.mock.calls;
+        const reuseEntry = createCalls[createCalls.length - 1][0];
+        const metadata = JSON.parse(reuseEntry.data.metadata);
+        expect(metadata).toMatchObject({ keyImage: signaturePayload.keyImage, reused: true });
+      } finally {
+        verifySpy.mockRestore();
+      }
     });
 
     it('should reject reused nonce in different requests', async () => {
