@@ -1,45 +1,63 @@
 # Kế hoạch xử lý Anonymous Download Fix
 
-## Task A – Di chuyển chunking & mã hóa sang client 🚧
-- [ ] **Xây dựng module chunking trên mobile**
-  - Tạo service chuyên trách đọc file, chia chunk, sinh master key và chunk key.
-  - Mã hóa từng chunk (AES-GCM) và upload trực tiếp lên IPFS bằng gateway HTTP.
-  - Thu thập CID, hash, kích thước cho manifest và package hóa khóa (master + chunk keys) theo format chuẩn.
-- [ ] **Cập nhật `AOTUploadModal` & `GatewayApiService`**
-  - Thay đổi pipeline để upload chunk song song/tuần tự từ client.
-  - Payload gửi backend chỉ còn metadataHash, ownershipProofs, ringSignature, escrowedIdentity, manifest, encryptedChunkKeys.
-- [ ] **Lưu key package an toàn phía client**
-  - Sử dụng `KeyPackageStorage`/AsyncStorage hoặc secure storage để lưu master key + chunk keys ngay sau upload thành công.
-  - Mask khóa khi hiển thị debug ( chỉ ở chế độ demo ) và thêm cảnh báo bảo mật.
+**Last Updated:** 2025-10-16
 
-## Task B – Điều chỉnh backend nhận manifest 🔧
-- [ ] **Refactor `/api/files/aot-upload`**
-  - Loại bỏ `processFileForChunking` và logic đọc buffer.
-  - Validate manifest/chunk hashes, lưu dữ liệu chunk vào Prisma từ payload client.
-  - Ghi audit log chỉ chứa thông tin rút gọn (không dữ liệu thô).
-- [ ] **Migration & cleanup**
-  - Kiểm tra schema Prisma đảm bảo hỗ trợ lưu manifest từ client.
-  - Dọn dẹp util không còn dùng, giữ script migrate phục vụ chuyển đổi dữ liệu cũ nếu cần.
+## Progress Overview
+- ✅ **Task A:** Di chuyển chunking & mã hóa sang client (HOÀN THÀNH)
+- ✅ **Task B:** Điều chỉnh backend nhận manifest (HOÀN THÀNH)
+- ✅ **Task C:** Hoàn thiện download flow ẩn danh (HOÀN THÀNH)
+- ⏳ **Task D:** Kiểm thử & tài liệu (ĐANG CHỜ TRIỂN KHAI)
 
-## Task C – Hoàn thiện download flow ẩn danh 🧩
-- [ ] **Thực thi tải chunk thực tế trong mobile**
-  - Hoàn thiện `chunkDownloadManager` & `useChunkDownloader` để tải CID từ IPFS, giải mã bằng chunk key, ghép lại file.
-  - Tích hợp kiểm tra hash, báo cáo integrity nếu lệch.
-- [ ] **Đồng bộ manifest + key package**
-  - `AnonymousFileAccessService` cần đối chiếu manifest server với bản local, xử lý khi thiếu key.
-  - Bổ sung cơ chế refresh/invalid manifest và thông báo user.
-- [ ] **UI & trải nghiệm**
-  - Cập nhật `FileViewer`/`ChunkMonitorPanel` hiển thị tiến trình thực, không còn mô phỏng.
-  - Cho phép người dùng tải thủ công Bộ chunk khi lỗi, ghi log audit hợp lệ.
+---
 
-## Task D – Kiểm thử & tài liệu ✅
+## Task A – Di chuyển chunking & mã hóa sang client ✅
+- [x] **Xây dựng module chunking trên mobile**
+  - `mobile/src/services/ChunkEncryptionService.ts` giờ đảm nhận toàn bộ pipeline đọc file → chia chunk → mã hóa → upload IPFS (`processAndUploadFile`).
+  - Backend không còn gọi `processFileForChunking`; upload thử nghiệm đã chuyển sang client.
+- [x] **Cập nhật `AOTUploadModal` & `GatewayApiService`**
+  - `AOTUploadModal` (mobile/src/components/ipfs/AOTUploadModal.tsx:306-372) kích hoạt chunking client-side, hiển thị tiến độ và gửi manifest.
+  - `GatewayApiService.uploadWithClientChunking` (mobile/src/services/GatewayApiService.ts:771-828) POST manifest tới backend mới.
+- [x] **Lưu key package an toàn phía client**
+  - Sau upload, key package được lưu vào AsyncStorage qua `saveKeyPackage` (mobile/src/components/ipfs/AOTUploadModal.tsx:381-411).
+
+**Ghi chú tiếp theo:**
+- Bổ sung hướng dẫn QA về quản lý key package (AsyncStorage/Keychain) và cân nhắc mã hóa ở tầng thiết bị nếu yêu cầu bảo mật tăng cao.
+- Thiết lập runner Node.js ≥ 20.19 để Jest có thể import `@noble/hashes/sha2` (hiện tại chạy trên Node 18 sẽ fail module resolution).
+
+## Task B – Điều chỉnh backend nhận manifest ✅
+- [x] **Refactor `/api/files/aot-upload` / `/chunked-upload`**
+  - Endpoint mới `/api/files/client-chunked-upload` (backend/src/routes/anonymous-endpoints-addition.js:344-599) nhận manifest + encrypted keys, không còn xử lý file raw.
+  - Upload handler tạo bản ghi File/Chunk/Audit thuần metadata và đánh dấu `clientChunked` trong metadata JSON.
+- [x] **Zero-Trust Architecture**
+  - Backend chỉ lưu CID + hash + fingerprint, không nắm master/chunk keys (secureKeyPackage trả về null keys).
+  - LSAG + Schnorr kiểm chứng quyền sở hữu trước khi ghi DB.
+
+**Ghi chú tiếp theo:**
+- Viết script migrate dữ liệu cũ sang schema `clientChunked` nếu cần hỗ trợ backward compatibility.
+- Theo dõi log Prisma để chắc chắn audit log không “bể” khi thiếu bảng (liên quan Task 12).
+
+## Task C – Hoàn thiện download flow ẩn danh ✅
+- [x] **Thực thi tải chunk thực tế trong mobile**
+  - `mobile/src/services/chunkDownloadManager.ts` tải chunk qua `/api/v0/cat`, giải mã AES-GCM với chunk key, và verify SHA-256 hash trước khi lưu tạm bộ nhớ.
+- [x] **File reassembly & hook/UI**
+  - Hàm `reassembleFile` ghép các chunk đã giải mã; hook `useChunkDownloader` và UI gọi `chunkDownloadManager.downloadFile()` để thực thi luồng thật.
+  - Có retry từng chunk và kiểm tra fingerprint key package.
+
+**Ghi chú tiếp theo:**
+- Bổ sung telemetry về tốc độ tải/decrypt để QA đánh giá hiệu năng.
+- Đảm bảo mobile integration test (`mobile/__tests__/chunkDownloadManager.test.ts`) chạy trong CI khi cấu hình Jest được bật.
+- Hoàn thiện manual mock cho `@noble/hashes/sha2` hoặc nâng cấp Node runner để tránh lỗi Jest tương tự Task A.
+
+## Task D – Kiểm thử & tài liệu ⏳
 - [ ] **Viết test tự động**
-  - Unit test cho module chunking (encrypt/decrypt roundtrip, hash integrity).
-  - Integration test upload→download (có thể chạy trong Jest hoặc harness tùy chỉnh).
-  - Test backend đảm bảo nhận manifest thiếu thông tin sẽ trả về 400.
+  - ✅ Unit test chunking client-side (`ChunkEncryptionService.test.ts`) & download manager đã sẵn sàng nhưng yêu cầu Node.js ≥ 20.19.
+  - [ ] Hoàn thiện integration test upload→download thực (Task D).
 - [ ] **Cập nhật tài liệu vận hành**
-  - Điều chỉnh README/start-system để hướng dẫn migrate schema + seed nếu bỏ chunking backend.
-  - Bổ sung hướng dẫn QA trong `test-anonymous-routes-priority.md` và tài liệu demo mobile.
+  - README/start-system chưa có hướng dẫn pipeline mới.
 - [ ] **Smoke test end-to-end**
-  - Sau khi hoàn thành, chạy lại toàn bộ flow ẩn danh (upload, cấp quyền, download, audit).
-  - Ghi chú kết quả vào `STATUS.md` hoặc logbook liên quan.
+  - Chưa chạy do chờ hoàn thiện hạ tầng Jest/IPFS cho pipeline mới.
+
+**Việc cần làm:**
+1. Ổn định môi trường test (Node 20.19 hoặc mock module) rồi bật lại Jest suites trong CI.
+2. Sau đó bổ sung integration test và cập nhật tài liệu.
+3. Thực hiện smoke test end-to-end và ghi log vào tài liệu liên quan.

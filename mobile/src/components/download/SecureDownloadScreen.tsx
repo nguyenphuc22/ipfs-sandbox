@@ -214,7 +214,7 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
       await new Promise(resolve => setTimeout(resolve, 1500));
 
       actions.setPhase('chunks');
-      await actions.simulateDownload();
+      await actions.downloadFile();
       Alert.alert('Download Complete', 'File is ready. All chunks verified ✓');
 
     } catch (err) {
