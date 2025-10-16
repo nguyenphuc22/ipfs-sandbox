@@ -5,6 +5,8 @@
 **Trạng thái:** Cần thiết kế lại toàn bộ download flow
 **⚠️ CẬP NHẬT:** Đã có giải pháp đơn giản cho demo (xem phần 5)
 
+> **Implementation status (2025-10-16):** Hiện tại mobile app vẫn gửi toàn bộ file thô lên backend để backend tự chia chunk và mã hóa. Cách làm này VI PHẠM thiết kế ẩn danh, cần gấp rút chuyển toàn bộ bước split/encrypt/upload chunk sang client (mobile) và chỉ gửi manifest + chứng cứ lên backend.
+
 ---
 
 ## 📋 MỤC LỤC
@@ -1235,6 +1237,9 @@ Tuần 2: Mobile App
 - [ ] Update FileDownloadScreen UI
 - [ ] Basic integrity check flow
 - [ ] Polish UI for demo
+- [x] Wire Storage Monitor tab với shared download session manager
+- [x] Đồng bộ ChunkMonitorPanel với realtime chunk progress & key package state
+- [x] Bổ sung tài liệu hướng dẫn Storage Monitor trong DOWNLOAD_FLOW_FINAL.md
 
 Tuần 3: Testing & Prep
 - [ ] Manual testing all flows
@@ -1242,6 +1247,9 @@ Tuần 3: Testing & Prep
 - [ ] Prepare demo script
 - [ ] Create demo slides
 - [ ] Practice presentation
+- [x] Unit test: chunkDownloadManager (retry + integrity guard)
+- [x] Component test: ChunkMonitorPanel hiển thị phase & lỗi
+- [ ] Lint + Jest full suite (đang cleanup cảnh báo kế thừa)
 
 Tuần 4: Polish (Optional)
 - [ ] UI/UX improvements

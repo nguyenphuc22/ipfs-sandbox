@@ -7,7 +7,9 @@ import {
   StyleSheet,
 } from 'react-native';
 import { ThemeProvider, useTheme } from './src/styles';
-import { IPFSConnectionStatus, IPFSFileUpload, IPFSFileList } from './src/components';
+import { IPFSConnectionStatus } from './src/components/ipfs/IPFSConnectionStatus';
+import { IPFSFileUpload } from './src/components/ipfs/IPFSFileUpload';
+import { IPFSFileList } from './src/components/ipfs/IPFSFileList';
 import { AOTIdentity, FileData } from './src/types';
 import { useAOTIdentity } from './src/hooks';
 import { InitScreen } from './src/screens/InitScreen';

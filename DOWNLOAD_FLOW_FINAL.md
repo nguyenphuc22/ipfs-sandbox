@@ -416,6 +416,8 @@ router.post('/anonymous-list', async (req, res) => {
 
 ### **Mobile Implementation**
 
+> **Implementation gap (2025-10-16):** Mobile app hiện chưa thực hiện việc split/encrypt/upload chunk theo đúng thiết kế; backend vẫn tự động xử lý file thô. Cần chuyển toàn bộ bước chuẩn hoá chunk sang client để đảm bảo tính ẩn danh.
+
 ```typescript
 // mobile/src/services/AnonymousFileAccessService.ts
 
@@ -1109,6 +1111,59 @@ const FileDownloadScreen = ({ route }: any) => {
 
 ---
 
+### **Storage Monitor Tab trong File Viewer**
+
+- `FileViewer` hiển thị hai tab: **File Preview** và **Storage Monitor**. Tab mới reuse cùng download session nên không cần reload.
+- Khi user mở modal, `Storage Monitor` render ngay lập tức trạng thái session hiện tại (kể cả khi download đang diễn ra ở màn hình khác).
+- Panel hiển thị ba khối chính:
+    1. **Key Package State** – fingerprint master key, trạng thái giải mã, nguồn key (Secure Storage hay QR import).
+    2. **Chunk Manifest** – danh sách chunk với cột `Phase`, `Integrity`, `Retries`, `CID` (tap để copy).
+    3. **Realtime Logs** – log ngắn gọn cho từng milestone (negotiation, resolve key, download x/total, reconstruction, ready).
+- UI có nút copy master fingerprint, nút export chunk state (dùng cho audit) và badge cảnh báo nếu có integrity alert.
+
+#### **Download Session States**
+
+| Phase | Mô tả | UI Indicator |
+|-------|-------|--------------|
+| `negotiating` | Đang gọi `anonymous-access` để lấy manifest | Badge "Negotiating Access" + spinner |
+| `waiting-for-key` | Thiếu Secure Key Package, chờ người dùng scan/import | Card màu vàng với CTA "Scan QR" |
+| `resolving-keys` | Đang giải mã chunk keys từ master key | Badge "Decrypting Keys" |
+| `downloading` | Tiến trình chunk; mỗi chunk cập nhật `%` và hash status | Progress bar tổng + bảng chunk |
+| `reconstructing` | Ghép file và tạo secure cache | Badge "Rebuilding" |
+| `ready` | File sẵn sàng xem, integrity verified | Banner xanh + nút "Open Preview" |
+| `error` | Có lỗi (network, integrity, decrypt) | Banner đỏ + nút retry |
+
+#### **Shared Download Session Manager**
+
+- Service `mobile/src/services/chunkDownloadManager.ts` tạo **singleton session** theo `fileId`.
+- Hook `useChunkDownloader` subscribe vào session, trả về `{ phase, manifest, chunkProgress, errors }` theo thời gian thực.
+- `SecureDownloadScreen` khởi tạo session qua `ensureDownloadSession({ fileId, manifest, keyPackage })` và stream progress cho UI chính.
+- `FileViewer` chỉ cần `useChunkDownloader(fileId)` để đọc lại dữ liệu – không khởi tạo network request mới.
+- Tất cả listener unregister tự động khi component unmount để tránh memory leak.
+
+```typescript
+// Ví dụ sử dụng trong FileViewer
+const { phase, chunkProgress, keyPackageState, errors } = useChunkDownloader(fileId);
+
+return (
+    <StorageMonitorPanel
+        phase={phase}
+        chunkProgress={chunkProgress}
+        keyPackageState={keyPackageState}
+        errors={errors}
+    />
+);
+```
+
+#### **Automation & Testing**
+
+- Unit test mới: `mobile/src/services/__tests__/chunkDownloadManager.test.ts` kiểm tra retry, integrity và shared session.
+- Component test: `mobile/src/components/ipfs/__tests__/ChunkMonitorPanel.test.tsx` render monitor tab với fake session và assert UI states.
+- Chạy nhanh individual suite:
+    - `npm test -- chunkDownloadManager`
+    - `npm test -- ChunkMonitorPanel`
+- Lint vẫn bắt unused vars (xem kế hoạch cleanup trong `STATUS.md`), nhưng download monitor không tạo warning mới.
+
 ## **DATABASE SCHEMA (Anonymous)**
 
 ```sql
@@ -1186,6 +1241,7 @@ CREATE TABLE IntegrityAlert (
 ✅ **Accountability:** Audit trail ghi log theo publicKeyHash
 ✅ **Anti-replay:** Nonce protocol chống replay attack
 ✅ **Forward secrecy:** Ring signature + fresh nonce mỗi request
+✅ **Realtime Storage Monitor:** Người demo có thể theo dõi từng chunk, fingerprint và phase trên cả Download Screen lẫn File Viewer
 
 ---
 

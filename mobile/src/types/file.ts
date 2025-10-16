@@ -12,6 +12,7 @@ export interface FileData {
   hasLocalKey?: boolean;
   keyIssuedAt?: string;
   keyPackageFingerprint?: string;
+  localKeyPackage?: LocalKeyPackage;
   ringMembers?: string[];
   mimeType?: string;
   grantedAt?: string;
@@ -26,6 +27,13 @@ export interface FileData {
 }
 
 export type FileStatus = 'uploading' | 'completed' | 'error' | 'active' | 'revoked';
+
+export interface LocalKeyPackage {
+  masterKey: string;
+  chunkKeys: Record<number, string>;
+  fingerprint?: string;
+  storedAt?: string;
+}
 
 export interface FileUploadButtonProps {
   onPress: () => void;

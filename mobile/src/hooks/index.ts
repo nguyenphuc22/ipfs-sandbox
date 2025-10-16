@@ -3,3 +3,5 @@ export * from './useIPFS';
 export * from './useFileStorage';
 export * from './useEnhancedStorage';
 export * from './useAOTIdentity';
+export * from './useChunkProgress';
+export * from './useChunkDownloader';

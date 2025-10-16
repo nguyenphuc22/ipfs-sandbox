@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -12,9 +12,16 @@ import {
   SafeAreaView,
 } from 'react-native';
 import { useTheme } from '../../styles';
-import { FileData } from '../../types';
+import { FileData, LocalKeyPackage } from '../../types';
 import { createDefaultGatewayService, FileViewResponse } from '../../services/GatewayApiService';
-import { anonymousFileAccessService } from '../../services/AnonymousFileAccessService';
+import {
+  anonymousFileAccessService,
+  FileAccessManifest,
+} from '../../services/AnonymousFileAccessService';
+import { useChunkDownloader } from '../../hooks';
+import { ChunkMonitorPanel } from './ChunkMonitorPanel';
+import { getKeyPackage } from '../../services/KeyPackageStorage';
+import type { ChunkProgressState } from '../../types/download';
 
 type FileViewerProps = {
   file: FileData;
@@ -33,18 +40,50 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   const [contentType, setContentType] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
+  const [manifest, setManifest] = useState<FileAccessManifest | null>(null);
+  const [manifestError, setManifestError] = useState<string | null>(null);
+  const [isManifestLoading, setIsManifestLoading] = useState(false);
+  const manifestCacheRef = useRef<Record<string, FileAccessManifest>>({});
+  const [hasLoggedView, setHasLoggedView] = useState(false);
+  const [activeTab, setActiveTab] = useState<'preview' | 'monitor'>('preview');
+  const [localKeyPackage, setLocalKeyPackage] = useState<LocalKeyPackage | null>(
+    file.localKeyPackage ?? null,
+  );
+
+  const demoModeEnabled = useMemo(
+    () => __DEV__ || (typeof process !== 'undefined' && process.env?.KEY_MONITOR_DEMO === 'true'),
+    [],
+  );
+  const isChunkedFile = (file.chunkCount ?? 0) > 1;
+  const { session: downloadSession, actions: downloadActions } = useChunkDownloader(file.id);
+  const chunkProgressState: ChunkProgressState = useMemo(() => {
+    const progress = downloadSession.chunkProgress;
+    if (progress.length === 0) {
+      return {
+        chunkProgress: progress,
+        progressPercent: 0,
+      };
+    }
+
+    const completed = progress.filter(chunk => chunk.status === 'completed').length;
+    return {
+      chunkProgress: progress,
+      progressPercent: (completed / progress.length) * 100,
+    };
+  }, [downloadSession.chunkProgress]);
+  const monitorError = manifestError ?? downloadSession.error;
 
   const gatewayService = useMemo(() => createDefaultGatewayService(), []);
 
   useEffect(() => {
     if (visible) {
       const chunkCount = file.chunkCount ?? 0;
-      const isChunkedFile = chunkCount > 1;
+      const isChunkedFileSession = chunkCount > 1;
       const totalSize = file.size ?? 0;
       const statusLabel = file.status ?? 'unknown';
       const sizeInMb = (totalSize / (1024 * 1024)).toFixed(2);
 
-      if (isChunkedFile) {
+      if (isChunkedFileSession) {
         setIsLoading(false);
         setContentType('text/plain');
         setFileContent(
@@ -62,7 +101,6 @@ export const FileViewer: React.FC<FileViewerProps> = ({
             '4. File Reconstruction\n\n' +
             'Tap "Download" button to start the secure download process.'
         );
-        return;
       }
 
       if (!file.ipfsHash) {
@@ -117,20 +155,70 @@ export const FileViewer: React.FC<FileViewerProps> = ({
       };
 
       fetchFileContent();
-      
-      // Log anonymous audit event for file viewing
-      anonymousFileAccessService.logAnonymousAuditEvent('view', file.id).catch(error => {
-        console.warn('[FileViewer] Failed to log anonymous audit event:', error);
-      });
+
+      let cancelledManifest = false;
+
+      if (isChunkedFileSession) {
+        const cached = manifestCacheRef.current[file.id];
+
+        if (cached) {
+          setManifest(cached);
+          setManifestError(null);
+          downloadActions.ensureSession(cached);
+        } else {
+          const fetchManifest = async () => {
+            setIsManifestLoading(true);
+            setManifestError(null);
+            try {
+              const response = await anonymousFileAccessService.negotiateAccess(file.id);
+              if (cancelledManifest) {return;}
+              downloadActions.ensureSession(response);
+              manifestCacheRef.current[file.id] = response;
+              setManifest(response);
+            } catch (manifestErr) {
+              if (cancelledManifest) {return;}
+              const message =
+                manifestErr instanceof Error
+                  ? manifestErr.message
+                  : 'Failed to retrieve chunk manifest';
+              setManifest(null);
+              setManifestError(message);
+            } finally {
+              if (!cancelledManifest) {
+                setIsManifestLoading(false);
+              }
+            }
+          };
+
+          fetchManifest();
+        }
+      } else {
+        setManifest(null);
+        setManifestError(null);
+      }
+
+      if (!hasLoggedView) {
+        anonymousFileAccessService.logAnonymousAuditEvent('view', file.id).catch((loggingError: unknown) => {
+          console.warn('[FileViewer] Failed to log anonymous audit event:', loggingError);
+        });
+        setHasLoggedView(true);
+      }
 
       return () => {
         isCancelled = true;
+        cancelledManifest = true;
       };
     } else {
       setFileContent(null);
       setError(null);
       setContentType('');
       setIsLoading(false);
+      setManifestError(null);
+      setManifest(null);
+      setHasLoggedView(false);
+      setLocalKeyPackage(file.localKeyPackage ?? null);
+      setActiveTab('preview');
+      downloadActions.resetSession();
     }
   }, [
     visible,
@@ -142,8 +230,66 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     file.ownershipPublicKey,
     file.name,
     file.ipfsHash,
+    file.localKeyPackage,
     reloadToken,
+    hasLoggedView,
+    downloadActions,
   ]);
+
+  useEffect(() => {
+    if (manifest) {
+      downloadActions.ensureSession(manifest);
+    }
+  }, [manifest, downloadActions]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const hydrateKeyPackage = async () => {
+      if (!demoModeEnabled) {
+        if (!cancelled) {
+          setLocalKeyPackage(null);
+        }
+        return;
+      }
+
+      if (!visible) {
+        if (!cancelled) {
+          setLocalKeyPackage(file.localKeyPackage ?? null);
+        }
+        return;
+      }
+
+      if (file.localKeyPackage) {
+        if (!cancelled) {
+          setLocalKeyPackage(file.localKeyPackage);
+        }
+        return;
+      }
+
+      try {
+        const stored = await getKeyPackage(file.id);
+        if (!cancelled && stored) {
+          setLocalKeyPackage({
+            masterKey: stored.masterKey,
+            chunkKeys: stored.chunkKeys,
+            fingerprint: stored.fingerprint,
+            storedAt: stored.storedAt,
+          });
+        }
+      } catch (storageError) {
+        if (!cancelled) {
+          console.warn('[FileViewer] Failed to load stored key package', storageError);
+        }
+      }
+    };
+
+    hydrateKeyPackage();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [demoModeEnabled, visible, file.id, file.localKeyPackage]);
 
   const handleRetry = () => {
     setReloadToken((token) => token + 1);
@@ -201,6 +347,58 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     const previewableTypes = ['txt', 'md', 'csv', 'json', 'xml'];
     return previewableTypes.includes(extension);
   }, [file.name, isTextPreview]);
+
+  const renderPreviewContent = () => {
+    if (isLoading) {
+      return (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Loading file content...</Text>
+        </View>
+      );
+    }
+
+    if (error) {
+      return (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorIcon}>⚠️</Text>
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={handleRetry}>
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    if (!canPreview) {
+      return (
+        <View style={styles.unsupportedContainer}>
+          <Text style={styles.unsupportedIcon}>📄</Text>
+          <Text style={styles.unsupportedTitle}>Preview Not Available</Text>
+          <Text style={styles.unsupportedText}>
+            This file type ({getFileTypeDisplay()}) is not yet supported for preview in the app.
+            {'\n\n'}You can download the file to view it with an external application.
+          </Text>
+        </View>
+      );
+    }
+
+    if (fileContent) {
+      return (
+        <ScrollView style={styles.textScroll}>
+          <Text style={styles.textContent}>{fileContent}</Text>
+        </ScrollView>
+      );
+    }
+
+    return (
+      <View style={styles.unsupportedContainer}>
+        <Text style={styles.unsupportedIcon}>📭</Text>
+        <Text style={styles.unsupportedTitle}>No Content</Text>
+        <Text style={styles.unsupportedText}>File content could not be loaded.</Text>
+      </View>
+    );
+  };
 
   const { width, height } = Dimensions.get('window');
 
@@ -343,6 +541,37 @@ export const FileViewer: React.FC<FileViewerProps> = ({
       textAlign: 'center',
       lineHeight: 20,
     },
+    tabWrapper: {
+      flex: 1,
+    },
+    tabContainer: {
+      flexDirection: 'row',
+      backgroundColor: colors.surface,
+      borderRadius: 8,
+      padding: 4,
+      marginBottom: 12,
+    },
+    tabButton: {
+      flex: 1,
+      paddingVertical: 10,
+      borderRadius: 6,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    tabButtonActive: {
+      backgroundColor: colors.primary + '20',
+    },
+    tabButtonLabel: {
+      color: colors.textSecondary,
+      fontSize: 14,
+      fontWeight: '500',
+    },
+    tabButtonLabelActive: {
+      color: colors.primary,
+    },
+    tabContent: {
+      flex: 1,
+    },
     textScroll: {
       flex: 1,
     },
@@ -380,38 +609,56 @@ export const FileViewer: React.FC<FileViewerProps> = ({
 
           {/* Content */}
           <View style={styles.contentContainer}>
-            {isLoading ? (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color={colors.primary} />
-                <Text style={styles.loadingText}>Loading file content...</Text>
+            {isChunkedFile ? (
+              <View style={styles.tabWrapper}>
+                <View style={styles.tabContainer}>
+                  <TouchableOpacity
+                    style={[styles.tabButton, activeTab === 'preview' && styles.tabButtonActive]}
+                    onPress={() => setActiveTab('preview')}
+                  >
+                    <Text
+                      style={[
+                        styles.tabButtonLabel,
+                        activeTab === 'preview' && styles.tabButtonLabelActive,
+                      ]}
+                    >
+                      Preview
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.tabButton, activeTab === 'monitor' && styles.tabButtonActive]}
+                    onPress={() => setActiveTab('monitor')}
+                  >
+                    <Text
+                      style={[
+                        styles.tabButtonLabel,
+                        activeTab === 'monitor' && styles.tabButtonLabelActive,
+                      ]}
+                    >
+                      Storage Monitor
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.tabContent}>
+                  {activeTab === 'preview'
+                    ? renderPreviewContent()
+                    : (
+                      <ChunkMonitorPanel
+                        manifest={manifest}
+                        chunkState={chunkProgressState}
+                        isLoading={isManifestLoading}
+                        error={monitorError}
+                        localKeyPackage={localKeyPackage}
+                        demoModeEnabled={demoModeEnabled}
+                        fingerprint={file.keyPackageFingerprint ?? undefined}
+                        phase={downloadSession.phase}
+                      />
+                    )}
+                </View>
               </View>
-            ) : error ? (
-              <View style={styles.errorContainer}>
-                <Text style={styles.errorIcon}>⚠️</Text>
-                <Text style={styles.errorText}>{error}</Text>
-                <TouchableOpacity style={styles.retryButton} onPress={handleRetry}>
-                  <Text style={styles.retryButtonText}>Retry</Text>
-                </TouchableOpacity>
-              </View>
-            ) : !canPreview ? (
-              <View style={styles.unsupportedContainer}>
-                <Text style={styles.unsupportedIcon}>📄</Text>
-                <Text style={styles.unsupportedTitle}>Preview Not Available</Text>
-                <Text style={styles.unsupportedText}>
-                  This file type ({getFileTypeDisplay()}) is not yet supported for preview in the app.
-                  {'\n\n'}You can download the file to view it with an external application.
-                </Text>
-              </View>
-            ) : fileContent ? (
-              <ScrollView style={styles.textScroll}>
-                <Text style={styles.textContent}>{fileContent}</Text>
-              </ScrollView>
             ) : (
-              <View style={styles.unsupportedContainer}>
-                <Text style={styles.unsupportedIcon}>📭</Text>
-                <Text style={styles.unsupportedTitle}>No Content</Text>
-                <Text style={styles.unsupportedText}>File content could not be loaded.</Text>
-              </View>
+              renderPreviewContent()
             )}
           </View>
         </SafeAreaView>

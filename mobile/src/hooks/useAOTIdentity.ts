@@ -19,7 +19,10 @@ const deserializeIdentity = (value: string | null): AOTIdentity | null => {
     const parsed = JSON.parse(value);
     // Migration: Remove userId field if it exists from old storage format
     if (parsed && 'userId' in parsed) {
-      const { userId, ...rest } = parsed;
+      const { userId: legacyUserId, ...rest } = parsed;
+      if (__DEV__ && legacyUserId) {
+        console.debug('[AOT Identity] Dropping legacy userId field during migration');
+      }
       return rest as AOTIdentity;
     }
     return parsed as AOTIdentity;

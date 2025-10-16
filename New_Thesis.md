@@ -430,6 +430,8 @@ sequenceDiagram
     note right of Client: k: ownership private key<br/>Cần thiết cho future Schnorr proofs<br/>(Fresh nonce r sẽ tạo mới mỗi proof)
 ```
 
+> **Implementation status (2025-10-16):** Bước 7–9 hiện chưa chạy trên client trong mã nguồn. Backend vẫn đang đảm nhiệm việc chia nhỏ/mã hóa/upload chunk. Cần ưu tiên dịch chuyển logic này sang mobile và chỉ gửi manifest/chứng cứ lên backend.
+
 ### **B. Anonymous Revocation với Schnorr Ownership Proof**
 
 ```mermaid

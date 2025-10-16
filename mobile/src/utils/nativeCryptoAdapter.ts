@@ -1,5 +1,5 @@
-import { digest, schnorr } from '@fintoda/react-native-crypto-lib';
-import { sha256 as nobleSha256 } from '@noble/hashes/sha2';
+import { schnorr } from '@fintoda/react-native-crypto-lib';
+import { sha256 as nobleSha256 } from '@noble/hashes/sha2.js';
 import { Point } from '@noble/secp256k1';
 
 const normalizeHex = (value: string): string => value.trim().toLowerCase().replace(/^0x/, '');
@@ -33,8 +33,8 @@ export const sha256Bytes = (bytes: Uint8Array): Uint8Array => {
 export const schnorrPublicKeyHex = (privateKeyHex: string): string => {
   // Use @noble/secp256k1 for consistent public key derivation
   // This ensures we get the correct compressed format with proper parity
-  const privateKeyBigInt = BigInt('0x' + normalizeHex(privateKeyHex));
-  const point = Point.fromPrivateKey(privateKeyBigInt);
+  const normalizedKey = normalizeHex(privateKeyHex);
+  const point = Point.fromPrivateKey(hexToBytes(normalizedKey));
   const compressed = point.toRawBytes(true); // true = compressed format (33 bytes)
   const result = bytesToHex(compressed);
 

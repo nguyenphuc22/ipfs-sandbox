@@ -11,7 +11,9 @@ import { NativeModules, Platform } from 'react-native';
 // 🔧 STATIC CONFIGURATION
 // =============================================================================
 const API_PORT = 3000;
+const IPFS_PORT = 5001;
 const PRODUCTION_BASE_URL = 'https://your-production-domain.com';
+const PRODUCTION_IPFS_URL = 'https://your-ipfs-gateway.com';
 
 // Allow developers to override at runtime (useful for debugging sessions)
 const globalOverride = (globalThis as any)?.__IPFS_API_BASE_URL__;
@@ -66,16 +68,27 @@ function resolveDevelopmentBaseUrl(): string {
   return `http://${resolvedHost}:${API_PORT}`;
 }
 
+function resolveDevelopmentIPFSUrl(): string {
+  const packagerHost = getPackagerHost();
+  const resolvedHost = packagerHost
+    ? normaliseHost(packagerHost)
+    : (DEFAULT_HOSTS[Platform.OS as 'android' | 'ios'] || DEFAULT_HOSTS.default);
+
+  return `http://${resolvedHost}:${IPFS_PORT}`;
+}
+
 function getApiConfig() {
   if (!isDevelopment) {
     return {
       baseUrl: PRODUCTION_BASE_URL,
+      ipfsGatewayUrl: PRODUCTION_IPFS_URL,
       timeout: 30000,
     };
   }
 
   return {
     baseUrl: resolveDevelopmentBaseUrl(),
+    ipfsGatewayUrl: resolveDevelopmentIPFSUrl(),
     timeout: 30000,
   };
 }

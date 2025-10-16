@@ -58,6 +58,9 @@ export interface FileAccessManifest {
     grantedAt: string;
     expiresAt: string | null;
     accessCount: number;
+    keyPackageFingerprint?: string;
+    keyStatus?: string;
+    hasLocalKey?: boolean;
   };
 }
 

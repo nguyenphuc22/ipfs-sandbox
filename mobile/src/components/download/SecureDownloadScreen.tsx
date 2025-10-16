@@ -17,23 +17,10 @@ import type { ViewStyle } from 'react-native';
 import { useTheme } from '../../styles';
 import type { FileData } from '../../types';
 import { anonymousFileAccessService } from '../../services/AnonymousFileAccessService';
-
-// Download phases as per thesis (client-managed keys)
-type DownloadPhase = 'idle' | 'access' | 'waitingKey' | 'keys' | 'chunks' | 'ready';
-
-interface SecureKeyPackage {
-  masterKey: string;
-  chunkKeys: Record<number, string>;
-  fingerprint?: string;
-}
-
-interface ChunkProgress {
-  index: number;
-  status: 'pending' | 'downloading' | 'verifying' | 'completed' | 'error';
-  hash?: string;
-  error?: string;
-  retries?: number;
-}
+import type { FileAccessManifest } from '../../services/AnonymousFileAccessService';
+import { saveKeyPackage } from '../../services/KeyPackageStorage';
+import { useChunkDownloader } from '../../hooks';
+import type { ChunkStatus, DownloadPhase, SecureKeyPackage } from '../../types/download';
 
 interface SecureDownloadScreenProps {
   file: FileData;
@@ -47,64 +34,80 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
   onCancel,
 }) => {
   const { colors } = useTheme();
-  const [phase, setPhase] = useState<DownloadPhase>('idle');
-  const [chunkProgress, setChunkProgress] = useState<ChunkProgress[]>([]);
+  const { session, actions } = useChunkDownloader(file.id);
+  const { phase, chunkProgress, integrityVerified, error: sessionError } = session;
   const [error, setError] = useState<string | null>(null);
-  const [accessInfo, setAccessInfo] = useState<any>(null);
-  const [integrityVerified, setIntegrityVerified] = useState(false);
+  const [accessInfo, setAccessInfo] = useState<FileAccessManifest | null>(null);
   const [secureKeyPackage, setSecureKeyPackage] = useState<SecureKeyPackage | null>(null);
+  const shouldPersistKeyPackage = useMemo(
+    () => __DEV__ || (typeof process !== 'undefined' && process.env?.KEY_MONITOR_DEMO === 'true'),
+    [],
+  );
+  const combinedError = error ?? sessionError;
 
   // Phase 1: Access Negotiation
   const requestAccess = async () => {
     try {
-      setPhase('access');
+      actions.setPhase('access');
+      actions.setError(null);
       setError(null);
-
-    // TODO: Call API /api/files/:fileId/access
-    // const response = await apiService.getFileAccess(file.id, currentUserId);
-
-      // Simulate API call
+      // Simulate API call delay
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      const mockAccessInfo = {
+      const providedChunks = file.chunks && file.chunks.length > 0 ? file.chunks : undefined;
+      const inferredChunkCount = providedChunks?.length ?? file.chunkCount ?? 1;
+      const fallbackChunkSize = inferredChunkCount > 0
+        ? Math.round((file.size ?? 0) / inferredChunkCount)
+        : 0;
+
+      const chunkManifest = (providedChunks ?? Array.from({ length: inferredChunkCount }, (_, index) => ({
+        index,
+        cid: `demo_cid_${index}`,
+        hash: `demo_hash_${index}`,
+      }))).map(chunk => ({
+        index: chunk.index,
+        cid: chunk.cid,
+        size: fallbackChunkSize,
+        hash: chunk.hash,
+      }));
+
+      const hasLocalKey = Boolean(file.localKeyPackage || file.hasLocalKey);
+
+      const mockManifest: FileAccessManifest = {
         success: true,
-        fileId: file.id,
-        fileName: file.name,
-        totalSize: file.size,
-        chunkCount: file.chunkCount || 1,
-        chunkManifest: file.chunks || [],
+        file: {
+          id: file.id,
+          name: file.name,
+          size: file.size,
+          chunkCount: inferredChunkCount,
+          mimeType: file.mimeType,
+        },
+        chunkManifest,
         ownershipPolicy: {
-          ownershipPublicKey: file.ownershipPublicKey,
+          publicKey: file.ownershipPublicKey ?? 'demo_owner_public_key',
           status: 'active',
           revoked: false,
         },
-        grantedAt: new Date().toISOString(),
         grantContext: {
+          grantedAt: new Date().toISOString(),
+          expiresAt: null,
+          accessCount: 1,
+          hasLocalKey,
+          keyPackageFingerprint: file.keyPackageFingerprint ?? 'mock_fingerprint',
           keyStatus: 'client-managed',
-          hasLocalKey: false,
-          keyPackageFingerprint: 'mock_fingerprint',
         },
       };
 
-      setAccessInfo(mockAccessInfo);
+      setAccessInfo(mockManifest);
       setSecureKeyPackage(null);
+      actions.setSecureKeyPackage(null);
+    actions.resetSession();
+      actions.ensureSession(mockManifest);
 
-      const nextPhase: DownloadPhase = mockAccessInfo.grantContext.hasLocalKey
-        ? 'keys'
-        : 'waitingKey';
-      setPhase(nextPhase);
+      const nextPhase: DownloadPhase = hasLocalKey ? 'keys' : 'waitingKey';
+      actions.setPhase(nextPhase);
 
-      // Initialize chunk progress
-      const initialProgress: ChunkProgress[] = Array.from(
-        { length: mockAccessInfo.chunkCount },
-        (_, index) => ({
-          index,
-          status: 'pending',
-        })
-      );
-      setChunkProgress(initialProgress);
-
-      if (mockAccessInfo.grantContext.hasLocalKey) {
+      if (hasLocalKey) {
         resolveKeys();
       }
 
@@ -112,7 +115,8 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
       const message = err instanceof Error ? err.message : 'Access denied';
       setError(message);
       Alert.alert('Access Error', message);
-      setPhase('idle');
+      actions.setPhase('idle');
+      actions.setError(message);
     }
   };
 
@@ -123,7 +127,7 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
 
     try {
       setError(null);
-      setPhase('waitingKey');
+      actions.setPhase('waitingKey');
 
       // Simulate user scanning/importing secure key package (QR / file)
       await new Promise(resolve => setTimeout(resolve, 1200));
@@ -131,7 +135,7 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
       const mockPackage: SecureKeyPackage = {
         masterKey: 'mock_master_key',
         chunkKeys: Object.fromEntries(
-          (accessInfo.chunkManifest || []).map((chunk: any) => [
+          (accessInfo.chunkManifest || []).map((chunk: FileAccessManifest['chunkManifest'][number]) => [
             chunk.index,
             `mock_chunk_key_${chunk.index}`,
           ])
@@ -140,7 +144,19 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
       };
 
       setSecureKeyPackage(mockPackage);
-      setAccessInfo((prev: any) =>
+      actions.setSecureKeyPackage(mockPackage);
+      if (shouldPersistKeyPackage) {
+        try {
+          await saveKeyPackage(file.id, {
+            masterKey: mockPackage.masterKey,
+            chunkKeys: mockPackage.chunkKeys,
+            fingerprint: mockPackage.fingerprint,
+          });
+        } catch (storageError) {
+          console.warn('[SecureDownloadScreen] Failed to persist imported key package', storageError);
+        }
+      }
+      setAccessInfo((prev: FileAccessManifest | null) =>
         prev
           ? {
               ...prev,
@@ -152,7 +168,7 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
           : prev
       );
 
-      setPhase('keys');
+      actions.setPhase('keys');
       resolveKeys();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to import key package';
@@ -168,15 +184,17 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
     }
 
     if (!secureKeyPackage) {
-      setPhase('waitingKey');
+      actions.setPhase('waitingKey');
       const message = 'Secure key package not available. Import the package provided by the owner.';
       setError(message);
+      actions.setError(message);
       Alert.alert('Key Package Required', message);
       return;
     }
 
     try {
-      setPhase('keys');
+      actions.setPhase('keys');
+      actions.setError(null);
       setError(null);
 
       // TODO: Validate fingerprint with Secure Storage fingerprint hash
@@ -195,91 +213,29 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
       // Simulate key resolution
       await new Promise(resolve => setTimeout(resolve, 1500));
 
-      setPhase('chunks');
-      startChunkDownload();
+      actions.setPhase('chunks');
+      await actions.simulateDownload();
+      Alert.alert('Download Complete', 'File is ready. All chunks verified ✓');
 
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to resolve keys';
       setError(message);
+      actions.setError(message);
       Alert.alert('Key Resolution Error', message);
+      actions.setPhase('waitingKey');
     }
-  };
-
-  // Phase 3: Chunk Retrieval & Integrity
-  const startChunkDownload = async () => {
-    if (!accessInfo) {return;}
-
-    try {
-      const { chunkManifest } = accessInfo;
-
-      for (let i = 0; i < chunkManifest.length; i++) {
-        const chunk = chunkManifest[i];
-
-        // Update status to downloading
-        updateChunkProgress(i, { status: 'downloading' });
-
-        // TODO: Download chunk from IPFS via gateway
-        // const response = await apiService.downloadChunk(chunk.cid);
-
-        // Simulate download
-        await new Promise(resolve => setTimeout(resolve, 500));
-
-        // Update status to verifying
-        updateChunkProgress(i, { status: 'verifying', hash: chunk.hash });
-
-        // TODO: Decrypt chunk
-        // TODO: Compute hash and verify
-        // const computedHash = sha256(decryptedChunk);
-        // if (computedHash !== chunk.hash) {
-        //   throw new Error(`Hash mismatch for chunk ${i}`);
-        // }
-
-        // Simulate verification
-        await new Promise(resolve => setTimeout(resolve, 200));
-
-        // Mark as completed
-        updateChunkProgress(i, { status: 'completed' });
-      }
-
-      // All chunks verified
-      setIntegrityVerified(true);
-      setPhase('ready');
-
-      // TODO: Reconstruct file from chunks
-      // TODO: Create encrypted cache
-
-      Alert.alert('Download Complete', 'File is ready. All chunks verified ✓');
-
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Download failed';
-      setError(message);
-      Alert.alert('Download Error', message);
-    }
-  };
-
-  const updateChunkProgress = (
-    index: number,
-    update: Partial<ChunkProgress>
-  ) => {
-    setChunkProgress(prev =>
-      prev.map(item =>
-        item.index === index ? { ...item, ...update } : item
-      )
-    );
   };
 
   const handleRetry = async (chunkIndex: number) => {
-    const chunk = chunkProgress[chunkIndex];
+    const chunk = chunkProgress.find(item => item.index === chunkIndex);
+    if (!chunk) {
+      return;
+    }
+
     if (chunk.retries && chunk.retries >= 3) {
       Alert.alert('Max Retries', 'Maximum retry attempts reached');
       return;
     }
-
-    updateChunkProgress(chunkIndex, {
-      status: 'downloading',
-      error: undefined,
-      retries: (chunk.retries || 0) + 1,
-    });
 
     // Report integrity alert to backend using anonymous service
     try {
@@ -288,15 +244,21 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
         chunkIndex: chunkIndex,
         expectedHash: chunk.hash || '', // This would be the expected hash
         actualHash: null, // Actual hash after verification (would be computed after download)
-        retryCount: chunk.retries ? (chunk.retries + 1) : 1,
+        retryCount: (chunk.retries ?? 0) + 1,
       });
     } catch (error) {
       console.warn('[SecureDownloadScreen] Failed to report integrity alert:', error);
       // Don't fail the retry just because we couldn't report the alert
     }
 
-    // Retry download
-    // ... (similar to startChunkDownload for single chunk)
+    try {
+      await actions.retryChunk(chunkIndex);
+    } catch (retryError) {
+      const message = retryError instanceof Error ? retryError.message : 'Failed to retry chunk download';
+      setError(message);
+      actions.setError(message);
+      Alert.alert('Retry Error', message);
+    }
   };
 
   const getPhaseDescription = (currentPhase: DownloadPhase): string => {
@@ -318,7 +280,7 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
     }
   };
 
-  const getChunkStatusIcon = (status: ChunkProgress['status']): string => {
+  const getChunkStatusIcon = (status: ChunkStatus): string => {
     switch (status) {
       case 'pending':
         return '⏱';
@@ -606,9 +568,9 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
         <Text style={styles.phaseDescription}>{getPhaseDescription(phase)}</Text>
 
         {/* Error Display */}
-        {error && (
+        {combinedError && (
           <View style={styles.errorContainer}>
-            <Text style={styles.errorText}>{error}</Text>
+            <Text style={styles.errorText}>{combinedError}</Text>
           </View>
         )}
 

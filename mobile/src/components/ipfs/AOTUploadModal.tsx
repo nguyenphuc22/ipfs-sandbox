@@ -16,7 +16,9 @@ import { useAOTIdentity } from '../../hooks';
 import {
   AOTUploadPayload,
   AOTUploadResponse,
+  ClientChunkedUploadPayload,
 } from '../../services/GatewayApiService';
+import { saveKeyPackage } from '../../services/KeyPackageStorage';
 import {
   computeMetadataHash,
   createLsagRingSignature,
@@ -27,6 +29,7 @@ import {
   toCompressedPublicKey,
 } from '../../utils/aotCrypto';
 import { API_CONFIG } from '../../config/api';
+import { processAndUploadFile, ProgressCallback } from '../../services/ChunkEncryptionService';
 
 interface AOTUploadModalProps {
   visible: boolean;
@@ -68,6 +71,11 @@ export const AOTUploadModal: React.FC<AOTUploadModalProps> = ({
   const [metadataHash, setMetadataHash] = useState<string | null>(null);
   const [masterKey, setMasterKey] = useState<string | null>(null);
   const [ringWarning, setRingWarning] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<string>('');
+  const shouldPersistKeyPackage = useMemo(
+    () => __DEV__ || (typeof process !== 'undefined' && process.env?.KEY_MONITOR_DEMO === 'true'),
+    [],
+  );
 
   const resetState = () => {
     setSelectedMemberKeys([]);
@@ -76,6 +84,7 @@ export const AOTUploadModal: React.FC<AOTUploadModalProps> = ({
     setMetadataHash(null);
     setMasterKey(null);
     setRingWarning(null);
+    setUploadProgress('');
     clearError();
   };
 
@@ -381,6 +390,8 @@ export const AOTUploadModal: React.FC<AOTUploadModalProps> = ({
       }
 
       const uploadResponse = response.response;
+      const secureKeyPackage = uploadResponse.secureKeyPackage;
+      const persistedMasterKey = secureKeyPackage?.masterKey ?? masterKeyValue;
       const fileData: FileData = {
         id: uploadResponse.fileId || `${Date.now()}`,
         name: uploadResponse.fileName || uploadResponse.name || file.name || 'unnamed',
@@ -390,15 +401,38 @@ export const AOTUploadModal: React.FC<AOTUploadModalProps> = ({
         ipfsHash: uploadResponse.cid, // Legacy support
         metadataHash: computedHash,
         ownershipPublicKey: ownerKey,
-        masterKey: masterKeyValue,
+        masterKey: persistedMasterKey,
+        hasLocalKey: !!secureKeyPackage,
+        keyStatus: secureKeyPackage ? 'client-managed' : undefined,
+        keyPackageFingerprint: secureKeyPackage?.keyPackageFingerprint,
+        localKeyPackage: secureKeyPackage
+          ? {
+              masterKey: secureKeyPackage.masterKey,
+              chunkKeys: secureKeyPackage.chunkKeys,
+              fingerprint: secureKeyPackage.keyPackageFingerprint,
+              storedAt: new Date().toISOString(),
+            }
+          : undefined,
         ringMembers: orderedRing,
         // New chunked upload fields
         chunkCount: uploadResponse.chunkCount,
         chunks: uploadResponse.chunks,
       };
 
+      if (secureKeyPackage && shouldPersistKeyPackage) {
+        try {
+          await saveKeyPackage(fileData.id, {
+            masterKey: secureKeyPackage.masterKey,
+            chunkKeys: secureKeyPackage.chunkKeys,
+            fingerprint: secureKeyPackage.keyPackageFingerprint,
+          });
+        } catch (storageError) {
+          console.warn('[AOT Upload Modal] Failed to persist secure key package', storageError);
+        }
+      }
+
       setMetadataHash(computedHash);
-      setMasterKey(masterKeyValue);
+      setMasterKey(persistedMasterKey);
       onUploaded?.(fileData);
       Alert.alert('AOT', 'Upload thành công với AOT!');
       onClose();

@@ -48,6 +48,11 @@ export interface AOTUploadResponse {
     hash: string;
     size?: number;
   }>;
+  secureKeyPackage?: {
+    masterKey: string;
+    chunkKeys: Record<number, string>;
+    keyPackageFingerprint?: string;
+  };
   error?: string;
 }
 
@@ -68,6 +73,36 @@ export interface ChunkedUploadResponse {
     masterKey: string;
     chunkKeys: Record<number, string>;
     keyPackageFingerprint: string;
+  };
+}
+
+export interface ClientChunkedUploadPayload {
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
+  chunkCount: number;
+  chunks: Array<{
+    index: number;
+    cid: string;
+    hash: string;
+    size: number;
+  }>;
+  metadataHash: string;
+  ownershipPublicKey: string;
+  encryptedChunkKeys: {
+    encryptedData: string;
+    iv: string;
+    authTag: string;
+  };
+  keyPackageFingerprint: string;
+  ringSignature?: string;
+  escrowedIdentity?: string;
+  ringMembers?: string[];
+  schnorr: {
+    R: string;
+    s: string;
+    message: string;
+    publicKey: string;
   };
 }
 
@@ -710,9 +745,9 @@ export class GatewayApiService {
   }
 
   async listUserFiles(
-    publicKey: string, 
-    ringSignature: string, 
-    timestamp: number, 
+    publicKey: string,
+    ringSignature: string,
+    timestamp: number,
     nonce: string
   ): Promise<FileData[]> {
     const payload = {
@@ -730,6 +765,66 @@ export class GatewayApiService {
       }
     );
     return response.files || [];
+  }
+
+  /**
+   * Upload file with client-side chunking (Task A implementation)
+   *
+   * This method receives manifest and encrypted chunk keys from the client.
+   * The chunks have already been uploaded to IPFS by the client.
+   * Backend only stores metadata and validates ownership proofs.
+   */
+  async uploadWithClientChunking(
+    payload: ClientChunkedUploadPayload
+  ): Promise<ChunkedUploadResponse> {
+    console.log('[Gateway API] Uploading with client-side chunking:', {
+      fileName: payload.fileName,
+      fileSize: payload.fileSize,
+      chunkCount: payload.chunkCount,
+      chunksLength: payload.chunks.length,
+      hasRingSignature: !!payload.ringSignature,
+    });
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
+
+    try {
+      const response = await fetch(`${this.config.baseUrl}/api/files/client-chunked-upload`, {
+        method: 'POST',
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      clearTimeout(timeoutId);
+
+      const json = await response.json();
+
+      if (!response.ok) {
+        console.error('[Gateway API] Client-chunked upload failed:', json);
+        throw new Error(json?.error || `Upload failed with status: ${response.status}`);
+      }
+
+      console.log('[Gateway API] Client-chunked upload successful:', {
+        fileId: json.fileId,
+        chunkCount: json.chunkCount,
+      });
+
+      return json;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      console.error('[Gateway API] Client-chunked upload error:', error);
+
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          throw new Error('Upload request timed out');
+        }
+        throw error;
+      }
+      throw new Error('Client-chunked upload failed');
+    }
   }
 }
 
