@@ -48,45 +48,53 @@ export class FilePickerService {
 
     const pickerTypes: string[] = [];
 
+    const addType = (docType: string | readonly string[]) => {
+      if (Array.isArray(docType)) {
+        pickerTypes.push(...docType);
+      } else {
+        pickerTypes.push(docType as string);
+      }
+    };
+
     fileTypes.forEach(type => {
       switch (type) {
         case 'pdf':
-          pickerTypes.push(types.pdf);
+          addType(types.pdf);
           break;
         case 'doc':
         case 'docx':
-          pickerTypes.push(types.doc);
+          addType(types.doc);
           break;
         case 'xls':
         case 'xlsx':
-          pickerTypes.push(types.xls);
+          addType(types.xls);
           break;
         case 'ppt':
         case 'pptx':
-          pickerTypes.push(types.ppt);
+          addType(types.ppt);
           break;
         case 'images':
-          pickerTypes.push(types.images);
+          addType(types.images);
           break;
         case 'video':
-          pickerTypes.push(types.video);
+          addType(types.video);
           break;
         case 'audio':
-          pickerTypes.push(types.audio);
+          addType(types.audio);
           break;
         case 'plainText':
         case 'txt':
-          pickerTypes.push(types.plainText);
+          addType(types.plainText);
           break;
         case 'zip':
-          pickerTypes.push(types.zip);
+          addType(types.zip);
           break;
         case 'csv':
-          pickerTypes.push(types.csv);
+          addType(types.csv);
           break;
         case 'allFiles':
         default:
-          pickerTypes.push(types.allFiles);
+          addType(types.allFiles);
           break;
       }
     });
@@ -118,9 +126,12 @@ export class FilePickerService {
   }
 
   private createPickedFileFromDocumentAsset(asset: any): PickedFile {
+    const effectiveUri = asset.fileCopyUri || asset.uri;
     return {
       id: generateRandomId(),
-      uri: asset.uri,
+      uri: effectiveUri,
+      fileCopyUri: asset.fileCopyUri ?? null,
+      originalUri: asset.uri ?? null,
       name: asset.name || 'document',
       error: null,
       type: asset.type || null,
@@ -252,6 +263,7 @@ export class FilePickerService {
         mode: 'import' as const,
         type: documentTypes,
         allowMultiSelection,
+        copyTo: options.copyTo ?? 'cachesDirectory',
       };
 
       console.log('Document picker options:', pickerOptions);

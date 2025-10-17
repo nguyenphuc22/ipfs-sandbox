@@ -25,7 +25,12 @@ jest.mock('../src/services/ChunkEncryptionService', () => ({
 
 // Mock @noble/hashes for integrity verification
 jest.mock('@noble/hashes/sha2', () => ({
-  sha256: jest.fn(() => new Uint8Array(32).fill(0)),
+  sha256: jest.fn((data?: Uint8Array) => {
+    if (data instanceof Uint8Array) {
+      return new Uint8Array(require('crypto').createHash('sha256').update(Buffer.from(data)).digest());
+    }
+    return new Uint8Array(32).fill(0);
+  }),
 }));
 
 // Mock fetch for IPFS download
@@ -36,6 +41,7 @@ global.fetch = jest.fn().mockResolvedValue({
 
 describe('chunkDownloadManager', () => {
   const fileId = 'test-file';
+  const MOCK_CHUNK_HASH = '076a27c79e5ace2a3d47f9dd2e83e4ff6ea8872b3c2218f66c92b89b55f36560';
 
   const createManifest = (chunkCount = 2): FileAccessManifest => ({
     success: true,
@@ -50,7 +56,7 @@ describe('chunkDownloadManager', () => {
       index,
       cid: `cid-${index}`,
       size: 512,
-      hash: `hash-${index}`,
+      hash: MOCK_CHUNK_HASH,
     })),
     ownershipPolicy: {
       publicKey: 'owner-public-key',

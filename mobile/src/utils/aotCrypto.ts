@@ -1,5 +1,6 @@
 import { Point, CURVE, utils } from '@noble/secp256k1';
 import { sha256Bytes, schnorrSignHex, schnorrPublicKeyHex } from './nativeCryptoAdapter';
+import type { CryptoLike } from '../types/webcrypto';
 
 const HEX_REGEX = /^[0-9a-f]+$/i;
 const VALID_PUBLIC_KEY_LENGTHS = new Set([64, 66, 130]);
@@ -39,16 +40,12 @@ const textEncoder = typeof TextEncoder !== 'undefined' ? new TextEncoder() : und
 
 type TypedArray = Uint8Array | Int8Array | Uint16Array | Int16Array | Uint32Array | Int32Array;
 
-declare global {
-
-  var crypto: { getRandomValues<T extends TypedArray>(array: T): T } | undefined;
-}
-
-const createCryptoShim = (): NonNullable<typeof globalThis.crypto> => ({
-  getRandomValues<T extends TypedArray>(array: T): T {
+const createCryptoShim = (): CryptoLike => ({
+  getRandomValues<T extends ArrayBufferView>(array: T): T {
     const result = array;
-    for (let i = 0; i < result.length; i += 1) {
-      result[i] = Math.floor(Math.random() * 256) as typeof result[number];
+    const length = (result as unknown as { length: number }).length ?? 0;
+    for (let i = 0; i < length; i += 1) {
+      (result as unknown as { [key: number]: number })[i] = Math.floor(Math.random() * 256);
     }
     return result;
   },
@@ -56,13 +53,13 @@ const createCryptoShim = (): NonNullable<typeof globalThis.crypto> => ({
 
 export const initializeCrypto = () => {
   if (typeof globalThis.crypto === 'undefined') {
-    globalThis.crypto = createCryptoShim();
+    (globalThis as any).crypto = createCryptoShim();
     return;
   }
 
   const existingCrypto = globalThis.crypto;
   if (existingCrypto && typeof existingCrypto.getRandomValues !== 'function') {
-    globalThis.crypto = {
+    (globalThis as any).crypto = {
       ...existingCrypto,
       getRandomValues: createCryptoShim().getRandomValues,
     };

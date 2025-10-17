@@ -10,8 +10,8 @@ import {
   decryptChunkWithAESGCM,
   parseEncryptedChunkPackage,
 } from './ChunkEncryptionService';
-import { sha256 } from '@noble/hashes/sha2';
 import { API_CONFIG } from '../config/api';
+import { sha256Hex } from './crypto/hash';
 
 export type ChunkDownloadSession = {
   fileId: string;
@@ -62,15 +62,6 @@ function hexToBytes(hex: string): Uint8Array {
 }
 
 /**
- * Helper: Convert Uint8Array to hex string
- */
-function bytesToHex(bytes: Uint8Array): string {
-  return Array.from(bytes)
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('');
-}
-
-/**
  * Download encrypted chunk from IPFS by CID
  */
 async function downloadChunkFromIPFS(cid: string): Promise<Uint8Array> {
@@ -95,7 +86,7 @@ async function downloadChunkFromIPFS(cid: string): Promise<Uint8Array> {
  * Verify chunk integrity by comparing hash
  */
 function verifyChunkIntegrity(data: Uint8Array, expectedHash: string): boolean {
-  const actualHash = bytesToHex(sha256(data));
+  const actualHash = sha256Hex(data);
   return actualHash === expectedHash.toLowerCase();
 }
 

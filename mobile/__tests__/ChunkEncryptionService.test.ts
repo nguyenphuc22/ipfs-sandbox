@@ -13,8 +13,12 @@ import {
   processFileForChunking,
   CHUNK_CONFIG,
 } from '../src/services/ChunkEncryptionService';
+import type { PickedFile } from '../src/types';
 
-// Mock fetch for file reading
+import RNFS from 'react-native-fs';
+
+const mockReadFile = RNFS.readFile as jest.Mock;
+
 global.fetch = jest.fn();
 
 // Mock crypto.subtle for encryption/decryption
@@ -38,6 +42,27 @@ global.crypto = mockCrypto as any;
 describe('ChunkEncryptionService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockReadFile.mockReset();
+  });
+
+  const toBase64 = (data: Uint8Array) => Buffer.from(data).toString('base64');
+  const createMockFile = (overrides: Partial<PickedFile> = {}): PickedFile => ({
+    id: overrides.id ?? 'mock-id',
+    uri: overrides.uri ?? 'file:///test.txt',
+    fileCopyUri: overrides.fileCopyUri ?? overrides.uri ?? 'file:///test.txt',
+    originalUri: overrides.originalUri ?? overrides.uri ?? 'file:///test.txt',
+    name: overrides.name ?? 'test.txt',
+    error: overrides.error ?? null,
+    type: overrides.type ?? 'text/plain',
+    nativeType: overrides.nativeType ?? null,
+    size: overrides.size ?? 0,
+    isVirtual: overrides.isVirtual ?? null,
+    convertibleToMimeTypes: overrides.convertibleToMimeTypes ?? null,
+    hasRequestedType: overrides.hasRequestedType ?? false,
+    uploadTime: overrides.uploadTime ?? new Date(),
+    status: overrides.status ?? 'uploading',
+    ipfsHash: overrides.ipfsHash,
+    progress: overrides.progress,
   });
 
   describe('Key Generation', () => {
@@ -196,10 +221,7 @@ describe('ChunkEncryptionService', () => {
       const mockFileContent = new Uint8Array(1024 * 1024); // 1 MB file
       mockFileContent.fill(42);
 
-      (global.fetch as jest.Mock).mockResolvedValue({
-        ok: true,
-        arrayBuffer: async () => mockFileContent.buffer,
-      });
+      mockReadFile.mockResolvedValue(toBase64(mockFileContent));
 
       // Mock encryption
       (mockCrypto.subtle.encrypt as jest.Mock).mockResolvedValue(
@@ -207,12 +229,12 @@ describe('ChunkEncryptionService', () => {
           .buffer
       );
 
-      const mockFile = {
+      const mockFile = createMockFile({
         uri: 'file:///test.txt',
-        name: 'test.txt',
+        fileCopyUri: 'file:///test.txt',
         size: 1024 * 1024,
         type: 'text/plain',
-      };
+      });
 
       const result = await processFileForChunking(mockFile);
 
@@ -225,17 +247,14 @@ describe('ChunkEncryptionService', () => {
     });
 
     it('should handle file read errors', async () => {
-      (global.fetch as jest.Mock).mockResolvedValue({
-        ok: false,
-        statusText: 'Not Found',
-      });
+      mockReadFile.mockRejectedValue(new Error('Not Found'));
 
-      const mockFile = {
+      const mockFile = createMockFile({
         uri: 'file:///nonexistent.txt',
+        fileCopyUri: 'file:///nonexistent.txt',
         name: 'nonexistent.txt',
         size: 0,
-        type: 'text/plain',
-      };
+      });
 
       await expect(processFileForChunking(mockFile)).rejects.toThrow(
         'Failed to read file from URI'
@@ -246,22 +265,18 @@ describe('ChunkEncryptionService', () => {
       const mockFileContent = new Uint8Array(1024);
       mockFileContent.fill(1);
 
-      (global.fetch as jest.Mock).mockResolvedValue({
-        ok: true,
-        arrayBuffer: async () => mockFileContent.buffer,
-      });
+      mockReadFile.mockResolvedValue(toBase64(mockFileContent));
 
       (mockCrypto.subtle.encrypt as jest.Mock).mockResolvedValue(
         new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17])
           .buffer
       );
 
-      const mockFile = {
+      const mockFile = createMockFile({
         uri: 'file:///test.txt',
-        name: 'test.txt',
+        fileCopyUri: 'file:///test.txt',
         size: 1024,
-        type: 'text/plain',
-      };
+      });
 
       const progressStages: string[] = [];
       const onProgress = (progress: any) => {
@@ -281,17 +296,14 @@ describe('ChunkEncryptionService', () => {
     it('should handle empty file', async () => {
       const emptyBuffer = new Uint8Array(0);
 
-      (global.fetch as jest.Mock).mockResolvedValue({
-        ok: true,
-        arrayBuffer: async () => emptyBuffer.buffer,
-      });
+      mockReadFile.mockResolvedValue(toBase64(emptyBuffer));
 
-      const mockFile = {
+      const mockFile = createMockFile({
         uri: 'file:///empty.txt',
+        fileCopyUri: 'file:///empty.txt',
         name: 'empty.txt',
         size: 0,
-        type: 'text/plain',
-      };
+      });
 
       const result = await processFileForChunking(mockFile);
 
@@ -304,22 +316,20 @@ describe('ChunkEncryptionService', () => {
       const largeBuffer = new Uint8Array(10 * 1024 * 1024);
       largeBuffer.fill(255);
 
-      (global.fetch as jest.Mock).mockResolvedValue({
-        ok: true,
-        arrayBuffer: async () => largeBuffer.buffer,
-      });
+      mockReadFile.mockResolvedValue(toBase64(largeBuffer));
 
       (mockCrypto.subtle.encrypt as jest.Mock).mockResolvedValue(
         new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17])
           .buffer
       );
 
-      const mockFile = {
+      const mockFile = createMockFile({
         uri: 'file:///large.bin',
+        fileCopyUri: 'file:///large.bin',
         name: 'large.bin',
         size: 10 * 1024 * 1024,
         type: 'application/octet-stream',
-      };
+      });
 
       const result = await processFileForChunking(mockFile);
 
@@ -332,22 +342,20 @@ describe('ChunkEncryptionService', () => {
     it('should use unique keys for each chunk', async () => {
       const mockFileContent = new Uint8Array(5 * 1024 * 1024); // 5 MB to get multiple chunks
 
-      (global.fetch as jest.Mock).mockResolvedValue({
-        ok: true,
-        arrayBuffer: async () => mockFileContent.buffer,
-      });
+      mockReadFile.mockResolvedValue(toBase64(mockFileContent));
 
       (mockCrypto.subtle.encrypt as jest.Mock).mockResolvedValue(
         new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17])
           .buffer
       );
 
-      const mockFile = {
+      const mockFile = createMockFile({
         uri: 'file:///test.bin',
+        fileCopyUri: 'file:///test.bin',
         name: 'test.bin',
         size: 5 * 1024 * 1024,
         type: 'application/octet-stream',
-      };
+      });
 
       const result = await processFileForChunking(mockFile);
 
@@ -362,22 +370,18 @@ describe('ChunkEncryptionService', () => {
     it('should encrypt chunk keys with master key', async () => {
       const mockFileContent = new Uint8Array(1024);
 
-      (global.fetch as jest.Mock).mockResolvedValue({
-        ok: true,
-        arrayBuffer: async () => mockFileContent.buffer,
-      });
+      mockReadFile.mockResolvedValue(toBase64(mockFileContent));
 
       (mockCrypto.subtle.encrypt as jest.Mock).mockResolvedValue(
         new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17])
           .buffer
       );
 
-      const mockFile = {
+      const mockFile = createMockFile({
         uri: 'file:///test.txt',
-        name: 'test.txt',
+        fileCopyUri: 'file:///test.txt',
         size: 1024,
-        type: 'text/plain',
-      };
+      });
 
       const result = await processFileForChunking(mockFile);
 
