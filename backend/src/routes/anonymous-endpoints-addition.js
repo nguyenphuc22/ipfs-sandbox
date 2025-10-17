@@ -5,7 +5,7 @@
 
 const express = require('express');
 const crypto = require('crypto');
-const { schnorr } = require('@noble/secp256k1');
+const { getSchnorr } = require('../utils/schnorr');
 const { FileAccessService } = require('../services/FileAccessService');
 const { RingSignatureService } = require('../services/RingSignatureService');
 const { secureLog, maskHashForLogging } = require('../utils/monitoring');
@@ -289,6 +289,7 @@ function normalizePublicKey(publicKeyHex) {
  * Helper: Verify Schnorr proof of ownership
  */
 async function verifySchnorrProof({ R, s, message, publicKey }, expectedPublicKey) {
+    const schnorr = await getSchnorr();
     if (!R || !s || !message || !publicKey) {
         throw new Error('Missing Schnorr proof components');
     }

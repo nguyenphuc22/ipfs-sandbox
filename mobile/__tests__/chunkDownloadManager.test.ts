@@ -23,6 +23,16 @@ jest.mock('../src/services/ChunkEncryptionService', () => ({
   }),
 }));
 
+jest.mock('../src/services/crypto/hash', () => ({
+  sha256Hex: jest.fn(() => '076a27c79e5ace2a3d47f9dd2e83e4ff6ea8872b3c2218f66c92b89b55f36560'),
+  sha256Bytes: jest.fn(input => {
+    if (input instanceof Uint8Array) {
+      return input.length >= 32 ? input.slice(0, 32) : new Uint8Array(32).fill(0);
+    }
+    return new Uint8Array(32).fill(0);
+  }),
+}));
+
 // Mock @noble/hashes for integrity verification
 jest.mock('@noble/hashes/sha2', () => ({
   sha256: jest.fn((data?: Uint8Array) => {

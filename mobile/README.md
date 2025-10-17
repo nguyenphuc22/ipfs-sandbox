@@ -26,6 +26,7 @@ A complete mobile app featuring document picker, image picker, file validation, 
 - **File Validation**: Type checking, size limits, and security validation
 - **File List Management**: Display, organize, and manage selected files
 - **Mixed File Support**: Documents, images, media files, and custom types
+- **Persistent Downloads**: Reassembled files are saved to an on-device sandbox with optional shared export
 
 ### IPFS Integration
 - **Gateway Connection**: Direct integration with IPFS gateway at `localhost:3000`
@@ -205,6 +206,31 @@ mobile/
 - `npm run ios` - Run on iOS simulator
 - `npm run lint` - Run ESLint
 - `npm test` - Run tests with Jest
+
+## Download Persistence
+
+Anonymous downloads are automatically written to the app sandbox so you can revisit them later:
+
+- **Sandbox location**: `DocumentDirectoryPath/anonymous-downloads/<fileId>-<timestamp>-<originalName>` (displayed in the Secure Download success banner and File Viewer)
+- **iOS export (optional)**: When export is enabled, a Finder-accessible copy is placed in `DocumentDirectoryPath/anonymous-downloads/shared-downloads/`
+- **Android export (optional)**: When export is enabled, a duplicate is copied to the system `Downloads/` directory using the same filename
+
+Exporting to a shared location is guarded by the `ENABLE_DOWNLOAD_EXPORT` feature flag, which is **off by default** to avoid unnecessary permission prompts. Enable it using either approach:
+
+1. **Global flag (recommended for development)**
+   ```ts
+   // In App.tsx or AppWithIPFS.tsx before rendering
+   (globalThis as any).__IPFSSandboxFlags__ = {
+     ENABLE_DOWNLOAD_EXPORT: true,
+   };
+   ```
+
+2. **Environment variable** – if your bundler injects `process.env` values (e.g. via Babel plugins):
+   ```bash
+   ENABLE_DOWNLOAD_EXPORT=true npm start
+   ```
+
+When the flag is active, the download summary card will show both the sandbox path and the exported location (if the copy succeeds). If the export fails—because of permissions or missing directories—the sandbox copy remains intact and the app logs the reason.
 
 ### App Configuration
 

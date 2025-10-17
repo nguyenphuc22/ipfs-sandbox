@@ -11,7 +11,8 @@ import {
   parseEncryptedChunkPackage,
 } from './ChunkEncryptionService';
 import { API_CONFIG } from '../config/api';
-import { sha256Hex } from './crypto/hash';
+import { sha256Bytes, sha256Hex } from './crypto/hash';
+import { persistDownloadedFile, type PersistedFileTargets } from './FilePersistenceService';
 
 export type ChunkDownloadSession = {
   fileId: string;
@@ -23,6 +24,8 @@ export type ChunkDownloadSession = {
   secureKeyPackage: SecureKeyPackage | null;
   startedAt: number | null;
   completedAt: number | null;
+  sandboxPath: string | null;
+  exportPath: string | null;
 };
 
 type ChunkUpdate = {
@@ -45,6 +48,114 @@ const activeDownloads = new Map<string, Promise<void>>();
 const decryptedChunks = new Map<string, Map<number, Uint8Array>>();
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+const HEX_PATTERN = /^[0-9a-fA-F]+$/;
+
+const PLACEHOLDER_KEY_PATTERN = /^(mock|demo|test)_/i;
+
+const base64ToBytes = (value: string): Uint8Array => {
+  let cleaned = value.replace(/\s+/g, '').replace(/\n/g, '');
+  const hasUrlSafeChars = /[-_]/.test(cleaned);
+  if (hasUrlSafeChars) {
+    cleaned = cleaned.replace(/-/g, '+').replace(/_/g, '/');
+  }
+
+  const padding = cleaned.length % 4;
+  if (padding === 1) {
+    throw new Error('Invalid base64 string length');
+  }
+  if (padding > 0) {
+    cleaned = cleaned.padEnd(cleaned.length + (4 - padding), '=');
+  }
+  try {
+    if (typeof atob === 'function') {
+      const binary = atob(cleaned);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      return bytes;
+    }
+
+    if (typeof globalThis !== 'undefined' && (globalThis as any)?.Buffer) {
+      return (globalThis as any).Buffer.from(cleaned, 'base64');
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { Buffer } = require('buffer');
+    return Buffer.from(cleaned, 'base64');
+  } catch (error) {
+    console.warn('[ChunkDownload] Failed to decode base64 chunk key', error);
+    throw error;
+  }
+};
+
+const normalizeKeyBytes = (bytes: Uint8Array, source: string): Uint8Array => {
+  if ([16, 24, 32].includes(bytes.length)) {
+    return bytes;
+  }
+
+  if (bytes.length > 32) {
+    console.warn(
+      `[ChunkDownload] ${source} chunk key length ${bytes.length} exceeds AES-256 size, truncating to 32 bytes`,
+    );
+    return bytes.slice(0, 32);
+  }
+
+  if (bytes.length === 0) {
+    throw new Error(`${source} chunk key produced zero-length byte array`);
+  }
+
+  console.warn(
+    `[ChunkDownload] ${source} chunk key length ${bytes.length} unsupported, deriving 32-byte key with SHA-256`,
+  );
+  return sha256Bytes(bytes);
+};
+
+const decodeChunkKey = (rawKey: string): Uint8Array => {
+  const trimmed = (rawKey ?? '').trim();
+  if (!trimmed) {
+    throw new Error('Empty chunk key');
+  }
+
+  if (PLACEHOLDER_KEY_PATTERN.test(trimmed)) {
+    throw new Error('Placeholder chunk key detected. Request a valid secure key package.');
+  }
+
+  if (HEX_PATTERN.test(trimmed) && trimmed.length % 2 === 0) {
+    try {
+      const bytes = hexToBytes(trimmed);
+      return normalizeKeyBytes(bytes, 'hex');
+    } catch (hexError) {
+      console.warn('[ChunkDownload] Failed to parse hex chunk key, attempting alternate decoding', hexError);
+    }
+  }
+
+  try {
+    const decoded = base64ToBytes(trimmed);
+    return normalizeKeyBytes(decoded, 'base64');
+  } catch (error) {
+    console.warn('[ChunkDownload] Base64 fallback failed for chunk key');
+  }
+
+  try {
+    let utf8Bytes: Uint8Array;
+    if (typeof TextEncoder !== 'undefined') {
+      utf8Bytes = new TextEncoder().encode(trimmed);
+    } else if (typeof Buffer !== 'undefined') {
+      utf8Bytes = Uint8Array.from(Buffer.from(trimmed, 'utf8'));
+    } else {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { Buffer: NodeBuffer } = require('buffer');
+      utf8Bytes = Uint8Array.from(NodeBuffer.from(trimmed, 'utf8'));
+    }
+    return normalizeKeyBytes(utf8Bytes, 'utf8');
+  } catch (utf8Error) {
+    console.warn('[ChunkDownload] UTF-8 fallback failed for chunk key', utf8Error);
+  }
+
+  throw new Error(`Unsupported chunk key format (length=${trimmed.length})`);
+};
 
 /**
  * Helper: Convert hex string to Uint8Array
@@ -100,6 +211,8 @@ const createDefaultSession = (fileId: string): ChunkDownloadSession => ({
   secureKeyPackage: null,
   startedAt: null,
   completedAt: null,
+  sandboxPath: null,
+  exportPath: null,
 });
 
 const emit = () => {
@@ -212,7 +325,13 @@ const processChunk = async (
     }));
 
     console.log(`[ChunkDownload] Decrypting chunk ${chunkIndex}...`);
-    const chunkKeyBytes = hexToBytes(chunkKey);
+    const chunkKeyBytes = decodeChunkKey(chunkKey);
+    console.log('[ChunkDownload] Chunk key details:', {
+      chunkIndex,
+      rawLength: chunkKey.length,
+      byteLength: chunkKeyBytes.length,
+      sample: chunkKey.slice(0, 16),
+    });
     const decryptedData = await decryptChunkWithAESGCM(
       encryptedData,
       chunkKeyBytes,
@@ -321,8 +440,8 @@ const runRealDownload = async (fileId: string) => {
   }
 
   // Verify fingerprint matches
-  if (session.secureKeyPackage?.keyPackageFingerprint &&
-      keyPackage.fingerprint !== session.secureKeyPackage.keyPackageFingerprint) {
+  if (session.secureKeyPackage?.fingerprint &&
+      keyPackage.fingerprint !== session.secureKeyPackage.fingerprint) {
     throw new Error('Key package fingerprint mismatch - possible tampering detected');
   }
 
@@ -331,6 +450,8 @@ const runRealDownload = async (fileId: string) => {
     phase: 'chunks',
     error: null,
     startedAt: previous.startedAt ?? Date.now(),
+    sandboxPath: null,
+    exportPath: null,
   }));
 
   // Download and decrypt all chunks
@@ -346,13 +467,28 @@ const runRealDownload = async (fileId: string) => {
     phase: 'assembling',
   }));
 
-  await reassembleFile(fileId);
+  const assembledFile = await reassembleFile(fileId);
+
+  let persistedTargets: PersistedFileTargets | null = null;
+
+  try {
+    persistedTargets = await persistDownloadedFile({
+      fileId,
+      fileName: manifest.file?.name,
+      mimeType: manifest.file?.mimeType,
+      data: assembledFile,
+    });
+  } catch (persistError) {
+    console.warn('[ChunkDownload] Failed to persist downloaded file:', persistError);
+  }
 
   withSession(fileId, previous => ({
     ...previous,
     phase: 'ready',
     error: null,
     completedAt: Date.now(),
+    sandboxPath: persistedTargets?.sandboxPath ?? previous.sandboxPath,
+    exportPath: persistedTargets?.exportPath ?? previous.exportPath,
   }));
 
   console.log(`[ChunkDownload] Download complete for file ${fileId}`);

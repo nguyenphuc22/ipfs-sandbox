@@ -3,6 +3,7 @@ const axios = require('axios');
 const multer = require('multer');
 const FormData = require('form-data');
 const crypto = require('crypto');
+const { getSchnorr } = require('../utils/schnorr');
 const {
     addFileRecord,
     getFileRecord,
@@ -31,15 +32,6 @@ const upload = multer({
 
 // IPFS API endpoint - use internal container address
 const IPFS_API_URL = process.env.IPFS_API_URL || 'http://127.0.0.1:5001';
-
-let schnorrModulePromise;
-
-async function getSchnorrModule() {
-    if (!schnorrModulePromise) {
-        schnorrModulePromise = import('@noble/curves/secp256k1.js').then(m => m.schnorr);
-    }
-    return schnorrModulePromise;
-}
 
 function normalizeHex(hex) {
     if (typeof hex !== 'string') {
@@ -71,7 +63,7 @@ async function verifySchnorrProof({
     message,
     publicKey,
 }, expectedPublicKey) {
-    const schnorr = await getSchnorrModule();
+    const schnorr = await getSchnorr();
 
     const normalizedR = normalizeHex(R);
     const normalizedS = normalizeHex(s);
