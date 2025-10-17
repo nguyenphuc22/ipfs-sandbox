@@ -12,15 +12,17 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  Platform,
 } from 'react-native';
 import type { ViewStyle } from 'react-native';
 import { useTheme } from '../../styles';
 import type { FileData } from '../../types';
 import { anonymousFileAccessService } from '../../services/AnonymousFileAccessService';
 import type { FileAccessManifest } from '../../services/AnonymousFileAccessService';
-import { saveKeyPackage } from '../../services/KeyPackageStorage';
+import { getKeyPackage, saveKeyPackage } from '../../services/KeyPackageStorage';
 import { useChunkDownloader } from '../../hooks';
 import type { ChunkStatus, DownloadPhase, SecureKeyPackage } from '../../types/download';
+import { chunkDownloadManager } from '../../services/chunkDownloadManager';
 
 interface SecureDownloadScreenProps {
   file: FileData;
@@ -44,6 +46,8 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
     [],
   );
   const combinedError = error ?? sessionError;
+  const sandboxPath = session.sandboxPath;
+  const exportPath = session.exportPath;
 
   // Phase 1: Access Negotiation
   const requestAccess = async () => {
@@ -60,6 +64,22 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
         ? Math.round((file.size ?? 0) / inferredChunkCount)
         : 0;
 
+      const storedPackage = await getKeyPackage(file.id);
+      const storedSecurePackage: SecureKeyPackage | null = storedPackage && Object.keys(storedPackage.chunkKeys).length > 0
+        ? {
+            masterKey: storedPackage.masterKey,
+            chunkKeys: storedPackage.chunkKeys,
+            fingerprint: storedPackage.fingerprint,
+          }
+        : null;
+      const localPackage: SecureKeyPackage | null = file.localKeyPackage
+        ? {
+            masterKey: file.localKeyPackage.masterKey,
+            chunkKeys: file.localKeyPackage.chunkKeys,
+            fingerprint: file.localKeyPackage.fingerprint,
+          }
+        : null;
+      const hydratedPackage: SecureKeyPackage | null = storedSecurePackage ?? localPackage;
       const chunkManifest = (providedChunks ?? Array.from({ length: inferredChunkCount }, (_, index) => ({
         index,
         cid: `demo_cid_${index}`,
@@ -71,7 +91,9 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
         hash: chunk.hash,
       }));
 
-      const hasLocalKey = Boolean(file.localKeyPackage || file.hasLocalKey);
+  const hasLocalKeyMaterial = Boolean(hydratedPackage);
+  const hasLocalKeyFlag = Boolean(file.hasLocalKey);
+  const manifestHasLocalKey = hasLocalKeyMaterial || hasLocalKeyFlag;
 
       const mockManifest: FileAccessManifest = {
         success: true,
@@ -92,23 +114,28 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
           grantedAt: new Date().toISOString(),
           expiresAt: null,
           accessCount: 1,
-          hasLocalKey,
+          hasLocalKey: manifestHasLocalKey,
           keyPackageFingerprint: file.keyPackageFingerprint ?? 'mock_fingerprint',
           keyStatus: 'client-managed',
         },
       };
 
       setAccessInfo(mockManifest);
-      setSecureKeyPackage(null);
-      actions.setSecureKeyPackage(null);
-    actions.resetSession();
+      if (hydratedPackage) {
+        setSecureKeyPackage(hydratedPackage);
+        actions.setSecureKeyPackage(hydratedPackage);
+      } else {
+        setSecureKeyPackage(null);
+        actions.setSecureKeyPackage(null);
+      }
+      actions.resetSession();
       actions.ensureSession(mockManifest);
 
-      const nextPhase: DownloadPhase = hasLocalKey ? 'keys' : 'waitingKey';
+      const nextPhase: DownloadPhase = hasLocalKeyMaterial ? 'keys' : 'waitingKey';
       actions.setPhase(nextPhase);
 
-      if (hasLocalKey) {
-        resolveKeys();
+      if (hasLocalKeyMaterial && hydratedPackage) {
+        resolveKeys(hydratedPackage);
       }
 
     } catch (err) {
@@ -178,12 +205,14 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
   };
 
   // Phase 2: Key Orchestration
-  const resolveKeys = async () => {
+  const resolveKeys = async (packageOverride: SecureKeyPackage | null = null) => {
     if (!accessInfo) {
       return;
     }
 
-    if (!secureKeyPackage) {
+    const activePackage = packageOverride ?? secureKeyPackage;
+
+    if (!activePackage) {
       actions.setPhase('waitingKey');
       const message = 'Secure key package not available. Import the package provided by the owner.';
       setError(message);
@@ -200,8 +229,8 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
       // TODO: Validate fingerprint with Secure Storage fingerprint hash
       if (
         accessInfo.grantContext?.keyPackageFingerprint &&
-        secureKeyPackage.fingerprint &&
-        accessInfo.grantContext.keyPackageFingerprint !== secureKeyPackage.fingerprint
+        activePackage.fingerprint &&
+        accessInfo.grantContext.keyPackageFingerprint !== activePackage.fingerprint
       ) {
         throw new Error('Secure key package fingerprint mismatch');
       }
@@ -213,12 +242,37 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
       // Simulate key resolution
       await new Promise(resolve => setTimeout(resolve, 1500));
 
+      if (!packageOverride && activePackage !== secureKeyPackage) {
+        setSecureKeyPackage(activePackage);
+        actions.setSecureKeyPackage(activePackage);
+      }
+
       actions.setPhase('chunks');
       await actions.downloadFile();
-      Alert.alert('Download Complete', 'File is ready. All chunks verified ✓');
+      const latestSession = chunkDownloadManager.getState(file.id);
+      const successParts = ['File is ready. All chunks verified ✓'];
+
+      if (latestSession.sandboxPath) {
+        successParts.push(`Sandbox: ${latestSession.sandboxPath}`);
+      }
+
+      if (latestSession.exportPath) {
+        successParts.push(`Export: ${latestSession.exportPath}`);
+      }
+
+      Alert.alert('Download Complete', successParts.join('\n\n'));
 
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to resolve keys';
+      const extracted = err instanceof Error
+        ? err.message
+        : typeof err === 'string'
+          ? err
+          : (err as Record<string, unknown>)?.error?.toString?.();
+      const message = extracted && extracted.trim().length > 0
+        ? extracted.includes("Property 'error' doesn't exist")
+          ? 'Secure key package metadata is malformed. Please refresh access or re-import the package.'
+          : extracted
+        : 'Failed to resolve keys';
       setError(message);
       actions.setError(message);
       Alert.alert('Key Resolution Error', message);
@@ -295,6 +349,35 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
       default:
         return '•';
     }
+  };
+
+  const renderPersistenceSummary = () => {
+    if (!sandboxPath && !exportPath) {
+      return null;
+    }
+
+    return (
+      <View style={styles.persistenceContainer}>
+        <Text style={styles.persistenceTitle}>Saved Paths</Text>
+        {sandboxPath ? (
+          <View style={styles.persistenceRow}>
+            <Text style={styles.persistenceLabel}>Sandbox</Text>
+            <Text style={styles.persistenceValue}>{sandboxPath}</Text>
+          </View>
+        ) : null}
+        {exportPath ? (
+          <View style={styles.persistenceRow}>
+            <Text style={styles.persistenceLabel}>
+              {Platform.OS === 'android' ? 'Downloads' : 'Shared Copy'}
+            </Text>
+            <Text style={styles.persistenceValue}>{exportPath}</Text>
+          </View>
+        ) : null}
+        <Text style={styles.persistenceHint}>
+          Use the paths above with adb run-as / adb pull or simctl get_app_container to retrieve the decrypted file for QA.
+        </Text>
+      </View>
+    );
   };
 
   const completedChunks = chunkProgress.filter(c => c.status === 'completed').length;
@@ -435,6 +518,41 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
       color: colors.error,
       marginTop: 4,
     },
+    persistenceContainer: {
+      marginTop: 24,
+      padding: 16,
+      borderRadius: 8,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    persistenceTitle: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.text,
+      marginBottom: 10,
+    },
+    persistenceRow: {
+      marginBottom: 8,
+    },
+    persistenceLabel: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.textSecondary,
+      textTransform: 'uppercase',
+      marginBottom: 4,
+    },
+    persistenceValue: {
+      fontSize: 12,
+      color: colors.text,
+      fontFamily: 'monospace',
+    },
+    persistenceHint: {
+      fontSize: 12,
+      color: colors.textSecondary,
+      marginTop: 12,
+      lineHeight: 16,
+    },
     retryButton: {
       paddingHorizontal: 12,
       paddingVertical: 6,
@@ -517,7 +635,7 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
       { key: 'ready', label: 'Ready' },
     ];
 
-    const phaseOrder: DownloadPhase[] = ['idle', 'access', 'waitingKey', 'keys', 'chunks', 'ready'];
+    const phaseOrder: DownloadPhase[] = ['idle', 'access', 'waitingKey', 'keys', 'chunks', 'assembling', 'ready'];
     const currentIndex = phaseOrder.indexOf(phase);
 
     return (
@@ -628,6 +746,8 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
           </View>
         ) : null}
 
+  {renderPersistenceSummary()}
+
         {/* Action Buttons */}
         <View style={styles.buttonRow}>
           <TouchableOpacity
@@ -668,7 +788,7 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
                 styles.buttonPrimary,
                 !secureKeyPackage && styles.buttonDisabled,
               ]}
-              onPress={secureKeyPackage ? resolveKeys : undefined}
+              onPress={secureKeyPackage ? () => resolveKeys(secureKeyPackage) : undefined}
             >
               <Text style={styles.buttonText}>Resolve Keys</Text>
             </TouchableOpacity>
@@ -678,8 +798,15 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
             <TouchableOpacity
               style={[styles.button, styles.buttonPrimary]}
               onPress={() => {
-                Alert.alert('Success', 'File is ready to view');
-                onComplete?.('/path/to/file');
+                const latestSession = chunkDownloadManager.getState(file.id);
+                const callbackPath = latestSession.exportPath ?? latestSession.sandboxPath ?? exportPath ?? sandboxPath;
+                const message = callbackPath
+                  ? `File is ready to view from:\n${callbackPath}`
+                  : 'File is ready to view';
+                Alert.alert('Success', message);
+                if (callbackPath) {
+                  onComplete?.(callbackPath);
+                }
               }}
             >
               <Text style={styles.buttonText}>Open File</Text>

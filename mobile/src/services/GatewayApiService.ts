@@ -109,6 +109,7 @@ export interface ClientChunkedUploadPayload {
 export interface GatewayUserFileRecord {
   id: string;
   cid?: string;
+  chunkHash?: string | null;
   fileName?: string;
   name?: string;
   totalSize?: number;

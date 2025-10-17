@@ -187,6 +187,7 @@ export class IPFSService {
           size: record.fileSize,
           uploadTime: record.grantedAt ? new Date(record.grantedAt) : new Date(),
           status: allowedStatuses.includes(status) ? status : 'active',
+          ipfsHash: record.cid || undefined,
           ownershipPublicKey: record.ownerPublicKey,
           mimeType: undefined, // Anonymous access doesn't expose full details
           grantedAt: record.grantedAt || undefined,

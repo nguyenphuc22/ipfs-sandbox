@@ -117,13 +117,16 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
                 id: file.fileId,
                 name: file.fileName,
                 size: file.fileSize,
-                ipfsHash: file.fileId, // fileId is the IPFS hash
+                ipfsHash: file.cid || undefined,
                 uploadTime: new Date(file.uploadedAt),
                 status: 'active' as const,
                 ownershipPublicKey: file.ownerPublicKey,
                 chunkCount: file.chunkCount,
                 mimeType: file.mimeType,
                 grantedAt: file.grantedAt,
+                chunks: file.cid
+                  ? [{ index: 0, cid: file.cid, hash: file.chunkHash || '' }]
+                  : undefined,
               }))
             };
           }
@@ -174,11 +177,18 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
   }, [fetchFiles]);
 
   const handleViewFile = (file: FileData) => {
-    if (!file.ipfsHash) {
+    const resolvedIpfsHash = file.ipfsHash || file.chunks?.[0]?.cid;
+
+    if (!resolvedIpfsHash) {
       Alert.alert('Error', 'Cannot view file: No IPFS hash available');
       return;
     }
-    setSelectedFile(file);
+
+    const fileWithHash = file.ipfsHash === resolvedIpfsHash
+      ? file
+      : { ...file, ipfsHash: resolvedIpfsHash };
+
+    setSelectedFile(fileWithHash);
     setViewerVisible(true);
   };
 

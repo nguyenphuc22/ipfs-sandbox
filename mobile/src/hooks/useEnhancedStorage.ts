@@ -80,10 +80,18 @@ export const useEnhancedStorage = (): UseEnhancedStorageReturn => {
       if (storedData) {
         const parsedFiles: FileData[] = JSON.parse(storedData);
         // Convert string dates back to Date objects
-        const processedFiles = parsedFiles.map(file => ({
-          ...file,
-          uploadTime: new Date(file.uploadTime),
-        })).sort((a, b) =>
+        const processedFiles = parsedFiles.map(file => {
+          const chunkCid = Array.isArray(file.chunks) && file.chunks.length > 0
+            ? file.chunks[0]?.cid
+            : undefined;
+          const ipfsHash = file.ipfsHash || chunkCid || (file as any).cid || undefined;
+
+          return {
+            ...file,
+            ipfsHash,
+            uploadTime: new Date(file.uploadTime),
+          };
+        }).sort((a, b) =>
           new Date(b.uploadTime).getTime() - new Date(a.uploadTime).getTime()
         );
 

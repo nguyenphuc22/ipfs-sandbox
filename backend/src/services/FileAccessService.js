@@ -77,6 +77,15 @@ class FileAccessService {
             ownershipPublicKey: true,
             status: true,
             createdAt: true,
+            chunks: {
+              orderBy: { chunkIndex: 'asc' },
+              select: {
+                chunkIndex: true,
+                ipfsCid: true,
+                chunkHash: true,
+              },
+              take: 1,
+            },
           }
         }
       },
@@ -86,19 +95,25 @@ class FileAccessService {
     });
 
     // 6. Transform response (no userId exposed)
-    const files = accessGrants.map(grant => ({
-      fileId: grant.file.id,
-      fileName: grant.file.fileName,
-      fileSize: grant.file.totalSize,
-      chunkCount: grant.file.chunkCount,
-      mimeType: grant.file.mimeType,
-      ownerPublicKey: grant.file.ownershipPublicKey,
-      ownershipStatus: grant.file.status,
-      grantedAt: grant.grantedAt,
-      expiresAt: grant.expiresAt,
-      accessCount: grant.accessCount,
-      uploadedAt: grant.file.createdAt,
-    }));
+    const files = accessGrants.map(grant => {
+      const primaryChunk = grant.file.chunks?.[0];
+
+      return {
+        fileId: grant.file.id,
+        fileName: grant.file.fileName,
+        fileSize: grant.file.totalSize,
+        chunkCount: grant.file.chunkCount,
+        mimeType: grant.file.mimeType,
+        ownerPublicKey: grant.file.ownershipPublicKey,
+        ownershipStatus: grant.file.status,
+        grantedAt: grant.grantedAt,
+        expiresAt: grant.expiresAt,
+        accessCount: grant.accessCount,
+        uploadedAt: grant.file.createdAt,
+        cid: primaryChunk?.ipfsCid || null,
+        chunkHash: primaryChunk?.chunkHash || null,
+      };
+    });
 
     // 7. Log audit (no userId)
     await this.prisma.anonymousAuditLog.create({

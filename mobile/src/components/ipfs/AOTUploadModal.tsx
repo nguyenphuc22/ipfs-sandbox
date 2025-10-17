@@ -398,6 +398,7 @@ export const AOTUploadModal: React.FC<AOTUploadModalProps> = ({
         size: uploadResponse.totalSize,
         uploadTime: new Date(),
         status: 'completed',
+        ipfsHash: uploadResponse.chunks?.[0]?.cid,
         metadataHash: computedHash,
         ownershipPublicKey: ownerKey,
         masterKey: chunkUploadResult.masterKey,

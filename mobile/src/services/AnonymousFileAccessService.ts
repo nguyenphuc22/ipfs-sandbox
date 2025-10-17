@@ -32,6 +32,8 @@ export interface AccessibleFile {
   expiresAt: string | null;
   accessCount: number;
   uploadedAt: string;
+  cid?: string | null;
+  chunkHash?: string | null;
 }
 
 export interface FileAccessManifest {
