@@ -66,7 +66,7 @@ class RingSignatureService {
 
       // 4. Verify scheme is supported
       if (sig.scheme !== 'lsag-secp256k1') {
-        console.warn(`[Ring Signature] Unsupported scheme: ${sig.scheme}`);
+          return false;
         return false;
       }
 
@@ -216,7 +216,7 @@ class RingSignatureService {
       if (existingKeyImage) {
         console.warn('[Ring Signature] Key image already seen - treating as linked activity');
 
-        // Record reuse for observability but do not block legitimate repeated activity
+  // Record reuse for observability and block potential double-spend attempts
         await this.prisma.anonymousAuditLog.create({
           data: {
             eventType: 'key_image_verification',
@@ -229,7 +229,7 @@ class RingSignatureService {
           }
         }).catch(() => {});
 
-        return true;
+        return false;
       }
 
       // Store the key image in database (full key image for proper lookup)

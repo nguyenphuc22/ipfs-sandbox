@@ -11,9 +11,12 @@ import { API_CONFIG } from '../config/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   createLsagRingSignature,
+  createSchnorrProof,
+  isValidPublicKeyHex,
   normalizeHex,
   toCompressedPublicKey,
 } from '../utils/aotCrypto';
+import { sha256Hex } from './crypto/hash';
 import { RingContext } from '../types';
 
 // ============================================================================
@@ -79,6 +82,31 @@ export interface IntegrityAlertParams {
   expectedHash: string;
   actualHash: string | null;
   retryCount: number;
+}
+
+export interface AnonymousGrantRecord {
+  id: string;
+  accessorPublicKeyHash: string;
+  fileId: string;
+  grantedAt: string;
+  expiresAt: string | null;
+  status: string;
+  keyStatus: string;
+  keyPackageFingerprint: string | null;
+}
+
+export interface GrantAccessResponse {
+  success: boolean;
+  operation: 'created' | 'updated';
+  grant: AnonymousGrantRecord;
+}
+
+export interface GrantAccessParams {
+  fileId: string;
+  targetPublicKey: string;
+  keyPackageFingerprint?: string | null;
+  expiresAt?: string | Date | null;
+  metadata?: Record<string, any>;
 }
 
 // ============================================================================
@@ -511,6 +539,105 @@ export class AnonymousFileAccessService {
       // Don't throw - integrity alert is best-effort
       console.error('[Integrity Alert] Error (non-critical):', error);
     }
+  }
+
+  /**
+   * Grant anonymous access to a recipient public key
+   *
+   * @param params Grant parameters (fileId, targetPublicKey, optional metadata)
+   * @returns Grant operation response from backend
+   */
+  async grantAccess(params: GrantAccessParams): Promise<GrantAccessResponse> {
+    const { fileId, targetPublicKey, keyPackageFingerprint, expiresAt, metadata } = params;
+
+    if (!fileId || typeof fileId !== 'string') {
+      throw new Error('fileId is required');
+    }
+
+    if (!targetPublicKey || typeof targetPublicKey !== 'string') {
+      throw new Error('targetPublicKey is required');
+    }
+
+    const trimmedTarget = targetPublicKey.trim();
+    if (!isValidPublicKeyHex(trimmedTarget)) {
+      throw new Error('Invalid target public key');
+    }
+
+    const [ownerPublicKey, ownerPrivateKey] = await Promise.all([
+      this.getPublicKey(),
+      this.getSecretKey(),
+    ]);
+
+    const compressedOwnerKey = toCompressedPublicKey(ownerPublicKey);
+    const compressedTargetKey = toCompressedPublicKey(trimmedTarget);
+
+    const timestamp = Date.now();
+    const nonce = this.generateNonce();
+    const recipientHash = sha256Hex(normalizeHex(compressedTargetKey));
+    const grantMessage = `grant:${fileId}:${recipientHash}:${timestamp}:${nonce}`;
+
+    const ringMembers = await this.getRingMembersForSigning(compressedOwnerKey);
+    const normalizedOwnerKey = normalizeHex(compressedOwnerKey);
+    const signerIndex = ringMembers.findIndex(
+      (member) => normalizeHex(member) === normalizedOwnerKey,
+    );
+
+    if (signerIndex === -1) {
+      throw new Error('Owner key missing from ring membership');
+    }
+
+    const ringSignaturePayload = await createLsagRingSignature({
+      message: grantMessage,
+      ringPublicKeys: ringMembers,
+      signerIndex,
+      signerPrivateKey: ownerPrivateKey,
+    });
+    const ringSignature = JSON.stringify(ringSignaturePayload);
+
+    const schnorrMessageHex = sha256Hex(grantMessage);
+    const schnorrProof = await createSchnorrProof(schnorrMessageHex, ownerPrivateKey);
+
+    const body: Record<string, any> = {
+      targetPublicKey: compressedTargetKey,
+      ringSignature,
+      timestamp,
+      nonce,
+      ownershipProof: {
+        R: schnorrProof.R,
+        s: schnorrProof.s,
+        message: schnorrMessageHex,
+        publicKey: compressedOwnerKey,
+      },
+      metadata: {
+        source: 'mobile-app',
+        ringSize: ringMembers.length,
+        ownerPublicKey: compressedOwnerKey,
+        recipientHash,
+        ...(metadata ?? {}),
+      },
+    };
+
+    if (keyPackageFingerprint) {
+      body.keyPackageFingerprint = keyPackageFingerprint.trim().toLowerCase();
+    }
+
+    if (expiresAt) {
+      const expiration = expiresAt instanceof Date ? expiresAt : new Date(expiresAt);
+      if (Number.isNaN(expiration.getTime())) {
+        throw new Error('Invalid expiresAt value');
+      }
+      body.expiresAt = expiration.toISOString();
+    }
+
+    const response = await this.makeRequest<GrantAccessResponse>(
+      `/api/files/${fileId}/anonymous-grant`,
+      {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }
+    );
+
+    return response;
   }
 
   /**

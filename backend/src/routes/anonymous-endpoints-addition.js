@@ -18,6 +18,19 @@ const router = express.Router();
 let prismaInstance;
 let fileAccessService;
 
+function extractOwnershipProof(payload = {}) {
+    if (payload.ownershipProof && typeof payload.ownershipProof === 'object') {
+        return payload.ownershipProof;
+    }
+
+    return {
+        R: payload.ownershipProofR || payload['ownershipProof[R]'],
+        s: payload.ownershipProofS || payload['ownershipProof[s]'],
+        message: payload.ownershipProofMessage || payload['ownershipProof[message]'],
+        publicKey: payload.ownershipProofPublicKey || payload.ownershipPublicKey,
+    };
+}
+
 /**
  * Initialize router with dependency injection
  * @param {PrismaClient} prismaClient - Shared Prisma instance from server.js
@@ -135,6 +148,89 @@ router.post('/:fileId/anonymous-access', async (req, res) => {
             success: false,
             error: 'Internal server error',
             details: error.message
+        });
+    }
+});
+
+/**
+ * POST /api/files/:fileId/anonymous-grant
+ * Grant anonymous access to a new public key
+ */
+router.post('/:fileId/anonymous-grant', async (req, res) => {
+    const startTime = Date.now();
+
+    try {
+        const { fileId } = req.params;
+        const {
+            targetPublicKey,
+            ringSignature,
+            timestamp,
+            nonce,
+            keyPackageFingerprint,
+            expiresAt,
+            metadata,
+        } = req.body || {};
+
+        const ownershipProof = extractOwnershipProof(req.body);
+
+        if (!targetPublicKey || !ringSignature || !timestamp || !nonce || !ownershipProof) {
+            secureLog('AnonymousGrant', `Missing required fields for file ${fileId} from IP: ${req.ip}`, 'warn', { fileId, ip: req.ip });
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required fields',
+            });
+        }
+
+        const result = await fileAccessService.grantAnonymousAccess({
+            fileId,
+            targetPublicKey,
+            ringSignature,
+            timestamp,
+            nonce,
+            ownershipProof,
+            keyPackageFingerprint,
+            expiresAt,
+            metadata,
+        });
+
+        const recipientHash = fileAccessService.ringService.hashPublicKey(targetPublicKey);
+        const maskedRecipientHash = maskHashForLogging(recipientHash, 'publicKeyHash');
+        const duration = Date.now() - startTime;
+        secureLog('AnonymousGrant', `Grant ${result.operation} for file ${fileId} to ${maskedRecipientHash} [${duration}ms]`, 'info', {
+            fileId,
+            recipientPublicKeyHash: recipientHash,
+            operation: result.operation,
+        });
+
+        return res.status(result.operation === 'created' ? 201 : 200).json({
+            success: true,
+            operation: result.operation,
+            grant: result.grant,
+        });
+
+    } catch (error) {
+        const { fileId } = req.params;
+        const duration = Date.now() - startTime;
+        secureLog('AnonymousGrant', `Error granting access for file ${fileId}: ${error.message} [${duration}ms]`, 'error', {
+            fileId,
+            ip: req.ip,
+        });
+
+        const message = error instanceof Error ? error.message : 'Internal server error';
+        const isClientError = [
+            'required',
+            'Invalid',
+            'already been used',
+            'too old',
+            'Ownership',
+            'not active',
+        ].some((token) => message.toLowerCase().includes(token.toLowerCase()));
+
+        const statusCode = message.includes('not found') ? 404 : isClientError ? 400 : 500;
+
+        return res.status(statusCode).json({
+            success: false,
+            error: message,
         });
     }
 });

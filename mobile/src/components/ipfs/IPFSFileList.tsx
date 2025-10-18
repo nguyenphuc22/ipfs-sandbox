@@ -4,8 +4,12 @@ import { useIPFS, useEnhancedStorage } from '../../hooks';
 import { useTheme } from '../../styles';
 import { FileData } from '../../types';
 import { FileViewer } from './FileViewer';
+import { GrantAccessModal } from './GrantAccessModal';
 import { normalizeHex } from '../../utils/aotCrypto';
-import { createAnonymousFileAccessService } from '../../services/AnonymousFileAccessService';
+import {
+  createAnonymousFileAccessService,
+  GrantAccessResponse,
+} from '../../services/AnonymousFileAccessService';
 
 interface IPFSFileListProps {
   onFileDeleted?: (fileId: string) => void;
@@ -39,6 +43,8 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
   const [apiFiles, setApiFiles] = useState<FileData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [grantModalVisible, setGrantModalVisible] = useState(false);
+  const [grantFile, setGrantFile] = useState<FileData | null>(null);
 
   // File viewer state
   const [viewerVisible, setViewerVisible] = useState(false);
@@ -196,6 +202,27 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
     setViewerVisible(false);
     setSelectedFile(null);
   };
+
+  const openGrantModal = useCallback((fileToGrant: FileData) => {
+    setGrantFile(fileToGrant);
+    setGrantModalVisible(true);
+  }, []);
+
+  const closeGrantModal = useCallback(() => {
+    setGrantModalVisible(false);
+    setGrantFile(null);
+  }, []);
+
+  const handleGrantCompleted = useCallback(
+    (response: GrantAccessResponse) => {
+      if (__DEV__) {
+        console.log('[IPFSFileList] Grant completed', response.grant);
+      }
+
+      void handleRefresh();
+    },
+    [handleRefresh],
+  );
 
   const handleDeleteFile = async (file: FileData) => {
     Alert.alert(
@@ -367,6 +394,18 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
       fontSize: 10,
       fontWeight: '500',
     },
+    grantButton: {
+      backgroundColor: colors.secondary,
+      paddingVertical: 4,
+      paddingHorizontal: 8,
+      borderRadius: 4,
+      marginRight: 8,
+    },
+    grantButtonText: {
+      color: colors.onSecondary,
+      fontSize: 10,
+      fontWeight: '500',
+    },
     deleteButton: {
       backgroundColor: colors.error,
       paddingVertical: 4,
@@ -493,58 +532,74 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
             <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
           }
         >
-          {(allFiles || []).map((file) => (
-            <View key={file.id} style={styles.fileItem}>
-              <View style={styles.fileHeader}>
-                <Text style={styles.fileIcon}>{getFileIcon(file.name)}</Text>
-                <Text style={styles.fileName}>{file.name}</Text>
-                <View style={styles.actionButtons}>
-                  <TouchableOpacity
-                    style={styles.viewButton}
-                    onPress={() => handleViewFile(file)}
-                  >
-                    <Text style={styles.viewButtonText}>View</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.deleteButton}
-                    onPress={() => handleDeleteFile(file)}
-                  >
-                    <Text style={styles.deleteButtonText}>Delete</Text>
-                  </TouchableOpacity>
+          {(allFiles || []).map((file) => {
+            const isOwner = normalizedOwnerKey
+              ? (file.ownershipPublicKey
+                  ? normalizeHex(file.ownershipPublicKey) === normalizedOwnerKey
+                  : false)
+              : false;
+
+            return (
+              <View key={file.id} style={styles.fileItem}>
+                <View style={styles.fileHeader}>
+                  <Text style={styles.fileIcon}>{getFileIcon(file.name)}</Text>
+                  <Text style={styles.fileName}>{file.name}</Text>
+                  <View style={styles.actionButtons}>
+                    {isOwner && (
+                      <TouchableOpacity
+                        style={styles.grantButton}
+                        onPress={() => openGrantModal(file)}
+                      >
+                        <Text style={styles.grantButtonText}>Grant</Text>
+                      </TouchableOpacity>
+                    )}
+                    <TouchableOpacity
+                      style={styles.viewButton}
+                      onPress={() => handleViewFile(file)}
+                    >
+                      <Text style={styles.viewButtonText}>View</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.deleteButton}
+                      onPress={() => handleDeleteFile(file)}
+                    >
+                      <Text style={styles.deleteButtonText}>Delete</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
+
+                <Text style={styles.fileDetails}>
+                  Size: {formatFileSize(file.size)} •
+                  Status: {file.status} •
+                  Uploaded: {file.uploadTime.toLocaleString()}
+                </Text>
+
+                {file.ipfsHash && (
+                  <Text style={styles.fileHash}>
+                    IPFS: {file.ipfsHash}
+                  </Text>
+                )}
+
+                {file.masterKey && (
+                  <Text style={styles.fileKey}>
+                    Master Key: {file.masterKey}
+                  </Text>
+                )}
+
+                {file.metadataHash && (
+                  <Text style={styles.fileMeta}>
+                    Metadata Hash: {file.metadataHash}
+                  </Text>
+                )}
+
+                {file.ownershipPublicKey && (
+                  <Text style={styles.fileMeta}>
+                    Owner Key: {file.ownershipPublicKey}
+                  </Text>
+                )}
               </View>
-
-              <Text style={styles.fileDetails}>
-                Size: {formatFileSize(file.size)} •
-                Status: {file.status} •
-                Uploaded: {file.uploadTime.toLocaleString()}
-              </Text>
-
-              {file.ipfsHash && (
-                <Text style={styles.fileHash}>
-                  IPFS: {file.ipfsHash}
-                </Text>
-              )}
-
-              {file.masterKey && (
-                <Text style={styles.fileKey}>
-                  Master Key: {file.masterKey}
-                </Text>
-              )}
-
-              {file.metadataHash && (
-                <Text style={styles.fileMeta}>
-                  Metadata Hash: {file.metadataHash}
-                </Text>
-              )}
-
-              {file.ownershipPublicKey && (
-                <Text style={styles.fileMeta}>
-                  Owner Key: {file.ownershipPublicKey}
-                </Text>
-              )}
-            </View>
-          ))}
+            );
+          })}
         </ScrollView>
       )}
 
@@ -556,6 +611,13 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
           onClose={handleCloseViewer}
         />
       )}
+
+      <GrantAccessModal
+        visible={grantModalVisible}
+        file={grantFile}
+        onClose={closeGrantModal}
+        onGranted={handleGrantCompleted}
+      />
     </View>
   );
 };

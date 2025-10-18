@@ -7,9 +7,87 @@
  * @module FileAccessService
  */
 
+const crypto = require('crypto');
 const { PrismaClient } = require('@prisma/client');
 const { ringSignatureService } = require('./RingSignatureService');
 const { secureLog, maskHashForLogging } = require('../utils/monitoring');
+const { getSchnorr } = require('../utils/schnorr');
+
+function normalizeHex(hex) {
+  if (typeof hex !== 'string') {
+    return '';
+  }
+  const trimmed = hex.trim().toLowerCase();
+  return trimmed.startsWith('0x') ? trimmed.slice(2) : trimmed;
+}
+
+function toMessageHex(message) {
+  if (typeof message !== 'string') {
+    return null;
+  }
+
+  const normalized = normalizeHex(message);
+  const isHex = /^[0-9a-f]+$/i.test(normalized);
+  if (isHex && normalized.length === 64) {
+    return normalized;
+  }
+
+  const buffer = Buffer.from(message, 'utf-8');
+  const hash = crypto.createHash('sha256').update(buffer).digest('hex');
+  return hash;
+}
+
+async function verifySchnorrProof({ R, s, message, publicKey }, expectedPublicKey) {
+  const schnorr = await getSchnorr();
+
+  const normalizedR = normalizeHex(R);
+  const normalizedS = normalizeHex(s);
+  const normalizedMessage = toMessageHex(message);
+  const proofPublicKey = normalizeHex(publicKey);
+  const storedPublicKey = normalizeHex(expectedPublicKey);
+
+  if (!normalizedR || !normalizedS || !normalizedMessage) {
+    throw new Error('Incomplete Schnorr proof payload');
+  }
+
+  if (!proofPublicKey || proofPublicKey !== storedPublicKey) {
+    throw new Error('Ownership public key mismatch');
+  }
+
+  if (normalizedR.length !== 64 || normalizedS.length !== 64) {
+    throw new Error('Schnorr proof components must be 32-byte hex values');
+  }
+
+  const signatureHex = `${normalizedR}${normalizedS}`;
+  const signatureBytes = Buffer.from(signatureHex, 'hex');
+  const messageBytes = Buffer.from(normalizedMessage, 'hex');
+
+  let publicKeyBytes = Buffer.from(storedPublicKey, 'hex');
+  if (publicKeyBytes.length === 33) {
+    publicKeyBytes = publicKeyBytes.slice(1);
+  } else if (publicKeyBytes.length !== 32) {
+    throw new Error(`Invalid public key length: expected 32 or 33 bytes, got ${publicKeyBytes.length}`);
+  }
+
+  const isValid = schnorr.verify(signatureBytes, messageBytes, publicKeyBytes);
+  if (!isValid) {
+    throw new Error('Invalid Schnorr ownership proof');
+  }
+
+  return true;
+}
+
+function parseOptionalDate(value) {
+  if (!value) {
+    return null;
+  }
+
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error('Invalid expiresAt value');
+  }
+  return date;
+}
 
 class FileAccessService {
   constructor(ringService, prismaClient) {
@@ -134,6 +212,210 @@ class FileAccessService {
     secureLog('FileAccessService', `Listed ${files.length} files for publicKeyHash: ${maskedPublicKeyHash}`, 'info', { publicKeyHash, fileCount: files.length });
 
     return files;
+  }
+
+  /**
+   * Grant anonymous access to a file for a target public key
+   *
+   * @param {Object} params - Grant parameters
+   * @param {string} params.fileId - ID of the file to grant access to
+   * @param {string} params.targetPublicKey - Recipient public key
+   * @param {string} params.ringSignature - Ring signature proving owner intent
+   * @param {number|string} params.timestamp - Request timestamp
+   * @param {string} params.nonce - Unique nonce for replay protection
+   * @param {Object} params.ownershipProof - Schnorr proof of ownership
+   * @param {string} [params.keyPackageFingerprint] - Optional key package fingerprint shared with recipient
+   * @param {string|Date} [params.expiresAt] - Optional expiration
+   * @param {Object} [params.metadata] - Optional metadata to store in audit log
+   * @returns {Promise<Object>} Grant result with operation type and grant data
+   */
+  async grantAnonymousAccess(params) {
+    const {
+      fileId,
+      targetPublicKey,
+      ringSignature,
+      timestamp,
+      nonce,
+      ownershipProof,
+      keyPackageFingerprint,
+      expiresAt,
+      metadata,
+    } = params || {};
+
+    if (!fileId || typeof fileId !== 'string') {
+      throw new Error('fileId is required');
+    }
+
+    const normalizedTargetPublicKey = typeof targetPublicKey === 'string' ? targetPublicKey.trim() : '';
+    if (!normalizedTargetPublicKey) {
+      throw new Error('targetPublicKey is required');
+    }
+
+    if (!ringSignature || typeof ringSignature !== 'string') {
+      throw new Error('ringSignature is required');
+    }
+
+    const requestNonce = typeof nonce === 'string' ? nonce.trim() : '';
+    if (!requestNonce) {
+      throw new Error('nonce is required');
+    }
+
+    if (!ownershipProof || typeof ownershipProof !== 'object') {
+      throw new Error('ownershipProof is required');
+    }
+
+    const numericTimestamp = Number(timestamp);
+    if (!Number.isFinite(numericTimestamp)) {
+      throw new Error('Invalid timestamp');
+    }
+
+    if (!this.ringService.verifyTimestamp(numericTimestamp)) {
+      throw new Error('Request timestamp is invalid or too old');
+    }
+
+    if (!await this.ringService.verifyNonce(requestNonce)) {
+      throw new Error('Nonce has already been used');
+    }
+
+    const file = await this.prisma.file.findUnique({
+      where: { id: fileId },
+      select: {
+        id: true,
+        ownershipPublicKey: true,
+        uploaderPublicKeyHash: true,
+        status: true,
+      },
+    });
+
+    if (!file) {
+      throw new Error('File not found');
+    }
+
+    if (file.status !== 'active') {
+      throw new Error('File is not active');
+    }
+
+    await verifySchnorrProof(ownershipProof, file.ownershipPublicKey);
+
+    const ownerPublicKeyHash = file.uploaderPublicKeyHash || this.ringService.hashPublicKey(file.ownershipPublicKey);
+    const recipientPublicKeyHash = this.ringService.hashPublicKey(normalizedTargetPublicKey);
+
+    const ringMessage = `grant:${fileId}:${recipientPublicKeyHash}:${numericTimestamp}:${requestNonce}`;
+    const ringValid = await this.ringService.verifyRingSignature({
+      publicKey: file.ownershipPublicKey,
+      signature: ringSignature,
+      message: ringMessage,
+      ringPublicKeys: await this.ringService.getAllPublicKeys(),
+    });
+
+    if (!ringValid) {
+      throw new Error('Invalid ring signature');
+    }
+
+    const expiresAtDate = expiresAt !== undefined ? parseOptionalDate(expiresAt) : undefined;
+    const normalizedFingerprint = typeof keyPackageFingerprint === 'string'
+      ? keyPackageFingerprint.trim().toLowerCase()
+      : undefined;
+
+    const existingGrant = await this.prisma.anonymousFileAccess.findUnique({
+      where: {
+        accessorPublicKeyHash_fileId: {
+          accessorPublicKeyHash: recipientPublicKeyHash,
+          fileId,
+        },
+      },
+    });
+
+    const now = new Date();
+    let grantRecord;
+    let operation;
+
+    if (existingGrant) {
+      const updateData = {
+        status: 'active',
+        keyStatus: 'client-managed',
+        grantedAt: now,
+      };
+
+      if (expiresAtDate !== undefined) {
+        updateData.expiresAt = expiresAtDate;
+      }
+
+      if (normalizedFingerprint) {
+        updateData.keyPackageFingerprint = normalizedFingerprint;
+      }
+
+      grantRecord = await this.prisma.anonymousFileAccess.update({
+        where: { id: existingGrant.id },
+        data: updateData,
+      });
+      operation = 'updated';
+    } else {
+      grantRecord = await this.prisma.anonymousFileAccess.create({
+        data: {
+          accessorPublicKeyHash: recipientPublicKeyHash,
+          fileId,
+          status: 'active',
+          keyStatus: 'client-managed',
+          grantedAt: now,
+          expiresAt: expiresAtDate ?? null,
+          keyPackageFingerprint: normalizedFingerprint || null,
+        },
+      });
+      operation = 'created';
+    }
+
+    const auditMetadata = {
+      recipientPublicKeyHash,
+      operation,
+      keyStatus: grantRecord.keyStatus,
+      keyPackageFingerprint: grantRecord.keyPackageFingerprint,
+      expiresAt: grantRecord.expiresAt ? grantRecord.expiresAt.toISOString() : null,
+      nonce: requestNonce,
+    };
+
+    if (metadata && typeof metadata === 'object') {
+      Object.assign(auditMetadata, metadata);
+    }
+
+    await this.prisma.anonymousAuditLog.create({
+      data: {
+        eventType: 'grant',
+        fileId,
+        publicKeyHash: ownerPublicKeyHash,
+        ringSignature,
+        timestamp: now,
+        metadata: JSON.stringify(auditMetadata),
+      },
+    });
+
+    const maskedOwnerHash = maskHashForLogging(ownerPublicKeyHash, 'publicKeyHash');
+    const maskedRecipientHash = maskHashForLogging(recipientPublicKeyHash, 'publicKeyHash');
+    secureLog(
+      'FileAccessService',
+      `Anonymous grant ${operation} for file ${fileId}: owner ${maskedOwnerHash} -> recipient ${maskedRecipientHash}`,
+      'info',
+      {
+        fileId,
+        ownerPublicKeyHash,
+        recipientPublicKeyHash,
+        operation,
+      },
+    );
+
+    return {
+      operation,
+      grant: {
+        id: grantRecord.id,
+        accessorPublicKeyHash: grantRecord.accessorPublicKeyHash,
+        fileId: grantRecord.fileId,
+        grantedAt: grantRecord.grantedAt,
+        expiresAt: grantRecord.expiresAt,
+        status: grantRecord.status,
+        keyStatus: grantRecord.keyStatus,
+        keyPackageFingerprint: grantRecord.keyPackageFingerprint,
+      },
+    };
   }
 
   /**
