@@ -79,7 +79,7 @@ router.post('/anonymous-list', async (req, res) => {
 
         // Validate input
         if (!publicKey || !ringSignature || !timestamp || !nonce) {
-            log('AnonymousList', `Missing required fields in request from IP: ${req.ip}`, 'warn');
+            secureLog('AnonymousList', `Missing required fields in request from IP: ${req.ip}`, 'warn', { ip: req.ip });
             return res.status(400).json({
                 success: false,
                 error: 'Missing required fields: publicKey, ringSignature, timestamp, nonce'
@@ -96,16 +96,100 @@ router.post('/anonymous-list', async (req, res) => {
         // Use FileAccessService to handle the logic
         const files = await fileAccessService.listAccessibleFiles(params);
 
+        const normalizedForEtag = files
+            .map((file) => ({
+                grantId: file.grantId || file.fileId,
+                status: file.status || file.grantStatus || 'active',
+                grantedAt: file.grantedAt ? new Date(file.grantedAt).toISOString() : null,
+                revokedAt: file.grantRevokedAt ? new Date(file.grantRevokedAt).toISOString() : null,
+                fileUpdatedAt: file.fileUpdatedAt ? new Date(file.fileUpdatedAt).toISOString() : null,
+                fileLastRevocationAt: file.fileLastRevocationAt ? new Date(file.fileLastRevocationAt).toISOString() : null,
+            }))
+            .sort((a, b) => (a.grantId || '').localeCompare(b.grantId || ''));
+
+        const timestamps = files.reduce((acc, file) => {
+            const entries = [
+                file.grantedAt,
+                file.expiresAt,
+                file.grantRevokedAt,
+                file.grantUpdatedAt,
+                file.fileUpdatedAt,
+                file.fileLastRevocationAt,
+            ];
+
+            entries.forEach((value) => {
+                if (!value) {
+                    return;
+                }
+                const date = value instanceof Date ? value : new Date(value);
+                if (!Number.isNaN(date.getTime())) {
+                    acc.push(date.getTime());
+                }
+            });
+
+            return acc;
+        }, []);
+
+        const lastModifiedDate = timestamps.length > 0
+            ? new Date(Math.max(...timestamps))
+            : new Date(0);
+        const lastModifiedHeader = lastModifiedDate.toUTCString();
+        const lastModifiedIso = timestamps.length > 0 ? lastModifiedDate.toISOString() : null;
+
+        const etagSource = JSON.stringify({
+            grants: normalizedForEtag,
+            total: files.length,
+        });
+        const etag = crypto.createHash('sha256').update(etagSource).digest('hex');
+
+        const ifNoneMatch = req.headers['if-none-match'];
+        if (ifNoneMatch && ifNoneMatch === etag) {
+            return res
+                .set('ETag', etag)
+                .set('Last-Modified', lastModifiedHeader)
+                .status(304)
+                .end();
+        }
+
+        const ifModifiedSinceHeader = req.headers['if-modified-since'];
+        if (ifModifiedSinceHeader) {
+            const sinceDate = new Date(ifModifiedSinceHeader);
+            if (!Number.isNaN(sinceDate.getTime()) && lastModifiedDate.getTime() <= sinceDate.getTime()) {
+                return res
+                    .set('ETag', etag)
+                    .set('Last-Modified', lastModifiedHeader)
+                    .status(304)
+                    .end();
+            }
+        }
+
+        const activeFiles = files.filter((file) => (file.status || file.grantStatus) !== 'revoked');
+        const revokedCount = files.length - activeFiles.length;
+
         const duration = Date.now() - startTime;
         const publicKeyHash = fileAccessService.ringService.hashPublicKey(publicKey);
         const maskedPublicKeyHash = maskHashForLogging(publicKeyHash, 'publicKeyHash');
-        secureLog('AnonymousList', `Successfully listed ${files.length} files for publicKeyHash: ${maskedPublicKeyHash} [${duration}ms]`, 'info', { publicKeyHash });
+        secureLog(
+            'AnonymousList',
+            `Listed ${activeFiles.length} active / ${revokedCount} revoked files for publicKeyHash: ${maskedPublicKeyHash} [${duration}ms]`,
+            'info',
+            { publicKeyHash, activeCount: activeFiles.length, revokedCount }
+        );
 
-        return res.json({
-            success: true,
-            files: files,
-            totalCount: files.length,
-        });
+        return res
+            .set('ETag', etag)
+            .set('Last-Modified', lastModifiedHeader)
+            .json({
+                success: true,
+                files,
+                totalCount: files.length,
+                meta: {
+                    etag,
+                    lastModified: lastModifiedIso,
+                    activeCount: activeFiles.length,
+                    revokedCount,
+                },
+            });
 
     } catch (error) {
         const duration = Date.now() - startTime;
@@ -839,4 +923,3 @@ router.post('/client-chunked-upload', async (req, res) => {
 });
 
 module.exports = { router, init };
-

@@ -1,7 +1,7 @@
 # 🚨 THIẾT KẾ LẠI DOWNLOAD FLOW - ĐẢM BẢO TÍNH ẨN DANH
 
 **Ngày gốc:** 2025-10-09  
-**Cập nhật gần nhất:** 2025-10-16  
+**Cập nhật gần nhất:** 2025-10-18  
 **Trạng thái hiện tại:** ✅ ĐÃ HOÀN THÀNH – Download flow thực tế đã chuyển sang manifest + IPFS chunk giống mô tả trong `TASK_B_C_IMPLEMENTATION_SUMMARY.md`.
 
 > **Ghi chú:** Tài liệu bên dưới được giữ lại như bản thiết kế/retrospective. Xem thêm `mobile/src/services/chunkDownloadManager.ts` và `backend/src/routes/anonymous-endpoints-addition.js` cho implementation mới. Những cảnh báo “VI PHẠM” trong nội dung gốc đã được xử lý bởi Task B & C (16/10/2025).
@@ -19,6 +19,8 @@
 - Mobile app sẽ có **Access Manager modal** với hai danh sách: public key đã được cấp quyền và các đề cử mới; thao tác click để thêm/bỏ, tự động sync sau khi backend xác nhận.
 - Khi revoke thành công, backend ghi `anonymousAuditLog` với event `grant_revoked`, cập nhật `anonymousFileAccess.status = 'revoked'` và phát tín hiệu để client xóa cache/ẩn file khỏi danh sách người nhận.
 - Các nội dung chi tiết và kế hoạch thực thi được chuyển sang `issue_plan.md` (phiên bản 2025-10-18) để triển khai ngay sau đợt cập nhật này.
+- Trên mobile, danh sách anonymous sử dụng `ETag` + `Last-Modified` để đồng bộ: nhận 304 → dùng snapshot cục bộ, đồng thời tự động lọc `status='revoked'`, xóa key package tương ứng và gửi audit event `delete_cache`; UI hiển thị banner "granted/revoked" ngay lập tức.
+- Bổ sung script `scripts/reset-anonymous-grants.js` giúp QA/dev reset dữ liệu demo nhanh chóng (xóa AnonymousFileAccess + audit liên quan theo `fileId`/`recipient`).
 
 ---
 

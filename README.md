@@ -230,6 +230,11 @@ See `TASK_A_IMPLEMENTATION_SUMMARY.md` and `TASK_B_C_IMPLEMENTATION_SUMMARY.md` 
 - **🗑️ Delete**: Remove files from IPFS storage
 - **🔍 Metadata**: File size, type, upload time, and IPFS hash management
 
+### Anonymous Access Lifecycle
+- **Access Manager modal** cho phép chủ sở hữu grant/revoke nhanh chóng; UI hiển thị banner "Bạn vừa được cấp quyền" / "Quyền truy cập đã bị thu hồi" ngay sau khi backend xác nhận.
+- **Recipient sync thông minh**: danh sách `anonymous-list` dùng `ETag` + `Last-Modified`, cache theo `sha256(publicKey)`, 304 → bật chế độ offline, tự động ẩn `status='revoked'`, xoá key package và ghi audit `delete_cache`.
+- **QA tooling**: chạy `node scripts/reset-anonymous-grants.js --yes` để reset AnonymousFileAccess + audit log cho demo/testing.
+
 ### Ring Signature Operations
 - **Create Signatures**: Generate ring signatures for files
 - **Verify Signatures**: Validate signature authenticity
@@ -604,6 +609,8 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - **[CLAUDE.md](./CLAUDE.md)** - Claude Code development instructions
 - **[Mobile README](./mobile/README.md)** - Comprehensive mobile app documentation
 - **[Mobile Testing Guide](./mobile/TEST_IPFS_CONNECTIVITY.md)** - Mobile connectivity testing
+- **[QA Checklist – Anonymous Access](./QA_ANONYMOUS_ACCESS_CHECKLIST.md)** - Hướng dẫn kiểm thử grant/revoke & cache
+- **[Access Manager Demo Script](./demo_scripts/AccessManagerDemo.md)** - Kịch bản trình diễn vòng đời cấp quyền
 
 ### Implementation Summaries
 - **[TASK_A_IMPLEMENTATION_SUMMARY.md](./TASK_A_IMPLEMENTATION_SUMMARY.md)** - Client-side chunking & encryption

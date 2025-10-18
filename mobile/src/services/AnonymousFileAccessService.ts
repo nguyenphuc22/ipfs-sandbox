@@ -18,6 +18,7 @@ import {
 } from '../utils/aotCrypto';
 import { sha256Hex } from './crypto/hash';
 import { RingContext } from '../types';
+import { getKeyPackage, removeKeyPackage } from './KeyPackageStorage';
 
 // ============================================================================
 // TYPES & INTERFACES
@@ -37,6 +38,15 @@ export interface AccessibleFile {
   uploadedAt: string;
   cid?: string | null;
   chunkHash?: string | null;
+  status?: string;
+  grantId?: string;
+  grantStatus?: string;
+  grantRevokedAt?: string | null;
+  grantUpdatedAt?: string | null;
+  keyPackageFingerprint?: string | null;
+  lastOwnerProof?: string | null;
+  fileUpdatedAt?: string | null;
+  fileLastRevocationAt?: string | null;
 }
 
 export interface FileAccessManifest {
@@ -125,6 +135,35 @@ export interface GrantAccessParams {
   metadata?: Record<string, any>;
 }
 
+export interface AnonymousListMeta {
+  etag: string | null;
+  lastModified: string | null;
+  fromCache: boolean;
+  hadCache: boolean;
+  fetchedAt: string;
+  responseStatus: number;
+}
+
+export interface AnonymousListChanges {
+  newFiles: AccessibleFile[];
+  revokedFiles: AccessibleFile[];
+  removedKeyPackages: string[];
+}
+
+export interface AnonymousListFetchResult {
+  files: AccessibleFile[];
+  raw: AccessibleFile[];
+  metadata: AnonymousListMeta;
+  changes: AnonymousListChanges;
+}
+
+interface AnonymousListCacheEntry {
+  etag: string | null;
+  lastModified: string | null;
+  storedAt: string;
+  files: AccessibleFile[];
+}
+
 // ============================================================================
 // SERVICE CLASS
 // ============================================================================
@@ -177,6 +216,7 @@ export class AnonymousFileAccessService {
   private static readonly RING_MEMBERS_STORAGE_KEY = 'aot_ring_members_cache_v1';
   private static readonly RING_CONTEXT_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
   private static readonly GRANT_JOURNAL_PREFIX = 'aot_grant_journal_v1_';
+  private static readonly ANONYMOUS_LIST_CACHE_PREFIX = 'aot_anonymous_list_cache_v1_';
 
   private async loadPersistedRingMembers(): Promise<string[] | null> {
     try {
@@ -209,6 +249,12 @@ export class AnonymousFileAccessService {
     return `${AnonymousFileAccessService.GRANT_JOURNAL_PREFIX}${fileId}`;
   }
 
+  private getAnonymousListCacheStorageKey(publicKey: string): string {
+    const normalized = normalizeHex(publicKey);
+    const hash = sha256Hex(normalized);
+    return `${AnonymousFileAccessService.ANONYMOUS_LIST_CACHE_PREFIX}${hash}`;
+  }
+
   private normalizeGrantRecord(raw: any): AnonymousGrantRecord {
     const toIso = (value: any): string | null => {
       if (!value) {
@@ -231,6 +277,90 @@ export class AnonymousFileAccessService {
       lastOwnerProof: raw.lastOwnerProof ?? null,
       accessCount: typeof raw.accessCount === 'number' ? raw.accessCount : undefined,
     };
+  }
+
+  private normalizeAccessibleFile(raw: any): AccessibleFile {
+    const toIso = (value: any): string | null => {
+      if (!value) {
+        return null;
+      }
+      const date = value instanceof Date ? value : new Date(value);
+      return Number.isNaN(date.getTime()) ? null : date.toISOString();
+    };
+
+    const normalizedStatus = typeof raw?.status === 'string'
+      ? raw.status
+      : typeof raw?.grantStatus === 'string'
+        ? raw.grantStatus
+        : typeof raw?.ownershipStatus === 'string'
+          ? raw.ownershipStatus
+          : 'active';
+
+    return {
+      fileId: String(raw?.fileId ?? raw?.id ?? ''),
+      fileName: String(raw?.fileName ?? raw?.name ?? ''),
+      fileSize: Number.isFinite(Number(raw?.fileSize)) ? Number(raw.fileSize) : 0,
+      chunkCount: Number.isFinite(Number(raw?.chunkCount)) ? Number(raw.chunkCount) : 0,
+      mimeType: raw?.mimeType ?? undefined,
+      ownerPublicKey: String(raw?.ownerPublicKey ?? raw?.ownershipPublicKey ?? ''),
+      ownershipStatus: String(raw?.ownershipStatus ?? raw?.fileStatus ?? normalizedStatus ?? 'active'),
+      grantedAt: toIso(raw?.grantedAt) ?? new Date().toISOString(),
+      expiresAt: toIso(raw?.expiresAt),
+      accessCount: Number.isFinite(Number(raw?.accessCount)) ? Number(raw.accessCount) : 0,
+      uploadedAt: toIso(raw?.uploadedAt ?? raw?.fileCreatedAt) ?? new Date().toISOString(),
+      cid: raw?.cid ?? raw?.chunkCid ?? null,
+      chunkHash: raw?.chunkHash ?? null,
+      status: normalizedStatus,
+      grantId: raw?.grantId ? String(raw.grantId) : undefined,
+      grantStatus: typeof raw?.grantStatus === 'string' ? raw.grantStatus : normalizedStatus,
+      grantRevokedAt: toIso(raw?.grantRevokedAt ?? raw?.revokedAt),
+      grantUpdatedAt: toIso(raw?.grantUpdatedAt ?? raw?.updatedAt),
+      keyPackageFingerprint: raw?.keyPackageFingerprint ?? null,
+      lastOwnerProof: raw?.lastOwnerProof ?? null,
+      fileUpdatedAt: toIso(raw?.fileUpdatedAt ?? raw?.updatedAt),
+      fileLastRevocationAt: toIso(raw?.fileLastRevocationAt ?? raw?.lastRevocationAt),
+    };
+  }
+
+  private normalizeAccessibleFiles(rawFiles: any[]): AccessibleFile[] {
+    if (!Array.isArray(rawFiles)) {
+      return [];
+    }
+    return rawFiles.map((record) => this.normalizeAccessibleFile(record));
+  }
+
+  private async cleanupRevokedEntries(entries: AccessibleFile[]): Promise<string[]> {
+    if (!entries || entries.length === 0) {
+      return [];
+    }
+
+    const removed: string[] = [];
+    for (const entry of entries) {
+      const fileId = entry?.fileId;
+      if (!fileId) {
+        continue;
+      }
+
+      try {
+        const existing = await getKeyPackage(fileId);
+        await removeKeyPackage(fileId);
+        if (existing) {
+          removed.push(fileId);
+          try {
+            await this.logAnonymousAuditEvent('delete_cache', fileId, {
+              reason: 'grant_revoked',
+              revokedAt: entry?.grantRevokedAt ?? entry?.grantUpdatedAt ?? null,
+            });
+          } catch (auditError) {
+            console.warn('[Anonymous Access] Failed to log audit event for revoked cache cleanup', auditError);
+          }
+        }
+      } catch (error) {
+        console.warn('[Anonymous Access] Failed to cleanup revoked entry cache', fileId, error);
+      }
+    }
+
+    return removed;
   }
 
   private normalizeGrantRecords(rawGrants: any[]): AnonymousGrantRecord[] {
@@ -269,6 +399,51 @@ export class AnonymousFileAccessService {
       console.warn('[Anonymous Access] Failed to read grant journal:', error);
     }
     return null;
+  }
+
+  private async readAnonymousListCache(publicKey: string): Promise<AnonymousListCacheEntry | null> {
+    const key = this.getAnonymousListCacheStorageKey(publicKey);
+    try {
+      const stored = await AsyncStorage.getItem(key);
+      if (!stored) {
+        return null;
+      }
+      const parsed = JSON.parse(stored);
+      if (!parsed || typeof parsed !== 'object') {
+        return null;
+      }
+
+      const entry: AnonymousListCacheEntry = {
+        etag: typeof parsed.etag === 'string' ? parsed.etag : null,
+        lastModified: typeof parsed.lastModified === 'string' ? parsed.lastModified : null,
+        storedAt: typeof parsed.storedAt === 'string' ? parsed.storedAt : new Date(0).toISOString(),
+        files: this.normalizeAccessibleFiles(parsed.files ?? []),
+      };
+      return entry;
+    } catch (error) {
+      console.warn('[Anonymous Access] Failed to read anonymous list cache:', error);
+      try {
+        await AsyncStorage.removeItem(key);
+      } catch (removeError) {
+        console.warn('[Anonymous Access] Failed to clear corrupted anonymous list cache:', removeError);
+      }
+      return null;
+    }
+  }
+
+  private async persistAnonymousListCache(publicKey: string, entry: AnonymousListCacheEntry): Promise<void> {
+    const key = this.getAnonymousListCacheStorageKey(publicKey);
+    try {
+      const payload = {
+        etag: entry.etag,
+        lastModified: entry.lastModified,
+        storedAt: entry.storedAt,
+        files: entry.files,
+      };
+      await AsyncStorage.setItem(key, JSON.stringify(payload));
+    } catch (error) {
+      console.warn('[Anonymous Access] Failed to persist anonymous list cache:', error);
+    }
   }
 
   private normalizeRingMembers(rawMembers: string[], ownCompressedKey: string): string[] {
@@ -475,25 +650,41 @@ export class AnonymousFileAccessService {
    * @returns Array of accessible files
    * @throws Error if authentication fails or network error occurs
    */
-  async listAccessibleFiles(): Promise<AccessibleFile[]> {
+  async listAccessibleFiles(options: { bypassCache?: boolean } = {}): Promise<AnonymousListFetchResult> {
+    const { bypassCache = false } = options;
+
     try {
-      console.log('[Anonymous Access] Listing accessible files...');
+      console.log('[Anonymous Access] Listing accessible files (recipient)...');
 
-      // Get user's public key
       const publicKey = await this.getPublicKey();
-
-      // Prepare request parameters
       const timestamp = Date.now();
       const nonce = this.generateNonce();
       const message = `list-files:${timestamp}:${nonce}`;
-
-      // Create ring signature
       const ringSignature = await this.createRingSignature(message);
 
-      // Make request to anonymous-list endpoint
-      const response = await this.makeRequest<AnonymousListResponse>(
-        '/api/files/anonymous-list',
-        {
+      const cache = await this.readAnonymousListCache(publicKey);
+      const hadCache = !!cache;
+
+      const url = `${this.baseUrl}/api/files/anonymous-list`;
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+
+      if (!bypassCache) {
+        if (cache?.etag) {
+          headers['If-None-Match'] = cache.etag;
+        }
+        if (cache?.lastModified) {
+          headers['If-Modified-Since'] = cache.lastModified;
+        }
+      }
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+      let response: Response;
+      try {
+        response = await fetch(url, {
           method: 'POST',
           body: JSON.stringify({
             publicKey,
@@ -501,12 +692,174 @@ export class AnonymousFileAccessService {
             timestamp,
             nonce,
           }),
+          headers,
+          signal: controller.signal,
+        });
+      } catch (error) {
+        clearTimeout(timeoutId);
+        if (error instanceof Error && error.name === 'AbortError') {
+          throw new Error('Request timed out');
         }
+        throw error;
+      } finally {
+        clearTimeout(timeoutId);
+      }
+
+      const status = response.status;
+      let rawFiles: AccessibleFile[] = [];
+      let fromCache = false;
+
+      let etag = response.headers.get('etag');
+      let lastModifiedHeader = response.headers.get('last-modified');
+      let lastModifiedIso: string | null = null;
+
+      if (status === 304) {
+        if (!cache) {
+          throw new Error('Received 304 Not Modified but no cached list is available');
+        }
+        console.log('[Anonymous Access] Server returned 304 - using cached anonymous list');
+        rawFiles = cache.files;
+        fromCache = true;
+        if (!etag && cache.etag) {
+          etag = cache.etag;
+        }
+        if (!lastModifiedHeader && cache.lastModified) {
+          lastModifiedHeader = cache.lastModified;
+        }
+      } else {
+        const responseText = await response.text();
+        const data = responseText ? JSON.parse(responseText) : {};
+
+        if (!response.ok) {
+          const message = data?.error || `HTTP ${status}: ${response.statusText}`;
+          throw new Error(message);
+        }
+
+        rawFiles = this.normalizeAccessibleFiles(data?.files ?? []);
+
+        if ((!etag || etag.length === 0) && typeof data?.meta?.etag === 'string') {
+          etag = data.meta.etag;
+        }
+
+        if (!lastModifiedHeader && typeof data?.meta?.lastModified === 'string') {
+          try {
+            const parsedMeta = new Date(data.meta.lastModified);
+            if (!Number.isNaN(parsedMeta.getTime())) {
+              lastModifiedHeader = parsedMeta.toUTCString();
+              lastModifiedIso = parsedMeta.toISOString();
+            }
+          } catch (parseError) {
+            console.warn('[Anonymous Access] Failed to parse response meta.lastModified', parseError);
+          }
+        }
+
+        if (!lastModifiedIso && lastModifiedHeader) {
+          const parsedHeader = new Date(lastModifiedHeader);
+          if (!Number.isNaN(parsedHeader.getTime())) {
+            lastModifiedIso = parsedHeader.toISOString();
+          }
+        }
+
+        if (!lastModifiedIso && typeof data?.meta?.lastModified === 'string') {
+          const metaDate = new Date(data.meta.lastModified);
+          if (!Number.isNaN(metaDate.getTime())) {
+            lastModifiedIso = metaDate.toISOString();
+          }
+        }
+
+        const storedAt = new Date().toISOString();
+        await this.persistAnonymousListCache(publicKey, {
+          etag: etag ?? null,
+          lastModified: lastModifiedHeader ?? null,
+          storedAt,
+          files: rawFiles,
+        });
+      }
+
+      if (!lastModifiedIso && lastModifiedHeader) {
+        const parsedHeader = new Date(lastModifiedHeader);
+        if (!Number.isNaN(parsedHeader.getTime())) {
+          lastModifiedIso = parsedHeader.toISOString();
+        }
+      }
+
+      if (!lastModifiedIso && !lastModifiedHeader && cache?.lastModified) {
+        const cachedDate = new Date(cache.lastModified);
+        if (!Number.isNaN(cachedDate.getTime())) {
+          lastModifiedHeader = cache.lastModified;
+          lastModifiedIso = cachedDate.toISOString();
+        }
+      }
+
+      const previousRecords = cache?.files ?? [];
+      const previousActiveMap = new Map(
+        previousRecords
+          .filter((record) => (record.status ?? record.grantStatus ?? 'active') !== 'revoked')
+          .map((record) => [record.fileId, record] as const),
       );
 
-      console.log(`[Anonymous Access] Found ${response.files.length} accessible files`);
-      return response.files;
+      const activeFiles = rawFiles.filter(
+        (file) => (file.status ?? file.grantStatus ?? 'active') !== 'revoked',
+      );
 
+      const newFiles = hadCache
+        ? activeFiles.filter((file) => !previousActiveMap.has(file.fileId))
+        : [];
+
+      const revokedByStatus = rawFiles.filter(
+        (file) => (file.status ?? file.grantStatus ?? 'active') === 'revoked',
+      );
+
+      const revokedByRemoval = hadCache
+        ? previousRecords.filter(
+            (previous) =>
+              (previous.status ?? previous.grantStatus ?? 'active') !== 'revoked' &&
+              !activeFiles.some((current) => current.fileId === previous.fileId),
+          )
+        : [];
+
+      const revokedMap = new Map(
+        [...revokedByStatus, ...revokedByRemoval].map((entry) => [entry.fileId, entry] as const),
+      );
+      const revokedFiles = Array.from(revokedMap.values());
+
+      const removedKeyPackages = await this.cleanupRevokedEntries(revokedFiles);
+
+      console.log(
+        '[Anonymous Access] Anonymous list refresh summary',
+        JSON.stringify(
+          {
+            total: rawFiles.length,
+            active: activeFiles.length,
+            revoked: revokedFiles.length,
+            newEntries: newFiles.length,
+            fromCache,
+            hadCache,
+          },
+          null,
+          2,
+        ),
+      );
+
+      const metadata: AnonymousListMeta = {
+        etag: etag ?? null,
+        lastModified: lastModifiedIso,
+        fromCache,
+        hadCache,
+        fetchedAt: new Date().toISOString(),
+        responseStatus: status,
+      };
+
+      return {
+        files: activeFiles,
+        raw: rawFiles,
+        metadata,
+        changes: {
+          newFiles,
+          revokedFiles,
+          removedKeyPackages,
+        },
+      };
     } catch (error) {
       console.error('[Anonymous Access] Error listing files:', error);
       throw error;
@@ -922,22 +1275,113 @@ export class AnonymousFileAccessService {
     ringSignature: string;
     timestamp: number;
     nonce: string;
-  }): Promise<AccessibleFile[]> {
+  }): Promise<AnonymousListFetchResult> {
     try {
       console.log('[Anonymous Access] Listing accessible files with explicit parameters...');
-      
-      // Make request to anonymous-list endpoint with provided parameters
-      const response = await this.makeRequest<AnonymousListResponse>(
-        '/api/files/anonymous-list',
-        {
+
+      const url = `${this.baseUrl}/api/files/anonymous-list`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+      let response: Response;
+      try {
+        response = await fetch(url, {
           method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
           body: JSON.stringify(params),
+          signal: controller.signal,
+        });
+      } catch (error) {
+        clearTimeout(timeoutId);
+        if (error instanceof Error && error.name === 'AbortError') {
+          throw new Error('Request timed out');
         }
+        throw error;
+      } finally {
+        clearTimeout(timeoutId);
+      }
+
+      const status = response.status;
+      const responseText = await response.text();
+      const data = responseText ? JSON.parse(responseText) : {};
+
+      if (!response.ok) {
+        const message = data?.error || `HTTP ${status}: ${response.statusText}`;
+        throw new Error(message);
+      }
+
+      const rawFiles = this.normalizeAccessibleFiles(data?.files ?? []);
+      const activeFiles = rawFiles.filter(
+        (file) => (file.status ?? file.grantStatus ?? 'active') !== 'revoked',
+      );
+      const revokedFiles = rawFiles.filter(
+        (file) => (file.status ?? file.grantStatus ?? 'active') === 'revoked',
       );
 
-      console.log(`[Anonymous Access] Found ${response.files.length} accessible files`);
-      return response.files;
+      let etag = response.headers.get('etag');
+      if ((!etag || etag.length === 0) && typeof data?.meta?.etag === 'string') {
+        etag = data.meta.etag;
+      }
 
+      let lastModifiedHeader = response.headers.get('last-modified');
+      let lastModifiedIso: string | null = null;
+
+      if (!lastModifiedHeader && typeof data?.meta?.lastModified === 'string') {
+        const metaDate = new Date(data.meta.lastModified);
+        if (!Number.isNaN(metaDate.getTime())) {
+          lastModifiedHeader = metaDate.toUTCString();
+          lastModifiedIso = metaDate.toISOString();
+        }
+      }
+
+      if (!lastModifiedIso && lastModifiedHeader) {
+        const parsed = new Date(lastModifiedHeader);
+        if (!Number.isNaN(parsed.getTime())) {
+          lastModifiedIso = parsed.toISOString();
+        }
+      }
+
+      if (!lastModifiedIso && typeof data?.meta?.lastModified === 'string') {
+        const metaDate = new Date(data.meta.lastModified);
+        if (!Number.isNaN(metaDate.getTime())) {
+          lastModifiedIso = metaDate.toISOString();
+        }
+      }
+
+      console.log(
+        '[Anonymous Access] Explicit list fetch summary',
+        JSON.stringify(
+          {
+            total: rawFiles.length,
+            active: activeFiles.length,
+            revoked: revokedFiles.length,
+          },
+          null,
+          2,
+        ),
+      );
+
+      const metadata: AnonymousListMeta = {
+        etag: etag ?? null,
+        lastModified: lastModifiedIso,
+        fromCache: false,
+        hadCache: false,
+        fetchedAt: new Date().toISOString(),
+        responseStatus: status,
+      };
+
+      return {
+        files: activeFiles,
+        raw: rawFiles,
+        metadata,
+        changes: {
+          newFiles: activeFiles,
+          revokedFiles,
+          removedKeyPackages: [],
+        },
+      };
     } catch (error) {
       console.error('[Anonymous Access] Error listing files with params:', error);
       throw error;

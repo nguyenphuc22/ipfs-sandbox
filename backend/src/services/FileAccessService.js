@@ -135,14 +135,16 @@ class FileAccessService {
     const publicKeyHash = this.ringService.hashPublicKey(publicKey);
 
     // 5. Query access grants by publicKeyHash (NOT userId)
+    const now = new Date();
     const accessGrants = await this.prisma.anonymousFileAccess.findMany({
       where: {
         accessorPublicKeyHash: publicKeyHash,
-        status: 'active',
+        status: { in: ['active', 'revoked'] },
         OR: [
+          { status: 'revoked' },
           { expiresAt: null },
-          { expiresAt: { gte: new Date() } }
-        ]
+          { expiresAt: { gte: now } },
+        ],
       },
       include: {
         file: {
@@ -155,6 +157,8 @@ class FileAccessService {
             ownershipPublicKey: true,
             status: true,
             createdAt: true,
+            updatedAt: true,
+            lastRevocationAt: true,
             chunks: {
               orderBy: { chunkIndex: 'asc' },
               select: {
@@ -175,6 +179,7 @@ class FileAccessService {
     // 6. Transform response (no userId exposed)
     const files = accessGrants.map(grant => {
       const primaryChunk = grant.file.chunks?.[0];
+      const grantUpdatedAt = grant.revokedAt || grant.grantedAt;
 
       return {
         fileId: grant.file.id,
@@ -184,12 +189,21 @@ class FileAccessService {
         mimeType: grant.file.mimeType,
         ownerPublicKey: grant.file.ownershipPublicKey,
         ownershipStatus: grant.file.status,
+        status: grant.status,
         grantedAt: grant.grantedAt,
         expiresAt: grant.expiresAt,
         accessCount: grant.accessCount,
         uploadedAt: grant.file.createdAt,
         cid: primaryChunk?.ipfsCid || null,
         chunkHash: primaryChunk?.chunkHash || null,
+        grantId: grant.id,
+        grantStatus: grant.status,
+        grantRevokedAt: grant.revokedAt,
+        grantUpdatedAt,
+        keyPackageFingerprint: grant.keyPackageFingerprint,
+        lastOwnerProof: grant.lastOwnerProof,
+        fileUpdatedAt: grant.file.updatedAt,
+        fileLastRevocationAt: grant.file.lastRevocationAt,
       };
     });
 

@@ -170,12 +170,13 @@ export class IPFSService {
 
     try {
       // Use anonymous service's new method that accepts explicit parameters
-      const records = await this.anonymousService.listAccessibleFilesWithParams({
+      const listResult = await this.anonymousService.listAccessibleFilesWithParams({
         publicKey,
         ringSignature,
         timestamp,
         nonce
       });
+      const records = listResult.files;
       
       const allowedStatuses: FileStatus[] = ['uploading', 'completed', 'error', 'active', 'revoked'];
 

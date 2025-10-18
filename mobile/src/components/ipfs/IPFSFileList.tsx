@@ -4,11 +4,12 @@ import { useIPFS, useEnhancedStorage } from '../../hooks';
 import { useTheme } from '../../styles';
 import { FileData } from '../../types';
 import { FileViewer } from './FileViewer';
-import { GrantAccessModal } from './GrantAccessModal';
+import { AccessManagerModal } from './AccessManagerModal';
 import { normalizeHex } from '../../utils/aotCrypto';
 import {
   createAnonymousFileAccessService,
   GrantAccessResponse,
+  RevokeAccessResponse,
 } from '../../services/AnonymousFileAccessService';
 
 interface IPFSFileListProps {
@@ -43,8 +44,8 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
   const [apiFiles, setApiFiles] = useState<FileData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [grantModalVisible, setGrantModalVisible] = useState(false);
-  const [grantFile, setGrantFile] = useState<FileData | null>(null);
+  const [accessManagerVisible, setAccessManagerVisible] = useState(false);
+  const [managedFile, setManagedFile] = useState<FileData | null>(null);
 
   // File viewer state
   const [viewerVisible, setViewerVisible] = useState(false);
@@ -114,12 +115,16 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
             result = await listFiles();
           } else {
             // Get files using proper anonymous authentication
-            const accessibleFiles = await anonymousService.listAccessibleFiles();
+            const accessibleList = await anonymousService.listAccessibleFiles();
+
+            if (__DEV__) {
+              console.log('[IPFSFileList] Anonymous list metadata', accessibleList.metadata);
+            }
 
             // Transform to match expected format
             result = {
               success: true,
-              files: accessibleFiles.map(file => ({
+              files: accessibleList.files.map(file => ({
                 id: file.fileId,
                 name: file.fileName,
                 size: file.fileSize,
@@ -203,14 +208,14 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
     setSelectedFile(null);
   };
 
-  const openGrantModal = useCallback((fileToGrant: FileData) => {
-    setGrantFile(fileToGrant);
-    setGrantModalVisible(true);
+  const openAccessManager = useCallback((fileToManage: FileData) => {
+    setManagedFile(fileToManage);
+    setAccessManagerVisible(true);
   }, []);
 
-  const closeGrantModal = useCallback(() => {
-    setGrantModalVisible(false);
-    setGrantFile(null);
+  const closeAccessManager = useCallback(() => {
+    setAccessManagerVisible(false);
+    setManagedFile(null);
   }, []);
 
   const handleGrantCompleted = useCallback(
@@ -221,6 +226,19 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
 
       handleRefresh().catch(error => {
         console.warn('Failed to refresh file list after grant:', error);
+      });
+    },
+    [handleRefresh],
+  );
+
+  const handleRevokeCompleted = useCallback(
+    (response: RevokeAccessResponse) => {
+      if (__DEV__) {
+        console.log('[IPFSFileList] Revoke completed', response.grantId);
+      }
+
+      handleRefresh().catch(error => {
+        console.warn('Failed to refresh file list after revoke:', error);
       });
     },
     [handleRefresh],
@@ -550,9 +568,9 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
                     {isOwner && (
                       <TouchableOpacity
                         style={styles.grantButton}
-                        onPress={() => openGrantModal(file)}
+                        onPress={() => openAccessManager(file)}
                       >
-                        <Text style={styles.grantButtonText}>Grant</Text>
+                        <Text style={styles.grantButtonText}>Manage</Text>
                       </TouchableOpacity>
                     )}
                     <TouchableOpacity
@@ -614,11 +632,12 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
         />
       )}
 
-      <GrantAccessModal
-        visible={grantModalVisible}
-        file={grantFile}
-        onClose={closeGrantModal}
+      <AccessManagerModal
+        visible={accessManagerVisible}
+        file={managedFile}
+        onClose={closeAccessManager}
         onGranted={handleGrantCompleted}
+        onRevoked={handleRevokeCompleted}
       />
     </View>
   );

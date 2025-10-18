@@ -401,7 +401,7 @@ API Configuration: {
     ```
     Đảm bảo `anonymousAuditLog` ghi nhận `grant_issued` / `grant_revoked` và `AnonymousFileAccess.status` được cập nhật.
 
-5. **Đồng bộ trên mobile** – Access Manager modal sẽ gọi lại `GET anonymous-grants` sau mỗi thao tác. Nếu cần reset dữ liệu demo, hãy xoá record liên quan trong SQLite (`backend/prisma/database.db`) hoặc dùng script `scripts/reset-anonymous-grants.js` (sẽ bổ sung cùng lúc triển khai backend).
+5. **Đồng bộ trên mobile** – Access Manager modal gọi `GET anonymous-grants`/`POST anonymous-grants` và danh sách `anonymous-list` dùng `ETag` + `Last-Modified`. Mobile tự cache theo `sha256(publicKey)`, nhận 304 để tái sử dụng snapshot, đồng thời lọc `status='revoked'`, xoá key package và bắn audit `delete_cache`. Nếu cần reset môi trường demo, chạy `node scripts/reset-anonymous-grants.js --yes` để xoá AnonymousFileAccess + audit liên quan (thay vì chỉnh bằng tay trong Prisma Studio).
 
 ## Quy Trình Phát Triển
 

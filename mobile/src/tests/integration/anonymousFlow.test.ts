@@ -84,25 +84,33 @@ describe('AnonymousFileAccessService - Integration Smoke Test', () => {
     };
 
     // Mock the network requests
-    const fetchSpy = jest.spyOn(global, 'fetch')
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
       .mockResolvedValueOnce({
-        json: () => Promise.resolve({ files: mockAccessibleFiles, success: true, totalCount: 1 }),
         ok: true,
-      } as Response) // For listAccessibleFiles
+        status: 200,
+        headers: { get: jest.fn(() => null) },
+        text: () =>
+          Promise.resolve(
+            JSON.stringify({ files: mockAccessibleFiles, success: true, totalCount: 1 }),
+          ),
+      } as unknown as Response) // For listAccessibleFiles
       .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
         json: () => Promise.resolve(mockAccessManifest),
-        ok: true,
-      } as Response) // For negotiateAccess
+      } as unknown as Response) // For negotiateAccess
       .mockResolvedValueOnce({
-        json: () => Promise.resolve({ success: true, message: 'Integrity alert recorded' }),
         ok: true,
-      } as Response); // For reportIntegrityAlert
+        status: 200,
+        json: () => Promise.resolve({ success: true, message: 'Integrity alert recorded' }),
+      } as unknown as Response); // For reportIntegrityAlert
 
     // Step 2: Fetch anonymous list
-    const accessibleFiles = await anonymousService.listAccessibleFiles();
-    expect(accessibleFiles).toBeDefined();
-    expect(accessibleFiles.length).toBe(1);
-    expect(accessibleFiles[0].fileId).toBe('file123');
+    const accessibleFilesResult = await anonymousService.listAccessibleFiles();
+    expect(accessibleFilesResult).toBeDefined();
+    expect(accessibleFilesResult.files.length).toBe(1);
+    expect(accessibleFilesResult.files[0].fileId).toBe('file123');
 
     // Step 3: Negotiate access to a file
     const accessManifest = await anonymousService.negotiateAccess('file123');

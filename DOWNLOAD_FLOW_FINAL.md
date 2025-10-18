@@ -1,7 +1,7 @@
 # Luồng Download và View File - Anonymous Flow
 
 **Phiên bản:** 2.0 Anonymous
-**Ngày cập nhật:** 2025-10-15
+**Ngày cập nhật:** 2025-10-18
 **Ngôn ngữ:** Tiếng Việt
 
 ---
@@ -62,6 +62,13 @@ Giai đoạn 0: Danh sách file (Anonymous List)
     ↓
     Backend trả về: Danh sách file có quyền truy cập
     Backend GHI LOG: AnonymousAuditLog (KHÔNG lưu userId)
+
+    🔒 **Caching & Sync Enhancements (2025-10-18)**
+      • Response kèm `meta` (`etag`, `lastModified`) → client lưu vào AsyncStorage theo `sha256(publicKey)`
+      • Lần kế tiếp client gửi header `If-None-Match` + `If-Modified-Since`
+      • Nếu backend trả 304 → tái sử dụng snapshot cục bộ, UI vẫn hoạt động offline
+      • Tự động lọc `status = 'revoked'`, xóa key package liên quan và gửi audit event `delete_cache`
+      • Banner "Bạn vừa được cấp quyền" / "Quyền truy cập đã bị thu hồi" hiển thị ngay khi danh sách thay đổi
 
 Giai đoạn 1: Thương lượng quyền truy cập (Access Negotiation)
     ↓

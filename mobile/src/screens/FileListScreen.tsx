@@ -20,6 +20,7 @@ import { useTheme } from '../styles';
 import {
   anonymousFileAccessService,
   AccessibleFile,
+  AnonymousListMeta,
 } from '../services/AnonymousFileAccessService';
 
 interface FileListScreenProps {
@@ -36,6 +37,12 @@ export const FileListScreen: React.FC<FileListScreenProps> = ({
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [listMetadata, setListMetadata] = useState<AnonymousListMeta | null>(null);
+  const [newGrantNotice, setNewGrantNotice] = useState<AccessibleFile[] | null>(null);
+  const [revokedNotice, setRevokedNotice] = useState<{
+    files: AccessibleFile[];
+    removedKeyPackages: string[];
+  } | null>(null);
 
   const styles = useMemo(
     () =>
@@ -75,6 +82,73 @@ export const FileListScreen: React.FC<FileListScreenProps> = ({
           fontSize: 12,
           fontWeight: '600',
           color: colors.primary,
+        },
+        banner: {
+          marginHorizontal: 16,
+          marginTop: 12,
+          padding: 14,
+          borderRadius: 12,
+          position: 'relative',
+        },
+        bannerPositive: {
+          backgroundColor: colors.success + '20',
+          borderLeftWidth: 3,
+          borderLeftColor: colors.success,
+        },
+        bannerNegative: {
+          backgroundColor: colors.error + '15',
+          borderLeftWidth: 3,
+          borderLeftColor: colors.error,
+        },
+        bannerTitle: {
+          fontSize: 15,
+          fontWeight: '700',
+          color: colors.text,
+        },
+        bannerText: {
+          marginTop: 6,
+          fontSize: 13,
+          color: colors.textSecondary,
+          lineHeight: 18,
+        },
+        bannerListItem: {
+          marginTop: 4,
+          fontSize: 13,
+          color: colors.textSecondary,
+        },
+        bannerInlineBadge: {
+          marginLeft: 6,
+          paddingHorizontal: 6,
+          paddingVertical: 2,
+          borderRadius: 6,
+          backgroundColor: colors.error + '20',
+          color: colors.error,
+          fontSize: 11,
+          fontWeight: '700',
+        },
+        bannerBadge: {
+          marginTop: 8,
+          alignSelf: 'flex-start',
+          paddingHorizontal: 8,
+          paddingVertical: 4,
+          borderRadius: 6,
+          backgroundColor: colors.error + '25',
+        },
+        bannerBadgeText: {
+          fontSize: 12,
+          fontWeight: '700',
+          color: colors.error,
+        },
+        bannerClose: {
+          position: 'absolute',
+          top: 10,
+          right: 12,
+          padding: 4,
+        },
+        bannerCloseText: {
+          fontSize: 18,
+          lineHeight: 18,
+          color: colors.textSecondary,
         },
         listContent: {
           padding: 16,
@@ -209,49 +283,75 @@ export const FileListScreen: React.FC<FileListScreenProps> = ({
   /**
    * Load files from anonymous API
    */
-  const loadFiles = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
+  const loadFiles = useCallback(
+    async ({ bypassCache = false }: { bypassCache?: boolean } = {}) => {
+      try {
+        setLoading(true);
+        setError(null);
 
-      console.log('[File List] Loading accessible files (anonymous)...');
+        console.log('[File List] Loading accessible files (anonymous)...');
 
-      // Check if user has identity
-      const hasIdentity = await anonymousFileAccessService.hasIdentity();
-      if (!hasIdentity) {
-        throw new Error('Please initialize your identity first');
-      }
+        const hasIdentity = await anonymousFileAccessService.hasIdentity();
+        if (!hasIdentity) {
+          throw new Error('Please initialize your identity first');
+        }
 
-      // Fetch files using anonymous API
-      const accessibleFiles = await anonymousFileAccessService.listAccessibleFiles();
+        const result = await anonymousFileAccessService.listAccessibleFiles({ bypassCache });
 
-      setFiles(accessibleFiles);
-      console.log(`[File List] Loaded ${accessibleFiles.length} files`);
+        setFiles(result.files);
+        setListMetadata(result.metadata);
 
-    } catch (err) {
-      console.error('[File List] Error loading files:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Failed to load files';
-      setError(errorMessage);
+        if (result.metadata.hadCache && result.changes.newFiles.length > 0) {
+          setNewGrantNotice(result.changes.newFiles);
+        } else if (result.changes.newFiles.length === 0 && !result.metadata.fromCache) {
+          setNewGrantNotice(null);
+        }
 
-      if (err instanceof Error && err.message.includes('ring signature')) {
-        Alert.alert(
-          'Authentication Error',
-          'Ring signature verification failed. Please try again.',
-          [{ text: 'OK' }]
+        if (
+          result.changes.revokedFiles.length > 0 ||
+          result.changes.removedKeyPackages.length > 0
+        ) {
+          setRevokedNotice({
+            files: result.changes.revokedFiles,
+            removedKeyPackages: result.changes.removedKeyPackages,
+          });
+        } else if (
+          result.changes.revokedFiles.length === 0 &&
+          result.changes.removedKeyPackages.length === 0 &&
+          !result.metadata.fromCache
+        ) {
+          setRevokedNotice(null);
+        }
+
+        console.log(
+          `[File List] Loaded ${result.files.length} active files (status ${result.metadata.responseStatus})`,
         );
+      } catch (err) {
+        console.error('[File List] Error loading files:', err);
+        const errorMessage = err instanceof Error ? err.message : 'Failed to load files';
+        setError(errorMessage);
+
+        if (err instanceof Error && err.message.includes('ring signature')) {
+          Alert.alert(
+            'Authentication Error',
+            'Ring signature verification failed. Please try again.',
+            [{ text: 'OK' }]
+          );
+        }
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
       }
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
+    },
+    [],
+  );
 
   /**
    * Handle pull-to-refresh
    */
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    loadFiles();
+    loadFiles({ bypassCache: true });
   }, [loadFiles]);
 
   /**
@@ -298,6 +398,25 @@ export const FileListScreen: React.FC<FileListScreenProps> = ({
     const date = new Date(dateString);
     return date.toLocaleDateString('vi-VN');
   };
+
+  const formatDateTime = (dateString: string | null | undefined): string => {
+    if (!dateString) {
+      return '';
+    }
+    const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) {
+      return '';
+    }
+    return date.toLocaleString('vi-VN');
+  };
+
+  const handleDismissGrantBanner = useCallback(() => {
+    setNewGrantNotice(null);
+  }, []);
+
+  const handleDismissRevokedBanner = useCallback(() => {
+    setRevokedNotice(null);
+  }, []);
 
   /**
    * Render file item
@@ -382,6 +501,9 @@ export const FileListScreen: React.FC<FileListScreenProps> = ({
         <Text style={styles.headerTitle}>My Files</Text>
         <Text style={styles.headerSubtitle}>
           {files.length} file{files.length !== 1 ? 's' : ''} accessible
+          {listMetadata?.lastModified
+            ? ` • Cập nhật ${formatDateTime(listMetadata.lastModified)}`
+            : ''}
         </Text>
         <View style={styles.anonymousBadge}>
           <Text style={styles.anonymousBadgeText}>🔒 Anonymous Access</Text>
@@ -392,6 +514,53 @@ export const FileListScreen: React.FC<FileListScreenProps> = ({
       {error && (
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>{error}</Text>
+        </View>
+      )}
+
+      {/* Notifications */}
+      {newGrantNotice && newGrantNotice.length > 0 && (
+        <View style={[styles.banner, styles.bannerPositive]}>
+          <TouchableOpacity style={styles.bannerClose} onPress={handleDismissGrantBanner}>
+            <Text style={styles.bannerCloseText}>×</Text>
+          </TouchableOpacity>
+          <Text style={styles.bannerTitle}>Bạn vừa được cấp quyền mới</Text>
+          <Text style={styles.bannerText}>
+            {newGrantNotice.length === 1
+              ? 'File sau đã xuất hiện trong danh sách của bạn:'
+              : 'Các file sau đã xuất hiện trong danh sách của bạn:'}
+          </Text>
+          {newGrantNotice.map((file) => (
+            <Text key={file.fileId} style={styles.bannerListItem}>
+              • {file.fileName}
+            </Text>
+          ))}
+        </View>
+      )}
+
+      {revokedNotice && revokedNotice.files.length > 0 && (
+        <View style={[styles.banner, styles.bannerNegative]}>
+          <TouchableOpacity style={styles.bannerClose} onPress={handleDismissRevokedBanner}>
+            <Text style={styles.bannerCloseText}>×</Text>
+          </TouchableOpacity>
+          <Text style={styles.bannerTitle}>Quyền truy cập đã bị thu hồi</Text>
+          <Text style={styles.bannerText}>
+            {revokedNotice.files.length === 1
+              ? 'Bạn vừa mất quyền truy cập vào file:'
+              : 'Bạn vừa mất quyền truy cập vào các file:'}
+          </Text>
+          {revokedNotice.files.map((file) => (
+            <Text key={`revoked-${file.fileId}`} style={styles.bannerListItem}>
+              • {file.fileName}
+              <Text style={styles.bannerInlineBadge}>Revoked</Text>
+            </Text>
+          ))}
+          {revokedNotice.removedKeyPackages.length > 0 && (
+            <View style={styles.bannerBadge}>
+              <Text style={styles.bannerBadgeText}>
+                Đã xoá {revokedNotice.removedKeyPackages.length} key package cục bộ
+              </Text>
+            </View>
+          )}
         </View>
       )}
 
