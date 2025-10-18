@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -14,35 +14,35 @@ import {
 import Clipboard from '@react-native-clipboard/clipboard';
 import RNFS from 'react-native-fs';
 
-import { useTheme } from '../../styles';
-import { FileData } from '../../types';
+import {useTheme} from '../../styles';
+import {FileData} from '../../types';
 import {
-  AnonymousGrantRecord,
-  GrantAccessResponse,
   anonymousFileAccessService,
+  GrantAccessParams,
+  GrantAccessResponse,
+  RevokeAccessResponse,
 } from '../../services/AnonymousFileAccessService';
-import { FilePickerService } from '../../services/FilePickerService';
-import { getKeyPackage, StoredKeyPackage } from '../../services/KeyPackageStorage';
-import { normalizeHex, toCompressedPublicKey } from '../../utils/aotCrypto';
+import {FilePickerService} from '../../services/FilePickerService';
+import {
+  getKeyPackage,
+  StoredKeyPackage,
+} from '../../services/KeyPackageStorage';
+import {normalizeHex, toCompressedPublicKey} from '../../utils/aotCrypto';
 
 interface GrantAccessModalProps {
   visible: boolean;
   file: FileData | null;
   onClose: () => void;
   onGranted?: (response: GrantAccessResponse) => void;
+  onRevoked?: (response: RevokeAccessResponse) => void; // Legacy signature compatibility
 }
 
-const truncateKey = (key: string, prefix = 10, suffix = 8) => {
-  if (!key) {
-    return '';
-  }
-  if (key.length <= prefix + suffix) {
-    return key;
-  }
-  return `${key.slice(0, prefix)}…${key.slice(-suffix)}`;
-};
+const DEFAULT_EXPIRY_DAYS = '30';
 
-const serializeKeyPackage = (fileId: string, keyPackage: StoredKeyPackage | null) => {
+const serializeKeyPackage = (
+  fileId: string,
+  keyPackage: StoredKeyPackage | null,
+) => {
   if (!keyPackage) {
     return null;
   }
@@ -61,49 +61,82 @@ const serializeKeyPackage = (fileId: string, keyPackage: StoredKeyPackage | null
   );
 };
 
+const truncate = (
+  value: string | null | undefined,
+  prefix = 10,
+  suffix = 6,
+) => {
+  if (!value) {
+    return '';
+  }
+  const normalized = value.trim();
+  if (normalized.length <= prefix + suffix) {
+    return normalized;
+  }
+  return `${normalized.slice(0, prefix)}…${normalized.slice(-suffix)}`;
+};
+
 export const GrantAccessModal: React.FC<GrantAccessModalProps> = ({
   visible,
   file,
   onClose,
   onGranted,
 }) => {
-  const { colors } = useTheme();
+  const {colors} = useTheme();
+
   const [recipientKey, setRecipientKey] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [expiryDays, setExpiryDays] = useState<string>(DEFAULT_EXPIRY_DAYS);
   const [includeKeyPackage, setIncludeKeyPackage] = useState(true);
-  const [storedKeyPackage, setStoredKeyPackage] = useState<StoredKeyPackage | null>(null);
-  const [grantResult, setGrantResult] = useState<AnonymousGrantRecord | null>(null);
+  const [storedKeyPackage, setStoredKeyPackage] =
+    useState<StoredKeyPackage | null>(null);
+  const [grantResult, setGrantResult] = useState<GrantAccessResponse | null>(
+    null,
+  );
+  const [grantError, setGrantError] = useState<string | null>(null);
+  const [grantLoading, setGrantLoading] = useState(false);
 
   const filePicker = useMemo(() => new FilePickerService(), []);
+
+  const keyPackageJson = useMemo(
+    () => (file ? serializeKeyPackage(file.id, storedKeyPackage) : null),
+    [file, storedKeyPackage],
+  );
 
   const styles = useMemo(
     () =>
       StyleSheet.create({
         backdrop: {
           flex: 1,
-          backgroundColor: '#00000080',
+          backgroundColor: '#00000088',
           justifyContent: 'flex-end',
         },
         container: {
-          maxHeight: '82%',
+          maxHeight: '90%',
           borderTopLeftRadius: 24,
           borderTopRightRadius: 24,
           paddingHorizontal: 24,
-          paddingTop: 24,
-          paddingBottom: 40,
+          paddingTop: 20,
+          paddingBottom: 32,
           backgroundColor: colors.surface,
+        },
+        header: {
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 16,
         },
         title: {
           fontSize: 20,
           fontWeight: '700',
           color: colors.text,
-          marginBottom: 8,
         },
         subtitle: {
-          fontSize: 14,
+          fontSize: 12,
           color: colors.textSecondary,
-          marginBottom: 16,
+        },
+        closeIcon: {
+          fontSize: 18,
+          color: colors.text,
         },
         section: {
           marginBottom: 20,
@@ -114,7 +147,7 @@ export const GrantAccessModal: React.FC<GrantAccessModalProps> = ({
           color: colors.textSecondary,
           marginBottom: 6,
         },
-        input: {
+        textInput: {
           borderWidth: 1,
           borderColor: colors.border,
           borderRadius: 12,
@@ -124,43 +157,30 @@ export const GrantAccessModal: React.FC<GrantAccessModalProps> = ({
           color: colors.text,
           minHeight: 48,
         },
-        helperText: {
-          fontSize: 12,
-          color: colors.textSecondary,
-          marginTop: 6,
-        },
-        warningText: {
-          fontSize: 12,
-          color: colors.warning,
-          marginTop: 6,
-        },
-        errorText: {
-          fontSize: 12,
-          color: colors.error,
-          marginTop: 8,
-        },
-        buttonRow: {
+        helperRow: {
           flexDirection: 'row',
-          flexWrap: 'wrap',
           gap: 12,
-          marginTop: 12,
+          marginTop: 10,
         },
-        smallButton: {
-          backgroundColor: colors.secondary,
+        helperButton: {
+          flex: 1,
           borderRadius: 10,
-          paddingHorizontal: 14,
+          borderWidth: 1,
+          borderColor: colors.border,
           paddingVertical: 10,
+          alignItems: 'center',
+          backgroundColor: colors.background,
         },
-        smallButtonText: {
+        helperButtonText: {
           fontSize: 12,
           fontWeight: '600',
-          color: colors.onSecondary,
+          color: colors.text,
         },
         toggleRow: {
           flexDirection: 'row',
           justifyContent: 'space-between',
           alignItems: 'center',
-          paddingVertical: 8,
+          marginTop: 14,
         },
         toggleLabel: {
           flex: 1,
@@ -168,26 +188,52 @@ export const GrantAccessModal: React.FC<GrantAccessModalProps> = ({
           color: colors.text,
           marginRight: 12,
         },
-        fingerprintBox: {
-          marginTop: 8,
-          padding: 12,
-          borderRadius: 10,
-          backgroundColor: colors.background,
+        expiryInput: {
+          marginTop: 12,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 12,
+        },
+        expiryField: {
+          flex: 0,
+          width: 80,
           borderWidth: 1,
           borderColor: colors.border,
+          borderRadius: 10,
+          paddingHorizontal: 12,
+          paddingVertical: 8,
+          fontSize: 14,
+          color: colors.text,
+          textAlign: 'center',
         },
-        fingerprintText: {
+        expiryHint: {
           fontSize: 12,
           color: colors.textSecondary,
+          flex: 1,
+        },
+        errorText: {
+          fontSize: 12,
+          color: colors.error,
+          marginTop: 10,
+        },
+        successBox: {
+          marginTop: 16,
+          borderWidth: 1,
+          borderColor: colors.success + '40',
+          borderRadius: 12,
+          padding: 14,
+          backgroundColor: colors.success + '18',
+        },
+        successText: {
+          fontSize: 12,
+          color: colors.text,
         },
         footer: {
           flexDirection: 'row',
-          justifyContent: 'space-between',
-          alignItems: 'center',
+          gap: 12,
           marginTop: 24,
-          gap: 16,
         },
-        cancelButton: {
+        secondaryButton: {
           flex: 1,
           borderRadius: 12,
           borderWidth: 1,
@@ -195,7 +241,7 @@ export const GrantAccessModal: React.FC<GrantAccessModalProps> = ({
           paddingVertical: 14,
           alignItems: 'center',
         },
-        cancelButtonText: {
+        secondaryButtonText: {
           fontSize: 15,
           fontWeight: '600',
           color: colors.text,
@@ -215,62 +261,46 @@ export const GrantAccessModal: React.FC<GrantAccessModalProps> = ({
           fontWeight: '600',
           color: colors.onPrimary,
         },
-        grantSummary: {
-          marginTop: 12,
-          borderRadius: 10,
-          padding: 12,
-          backgroundColor: colors.success + '15',
-          borderWidth: 1,
-          borderColor: colors.success + '40',
-        },
-        grantSummaryText: {
-          fontSize: 12,
-          color: colors.text,
-        },
       }),
     [colors],
   );
 
+  const resetDraftState = useCallback(() => {
+    setRecipientKey('');
+    setExpiryDays(DEFAULT_EXPIRY_DAYS);
+    setIncludeKeyPackage(true);
+    setGrantResult(null);
+    setGrantError(null);
+  }, []);
+
+  const hydrateKeyPackage = useCallback(async () => {
+    if (!visible || !file) {
+      return;
+    }
+    try {
+      const pkg = await getKeyPackage(file.id);
+      setStoredKeyPackage(pkg);
+      setIncludeKeyPackage(!!pkg);
+    } catch (error) {
+      console.warn('[GrantAccessModal] Failed to load key package', error);
+      setStoredKeyPackage(null);
+      setIncludeKeyPackage(false);
+    }
+  }, [file, visible]);
+
   useEffect(() => {
-    let mounted = true;
-
-    const hydrate = async () => {
-      if (!visible || !file) {
-        return;
-      }
-
-      try {
-        setLoading(false);
-        setError(null);
-        setGrantResult(null);
-        setRecipientKey('');
-
-        const packageData = await getKeyPackage(file.id);
-        if (mounted) {
-          setStoredKeyPackage(packageData);
-          setIncludeKeyPackage(!!packageData);
-        }
-      } catch (err) {
-        console.warn('[GrantAccessModal] Failed to load key package', err);
-        if (mounted) {
-          setStoredKeyPackage(null);
-          setIncludeKeyPackage(false);
-        }
-      }
-    };
-
-    hydrate();
-
-    return () => {
-      mounted = false;
-    };
-  }, [visible, file]);
+    if (visible && file) {
+      resetDraftState();
+  hydrateKeyPackage().catch(() => {});
+    } else {
+      setStoredKeyPackage(null);
+    }
+  }, [visible, file, resetDraftState, hydrateKeyPackage]);
 
   const extractKeyFromContent = useCallback((raw: string): string | null => {
     if (!raw) {
       return null;
     }
-
     const trimmed = raw.trim();
     if (!trimmed) {
       return null;
@@ -288,15 +318,15 @@ export const GrantAccessModal: React.FC<GrantAccessModalProps> = ({
         return candidate.trim();
       }
     } catch (error) {
-      // Not JSON, fallback to raw text
+      // ignore JSON parse error
     }
 
     if (trimmed.includes('\n')) {
       const lines = trimmed
         .split('\n')
-        .map((line) => line.trim())
-        .filter((line) => line.length > 0);
-      const hexLine = lines.find((line) => /^[0-9a-fA-F]{64,130}$/.test(line));
+        .map(line => line.trim())
+        .filter(line => line.length > 0);
+      const hexLine = lines.find(line => /^[0-9a-fA-F]{64,130}$/.test(line));
       if (hexLine) {
         return hexLine;
       }
@@ -314,12 +344,15 @@ export const GrantAccessModal: React.FC<GrantAccessModalProps> = ({
       const clipboardText = await Clipboard.getString();
       const key = extractKeyFromContent(clipboardText);
       if (!key) {
-        Alert.alert('Clipboard', 'Không tìm thấy public key hợp lệ trong clipboard.');
+        Alert.alert(
+          'Clipboard',
+          'Không tìm thấy public key hợp lệ trong clipboard.',
+        );
         return;
       }
       setRecipientKey(key);
-      setError(null);
-    } catch (err) {
+      setGrantError(null);
+    } catch (error) {
       Alert.alert('Clipboard', 'Không thể đọc dữ liệu từ clipboard.');
     }
   }, [extractKeyFromContent]);
@@ -336,210 +369,248 @@ export const GrantAccessModal: React.FC<GrantAccessModalProps> = ({
       }
 
       const uri = pickedFile.fileCopyUri || pickedFile.uri;
-      const normalizedUri = uri.startsWith('file://') ? uri.replace('file://', '') : uri;
+      const normalizedUri = uri.startsWith('file://')
+        ? uri.replace('file://', '')
+        : uri;
       const content = await RNFS.readFile(normalizedUri, 'utf8');
       const key = extractKeyFromContent(content);
 
       if (!key) {
-        Alert.alert('Import', 'Không tìm thấy public key hợp lệ trong tệp đã chọn.');
+        Alert.alert(
+          'Import',
+          'Không tìm thấy public key hợp lệ trong tệp đã chọn.',
+        );
         return;
       }
 
       setRecipientKey(key);
-      setError(null);
-    } catch (err: any) {
-      if (err?.code === 'DOCUMENT_PICKER_CANCELED' || err?.code === 'OPERATION_CANCELED') {
+      setGrantError(null);
+    } catch (error: any) {
+      if (
+        error?.code === 'DOCUMENT_PICKER_CANCELED' ||
+        error?.code === 'OPERATION_CANCELED'
+      ) {
         return;
       }
-      const message = err instanceof Error ? err.message : 'Không thể nhập public key từ tệp.';
-      setError(message);
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Không thể nhập public key từ tệp.';
+      setGrantError(message);
       Alert.alert('Import thất bại', message);
     }
   }, [extractKeyFromContent, filePicker]);
 
-  const handleGrantAccess = useCallback(async () => {
+  const buildGrantPayload = useCallback((): GrantAccessParams | null => {
     if (!file) {
-      return;
+      return null;
     }
 
     const trimmedKey = recipientKey.trim();
     if (!trimmedKey) {
-      setError('Vui lòng nhập public key của người nhận.');
-      return;
+      setGrantError('Vui lòng nhập public key của người nhận.');
+      return null;
     }
 
     try {
       toCompressedPublicKey(trimmedKey);
-    } catch (validationError) {
-      const message = validationError instanceof Error ? validationError.message : 'Public key không hợp lệ.';
-      setError(message);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Public key không hợp lệ.';
+      setGrantError(message);
+      return null;
+    }
+
+    let expiresAt: Date | null = null;
+    if (expiryDays && expiryDays.trim().length > 0) {
+      const parsed = Number(expiryDays);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        setGrantError('Thời hạn hết hạn phải là số dương.');
+        return null;
+      }
+      expiresAt = new Date(Date.now() + parsed * 24 * 60 * 60 * 1000);
+    }
+
+    const payload: GrantAccessParams = {
+      fileId: file.id,
+      targetPublicKey: trimmedKey,
+      keyPackageFingerprint: includeKeyPackage
+        ? storedKeyPackage?.fingerprint ||
+          file.keyPackageFingerprint ||
+          undefined
+        : undefined,
+      expiresAt: expiresAt ?? undefined,
+      metadata: {
+        fileName: file.name,
+        fileSize: file.size,
+        grantedFrom: 'mobile-app',
+      },
+    };
+
+    return payload;
+  }, [file, recipientKey, expiryDays, includeKeyPackage, storedKeyPackage]);
+
+  const handleGrantAccess = useCallback(async () => {
+    const payload = buildGrantPayload();
+    if (!payload) {
       return;
     }
 
     try {
-      setLoading(true);
-      setError(null);
-
-      const fingerprint = includeKeyPackage
-        ? storedKeyPackage?.fingerprint || file.keyPackageFingerprint || null
-        : null;
-
-      const response = await anonymousFileAccessService.grantAccess({
-        fileId: file.id,
-        targetPublicKey: trimmedKey,
-        keyPackageFingerprint: fingerprint || undefined,
-        metadata: {
-          fileName: file.name,
-          fileSize: file.size,
-          grantedFrom: 'mobile-app',
-        },
-      });
-
-      setGrantResult(response.grant);
-
-      const summaryMessage = `Đã cấp quyền cho public key mới. Mã giao dịch: ${response.operation.toUpperCase()}.`;
-      Alert.alert('Thành công', summaryMessage);
-
-      if (includeKeyPackage && storedKeyPackage) {
-        const serialized = serializeKeyPackage(file.id, storedKeyPackage);
-        if (serialized) {
-          Clipboard.setString(serialized);
-          Alert.alert(
-            'Key package đã được sao chép',
-            'Gửi JSON vừa được sao chép cho người nhận để họ có thể tải file.',
-          );
-        }
-      }
-
+      setGrantLoading(true);
+      setGrantError(null);
+      const response = await anonymousFileAccessService.grantAccess(payload);
+      setGrantResult(response);
+      setRecipientKey('');
       onGranted?.(response);
-      onClose();
-    } catch (err) {
-      console.error('[GrantAccessModal] Grant error', err);
-      const message = err instanceof Error ? err.message : 'Không thể cấp quyền truy cập.';
-      setError(message);
-      Alert.alert('Grant thất bại', message);
+
+      if (includeKeyPackage && keyPackageJson) {
+        Clipboard.setString(keyPackageJson);
+        Alert.alert(
+          'Cấp quyền thành công',
+          'Key package đã được copy vào clipboard. Hãy gửi cho người nhận để họ nhập vào thiết bị.',
+        );
+      } else {
+        Alert.alert(
+          'Cấp quyền thành công',
+          'Đã thêm public key vào danh sách truy cập.',
+        );
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Không thể cấp quyền truy cập.';
+      setGrantError(message);
     } finally {
-      setLoading(false);
+      setGrantLoading(false);
     }
-  }, [
-    file,
-    includeKeyPackage,
-    onClose,
-    onGranted,
-    recipientKey,
-    storedKeyPackage,
-  ]);
-
-  const fileNameDisplay = file ? `${file.name} (${truncateKey(file.id, 6, 6)})` : '';
-  const grantSummary = useMemo(() => {
-    if (!grantResult) {
-      return null;
-    }
-
-    return `Đã grant cho hash ${truncateKey(grantResult.accessorPublicKeyHash)} • trạng thái ${grantResult.status}`;
-  }, [grantResult]);
+  }, [buildGrantPayload, includeKeyPackage, keyPackageJson, onGranted]);
 
   return (
-    <Modal animationType="slide" transparent visible={visible} onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent
+      onRequestClose={onClose}>
       <View style={styles.backdrop}>
-        <ScrollView
-          style={styles.container}
-          contentContainerStyle={{ paddingBottom: 24 }}
-          keyboardShouldPersistTaps="handled"
-        >
-          <Text style={styles.title}>Cấp quyền truy cập ẩn danh</Text>
-          <Text style={styles.subtitle}>
-            {file
-              ? `File: ${fileNameDisplay}`
-              : 'Chọn file để cấp quyền truy cập.'}
-          </Text>
-
-          <View style={styles.section}>
-            <Text style={styles.label}>Public key của người nhận</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Nhập hoặc dán public key (hex)"
-              placeholderTextColor={colors.textSecondary}
-              value={recipientKey}
-              onChangeText={(text) => setRecipientKey(text)}
-              autoCapitalize="none"
-              autoCorrect={false}
-              multiline
-            />
-            <Text style={styles.helperText}>
-              Hỗ trợ key dạng compressed (66 ký tự) hoặc x-only (64 ký tự).
-            </Text>
-            <View style={styles.buttonRow}>
-              <TouchableOpacity style={styles.smallButton} onPress={handlePasteFromClipboard}>
-                <Text style={styles.smallButtonText}>Dán từ clipboard</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.smallButton} onPress={handleImportFromFile}>
-                <Text style={styles.smallButtonText}>Quét / nhập từ tệp</Text>
-              </TouchableOpacity>
+        <View style={styles.container}>
+          <View style={styles.header}>
+            <View>
+              <Text style={styles.title}>Cấp quyền truy cập ẩn danh</Text>
+              <Text style={styles.subtitle}>
+                {file
+                  ? `${file.name} • ${normalizeHex(
+                      file.ownershipPublicKey || '',
+                    )}`
+                  : ''}
+              </Text>
             </View>
-            {error && <Text style={styles.errorText}>{error}</Text>}
+            <TouchableOpacity onPress={onClose}>
+              <Text style={styles.closeIcon}>✕</Text>
+            </TouchableOpacity>
           </View>
 
-          {storedKeyPackage ? (
+          <ScrollView showsVerticalScrollIndicator={false}>
             <View style={styles.section}>
+              <Text style={styles.label}>Public key của người nhận</Text>
+              <TextInput
+                style={styles.textInput}
+                value={recipientKey}
+                placeholder="0x..."
+                placeholderTextColor={colors.textSecondary}
+                autoCapitalize="none"
+                autoCorrect={false}
+                multiline
+                onChangeText={setRecipientKey}
+              />
+
+              <View style={styles.helperRow}>
+                <TouchableOpacity
+                  style={styles.helperButton}
+                  onPress={handlePasteFromClipboard}>
+                  <Text style={styles.helperButtonText}>Dán từ clipboard</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.helperButton}
+                  onPress={handleImportFromFile}>
+                  <Text style={styles.helperButtonText}>Nhập từ tệp</Text>
+                </TouchableOpacity>
+              </View>
+
               <View style={styles.toggleRow}>
-                <Text style={styles.toggleLabel}>Đính kèm fingerprint key package</Text>
+                <Text style={styles.toggleLabel}>
+                  Chia sẻ Key Package ngay sau khi cấp quyền
+                  {storedKeyPackage?.fingerprint &&
+                    ` • ${truncate(storedKeyPackage.fingerprint, 12, 6)}`}
+                </Text>
                 <Switch
                   value={includeKeyPackage}
                   onValueChange={setIncludeKeyPackage}
-                  trackColor={{ false: colors.border, true: colors.success + '80' }}
-                  thumbColor={includeKeyPackage ? colors.white : colors.border}
                 />
               </View>
-              <View style={styles.fingerprintBox}>
-                <Text style={styles.fingerprintText}>
-                  Fingerprint: {storedKeyPackage.fingerprint || 'Không có'}
-                </Text>
-                <Text style={styles.fingerprintText}>
-                  Lưu tại: {new Date(storedKeyPackage.storedAt).toLocaleString()}
+
+              <View style={styles.expiryInput}>
+                <TextInput
+                  value={expiryDays}
+                  style={styles.expiryField}
+                  keyboardType="numeric"
+                  onChangeText={setExpiryDays}
+                />
+                <Text style={styles.expiryHint}>
+                  Số ngày hiệu lực (để trống để không giới hạn)
                 </Text>
               </View>
-              {!includeKeyPackage && (
-                <Text style={styles.warningText}>
-                  Người nhận sẽ cần key package được chia sẻ thủ công để giải mã file.
-                </Text>
+
+              {grantError && <Text style={styles.errorText}>{grantError}</Text>}
+
+              {grantResult && (
+                <View style={styles.successBox}>
+                  <Text style={styles.successText}>
+                    ✅ Đã cấp quyền cho hash #
+                    {truncate(grantResult.grant.accessorPublicKeyHash)}
+                  </Text>
+                  <Text style={styles.successText}>
+                    Trạng thái:{' '}
+                    {grantResult.operation === 'created'
+                      ? 'tạo mới'
+                      : 'cập nhật'}{' '}
+                    • Hết hạn:{' '}
+                    {grantResult.grant.expiresAt
+                      ? new Date(grantResult.grant.expiresAt).toLocaleString(
+                          'vi-VN',
+                        )
+                      : 'Không giới hạn'}
+                  </Text>
+                </View>
               )}
             </View>
-          ) : (
-            <View style={styles.section}>
-              <Text style={styles.label}>Chưa tìm thấy key package cục bộ</Text>
-              <Text style={styles.helperText}>
-                Tải lại file bằng quyền chủ sở hữu để tạo và lưu key package trước khi grant.
-              </Text>
-            </View>
-          )}
-
-          {grantSummary && (
-            <View style={styles.grantSummary}>
-              <Text style={styles.grantSummaryText}>{grantSummary}</Text>
-            </View>
-          )}
+          </ScrollView>
 
           <View style={styles.footer}>
-            <TouchableOpacity style={styles.cancelButton} onPress={onClose} disabled={loading}>
-              <Text style={styles.cancelButtonText}>Huỷ</Text>
+            <TouchableOpacity
+              style={styles.secondaryButton}
+              onPress={() => {
+                onClose();
+                resetDraftState();
+              }}>
+              <Text style={styles.secondaryButtonText}>Đóng</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[
                 styles.primaryButton,
-                (loading || !recipientKey.trim()) && styles.primaryButtonDisabled,
+                grantLoading && styles.primaryButtonDisabled,
               ]}
-              onPress={handleGrantAccess}
-              disabled={loading || !recipientKey.trim()}
-            >
-              {loading ? (
-                <ActivityIndicator color={colors.onPrimary} />
+              disabled={grantLoading}
+              onPress={handleGrantAccess}>
+              {grantLoading ? (
+                <ActivityIndicator color={colors.onPrimary} size="small" />
               ) : (
-                <Text style={styles.primaryButtonText}>Grant quyền</Text>
+                <Text style={styles.primaryButtonText}>Cấp quyền</Text>
               )}
             </TouchableOpacity>
           </View>
-        </ScrollView>
+        </View>
       </View>
     </Modal>
   );

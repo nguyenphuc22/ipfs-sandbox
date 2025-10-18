@@ -119,12 +119,15 @@ model AnonymousFileAccess {
   keyStatus             String    @default("client-managed")
   keyPackageFingerprint String?
   status                String    @default("active")
+  revokedAt             DateTime?
+  lastOwnerProof        String?
   file                  File      @relation(fields: [fileId], references: [id], onDelete: Cascade)
 
   @@unique([accessorPublicKeyHash, fileId])
   @@index([accessorPublicKeyHash])
   @@index([fileId])
   @@index([status])
+  @@index([fileId, accessorPublicKeyHash])
 }
 
 model AnonymousAuditLog {
@@ -137,6 +140,9 @@ model AnonymousAuditLog {
   ringPublicKeys    String?
   metadata          String?
   timestamp         DateTime @default(now())
+  status            String?
+  revokedAt         DateTime?
+  lastOwnerProof    String?
 
   @@index([publicKeyHash])
   @@index([eventType])

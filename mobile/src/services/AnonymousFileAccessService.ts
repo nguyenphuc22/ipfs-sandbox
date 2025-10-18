@@ -93,11 +93,27 @@ export interface AnonymousGrantRecord {
   status: string;
   keyStatus: string;
   keyPackageFingerprint: string | null;
+  revokedAt: string | null;
+  lastOwnerProof?: string | null;
+  accessCount?: number;
 }
 
 export interface GrantAccessResponse {
   success: boolean;
   operation: 'created' | 'updated';
+  grant: AnonymousGrantRecord;
+}
+
+export interface OwnerGrantListResponse {
+  success: boolean;
+  fileId: string;
+  grants: AnonymousGrantRecord[];
+  total: number;
+}
+
+export interface RevokeAccessResponse {
+  success: boolean;
+  operation: 'revoked' | 'noop';
   grant: AnonymousGrantRecord;
 }
 
@@ -160,6 +176,7 @@ export class AnonymousFileAccessService {
 
   private static readonly RING_MEMBERS_STORAGE_KEY = 'aot_ring_members_cache_v1';
   private static readonly RING_CONTEXT_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+  private static readonly GRANT_JOURNAL_PREFIX = 'aot_grant_journal_v1_';
 
   private async loadPersistedRingMembers(): Promise<string[] | null> {
     try {
@@ -186,6 +203,72 @@ export class AnonymousFileAccessService {
     } catch (error) {
       console.warn('[Anonymous Access] Failed to persist ring members cache:', error);
     }
+  }
+
+  private getGrantJournalStorageKey(fileId: string): string {
+    return `${AnonymousFileAccessService.GRANT_JOURNAL_PREFIX}${fileId}`;
+  }
+
+  private normalizeGrantRecord(raw: any): AnonymousGrantRecord {
+    const toIso = (value: any): string | null => {
+      if (!value) {
+        return null;
+      }
+      const date = value instanceof Date ? value : new Date(value);
+      return Number.isNaN(date.getTime()) ? null : date.toISOString();
+    };
+
+    return {
+      id: String(raw.id ?? ''),
+      accessorPublicKeyHash: String(raw.accessorPublicKeyHash ?? ''),
+      fileId: String(raw.fileId ?? ''),
+      grantedAt: toIso(raw.grantedAt) ?? new Date().toISOString(),
+      expiresAt: toIso(raw.expiresAt),
+      status: String(raw.status ?? 'active'),
+      keyStatus: String(raw.keyStatus ?? 'client-managed'),
+      keyPackageFingerprint: raw.keyPackageFingerprint ?? null,
+      revokedAt: toIso(raw.revokedAt),
+      lastOwnerProof: raw.lastOwnerProof ?? null,
+      accessCount: typeof raw.accessCount === 'number' ? raw.accessCount : undefined,
+    };
+  }
+
+  private normalizeGrantRecords(rawGrants: any[]): AnonymousGrantRecord[] {
+    if (!Array.isArray(rawGrants)) {
+      return [];
+    }
+    return rawGrants.map((grant) => this.normalizeGrantRecord(grant));
+  }
+
+  private async persistGrantJournal(fileId: string, grants: AnonymousGrantRecord[]): Promise<void> {
+    const key = this.getGrantJournalStorageKey(fileId);
+    try {
+      const payload = {
+        fileId,
+        updatedAt: new Date().toISOString(),
+        grants,
+      };
+      await AsyncStorage.setItem(key, JSON.stringify(payload));
+    } catch (error) {
+      console.warn('[Anonymous Access] Failed to persist grant journal:', error);
+    }
+  }
+
+  private async readGrantJournal(fileId: string): Promise<AnonymousGrantRecord[] | null> {
+    const key = this.getGrantJournalStorageKey(fileId);
+    try {
+      const stored = await AsyncStorage.getItem(key);
+      if (!stored) {
+        return null;
+      }
+      const parsed = JSON.parse(stored);
+      if (parsed && Array.isArray(parsed.grants)) {
+        return this.normalizeGrantRecords(parsed.grants);
+      }
+    } catch (error) {
+      console.warn('[Anonymous Access] Failed to read grant journal:', error);
+    }
+    return null;
   }
 
   private normalizeRingMembers(rawMembers: string[], ownCompressedKey: string): string[] {
@@ -630,14 +713,170 @@ export class AnonymousFileAccessService {
     }
 
     const response = await this.makeRequest<GrantAccessResponse>(
-      `/api/files/${fileId}/anonymous-grant`,
+      `/api/files/${fileId}/anonymous-grants`,
       {
         method: 'POST',
         body: JSON.stringify(body),
       }
     );
 
-    return response;
+    const normalizedGrant = this.normalizeGrantRecord(response.grant);
+    const snapshot = (await this.readGrantJournal(fileId)) ?? [];
+    const updated = [normalizedGrant, ...snapshot.filter((entry) => entry.id !== normalizedGrant.id)];
+    await this.persistGrantJournal(fileId, updated);
+
+    return {
+      ...response,
+      grant: normalizedGrant,
+    };
+  }
+
+  async getCachedOwnerGrants(fileId: string): Promise<AnonymousGrantRecord[] | null> {
+    return this.readGrantJournal(fileId);
+  }
+
+  async listOwnerGrants(fileId: string, options: { useCache?: boolean } = {}): Promise<AnonymousGrantRecord[]> {
+    if (!fileId || typeof fileId !== 'string') {
+      throw new Error('fileId is required');
+    }
+
+    const { useCache = true } = options;
+    if (useCache) {
+      const cached = await this.readGrantJournal(fileId);
+      if (cached) {
+        return cached;
+      }
+    }
+
+    const [ownerPublicKey, ownerPrivateKey] = await Promise.all([
+      this.getPublicKey(),
+      this.getSecretKey(),
+    ]);
+
+    const compressedOwnerKey = toCompressedPublicKey(ownerPublicKey);
+    const timestamp = Date.now();
+    const nonce = this.generateNonce();
+    const ringMembers = await this.getRingMembersForSigning(compressedOwnerKey);
+    const normalizedOwnerKey = normalizeHex(compressedOwnerKey);
+    const signerIndex = ringMembers.findIndex(
+      (member) => normalizeHex(member) === normalizedOwnerKey,
+    );
+
+    if (signerIndex === -1) {
+      throw new Error('Owner key missing from ring membership');
+    }
+
+    const message = `list-grants:${fileId}:${timestamp}:${nonce}`;
+    const ringSignaturePayload = await createLsagRingSignature({
+      message,
+      ringPublicKeys: ringMembers,
+      signerIndex,
+      signerPrivateKey: ownerPrivateKey,
+    });
+    const ringSignature = JSON.stringify(ringSignaturePayload);
+
+    const schnorrMessageHex = sha256Hex(message);
+    const schnorrProof = await createSchnorrProof(schnorrMessageHex, ownerPrivateKey);
+
+    const response = await this.makeRequest<OwnerGrantListResponse>(
+      `/api/files/${fileId}/anonymous-grants/list`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          ringSignature,
+          timestamp,
+          nonce,
+          ownershipProof: {
+            R: schnorrProof.R,
+            s: schnorrProof.s,
+            message: schnorrMessageHex,
+            publicKey: compressedOwnerKey,
+          },
+        }),
+      }
+    );
+
+    if (!response.success) {
+      throw new Error('Không thể tải danh sách grant.');
+    }
+
+    const normalized = this.normalizeGrantRecords(response.grants ?? []);
+    await this.persistGrantJournal(fileId, normalized);
+    return normalized;
+  }
+
+  async revokeAccess(params: { fileId: string; grantId: string; reason?: string }): Promise<RevokeAccessResponse> {
+    const { fileId, grantId, reason } = params;
+
+    if (!fileId || typeof fileId !== 'string') {
+      throw new Error('fileId is required');
+    }
+    if (!grantId || typeof grantId !== 'string') {
+      throw new Error('grantId is required');
+    }
+
+    const [ownerPublicKey, ownerPrivateKey] = await Promise.all([
+      this.getPublicKey(),
+      this.getSecretKey(),
+    ]);
+
+    const compressedOwnerKey = toCompressedPublicKey(ownerPublicKey);
+    const timestamp = Date.now();
+    const nonce = this.generateNonce();
+    const ringMembers = await this.getRingMembersForSigning(compressedOwnerKey);
+    const normalizedOwnerKey = normalizeHex(compressedOwnerKey);
+    const signerIndex = ringMembers.findIndex(
+      (member) => normalizeHex(member) === normalizedOwnerKey,
+    );
+
+    if (signerIndex === -1) {
+      throw new Error('Owner key missing from ring membership');
+    }
+
+    const message = `revoke:${fileId}:${grantId}:${timestamp}:${nonce}`;
+    const ringSignaturePayload = await createLsagRingSignature({
+      message,
+      ringPublicKeys: ringMembers,
+      signerIndex,
+      signerPrivateKey: ownerPrivateKey,
+    });
+    const ringSignature = JSON.stringify(ringSignaturePayload);
+
+    const schnorrMessageHex = sha256Hex(message);
+    const schnorrProof = await createSchnorrProof(schnorrMessageHex, ownerPrivateKey);
+
+    const response = await this.makeRequest<RevokeAccessResponse>(
+      `/api/files/${fileId}/anonymous-grants/${grantId}`,
+      {
+        method: 'DELETE',
+        body: JSON.stringify({
+          ringSignature,
+          timestamp,
+          nonce,
+          reason: reason || null,
+          ownershipProof: {
+            R: schnorrProof.R,
+            s: schnorrProof.s,
+            message: schnorrMessageHex,
+            publicKey: compressedOwnerKey,
+          },
+        }),
+      }
+    );
+
+    const normalizedGrant = this.normalizeGrantRecord(response.grant);
+    const snapshot = (await this.readGrantJournal(fileId)) ?? [];
+    const updated = [normalizedGrant, ...snapshot.filter((entry) => entry.id !== normalizedGrant.id)];
+    await this.persistGrantJournal(fileId, updated);
+
+    return {
+      ...response,
+      grant: normalizedGrant,
+    };
+  }
+
+  async syncGrantJournal(fileId: string): Promise<AnonymousGrantRecord[]> {
+    return this.listOwnerGrants(fileId, { useCache: false });
   }
 
   /**

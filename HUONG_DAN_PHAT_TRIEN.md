@@ -347,6 +347,62 @@ API Configuration: {
 3. Kiểm tra backend: `curl http://YOUR_IP:3000/health`
 4. Kiểm tra cùng WiFi network
 
+#### 7.3. Quản lý quyền ẩn danh (Grant / Revoke)
+
+> ⚠️ **Lưu ý:** Các endpoint `anonymous-grants` đang được triển khai theo kế hoạch mới (18/10/2025). Trong thời gian phát triển có thể gọi trực tiếp qua script hỗ trợ hoặc mobile app Access Manager modal.
+
+1. **Liệt kê người nhận hiện tại**
+    ```bash
+    curl -X GET http://localhost:3000/api/files/<FILE_ID>/anonymous-grants \
+       -H 'Content-Type: application/json' \
+       -d '{
+          "ownershipPublicKey": "04abcd...",
+          "schnorr": { "R": "...", "s": "...", "message": "owner-list:<FILE_ID>:<timestamp>:<nonce>" },
+          "ringSignature": "0x...",
+          "timestamp": 1729257600000,
+          "nonce": "abc123..."
+       }'
+    ```
+
+2. **Cấp quyền cho public key mới**
+    ```bash
+    curl -X POST http://localhost:3000/api/files/<FILE_ID>/anonymous-grants \
+       -H 'Content-Type: application/json' \
+       -d '{
+          "ownershipPublicKey": "04abcd...",
+          "targetPublicKey": "0299ef...",
+          "expiresAt": null,
+          "keyPackageFingerprint": "fp_123",
+          "metadata": { "notes": "Demo day" },
+          "schnorr": { "R": "...", "s": "...", "message": "grant:<FILE_ID>:<timestamp>:<nonce>" },
+          "ringSignature": "0x...",
+          "timestamp": 1729257600000,
+          "nonce": "abc123..."
+       }'
+    ```
+
+3. **Thu hồi quyền**
+    ```bash
+    curl -X DELETE http://localhost:3000/api/files/<FILE_ID>/anonymous-grants/<GRANT_ID> \
+       -H 'Content-Type: application/json' \
+       -d '{
+          "ownershipPublicKey": "04abcd...",
+          "schnorr": { "R": "...", "s": "...", "message": "revoke:<FILE_ID>:<GRANT_ID>:<timestamp>:<nonce>" },
+          "ringSignature": "0x...",
+          "timestamp": 1729257600000,
+          "nonce": "abc123..."
+       }'
+    ```
+
+4. **Kiểm tra audit log** – Sau mỗi thao tác, mở Prisma Studio:
+    ```bash
+    cd backend
+    npm run prisma:studio
+    ```
+    Đảm bảo `anonymousAuditLog` ghi nhận `grant_issued` / `grant_revoked` và `AnonymousFileAccess.status` được cập nhật.
+
+5. **Đồng bộ trên mobile** – Access Manager modal sẽ gọi lại `GET anonymous-grants` sau mỗi thao tác. Nếu cần reset dữ liệu demo, hãy xoá record liên quan trong SQLite (`backend/prisma/database.db`) hoặc dùng script `scripts/reset-anonymous-grants.js` (sẽ bổ sung cùng lúc triển khai backend).
+
 ## Quy Trình Phát Triển
 
 ### 1. Development Workflow

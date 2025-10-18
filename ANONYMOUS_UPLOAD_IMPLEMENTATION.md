@@ -90,10 +90,12 @@ Mobile nhận response
 5. **Tương thích download mới**: manifest + fingerprint chuẩn bị cho download flow Task C.
 
 ## 6. Tác vụ tiếp theo
-- [ ] Hoàn thiện tài liệu README/start-system mô tả pipeline mới.
-- [ ] Viết QA checklist quản lý key package (backup, mã hóa thiết bị, telemetry).
-- [ ] Script migrate dữ liệu upload cũ sang metadata `clientChunked` (nếu còn bản ghi legacy).
-- [ ] Tích hợp integration test upload→download trong CI sau khi môi trường Node được nâng cấp.
+- [ ] Bổ sung **Access Management API** (grant/revoke) cho chủ sở hữu: cập nhật Prisma schema, thêm endpoint `GET/POST/DELETE /api/files/:id/anonymous-grants`, đảm bảo audit log `grant_issued`, `grant_revoked`.
+- [ ] Thiết kế lại modal trên mobile để quản lý danh sách public key, đồng bộ với backend mới và xử lý luồng sao chép key package.
+- [ ] Hoàn thiện tài liệu README/start-system mô tả pipeline mới cùng hướng dẫn grant/revoke.
+- [ ] Viết QA checklist quản lý key package (backup, mã hóa thiết bị, telemetry) và kiểm thử trường hợp revoke.
+- [ ] Script migrate dữ liệu upload cũ sang metadata `clientChunked` (nếu còn bản ghi legacy) đồng thời thiết lập trạng thái grant mặc định.
+- [ ] Tích hợp integration test upload→grant→download→revoke trong CI sau khi môi trường Node được nâng cấp.
 
 ## 7. Tài liệu và mã nguồn liên quan
 - `mobile/src/services/ChunkEncryptionService.ts`

@@ -13,6 +13,13 @@
 - ⚠️ Jest suites cần Node.js ≥ 20.19 để import `@noble/hashes/sha2`; khi chạy trên Node 18 sẽ gặp lỗi module resolution (đã ghi chú trong `issue_plan.md`).
 - Task D còn lại: bổ sung integration test upload→download, smoke test end-to-end và cập nhật tài liệu hướng dẫn vận hành.
 
+## ✅ Tóm tắt cập nhật 2025-10-18
+- Chuyển `grant` từ demo một chiều sang **quản trị toàn bộ vòng đời quyền truy cập** (grant + revoke) dành cho chủ sở hữu file.
+- Đề xuất nhóm endpoint mới: `GET /api/files/:id/anonymous-grants` (liệt kê), `POST /api/files/:id/anonymous-grants` (thêm người nhận) và `DELETE /api/files/:id/anonymous-grants/:grantId` (thu hồi) – tất cả đều yêu cầu Schnorr + LSAG để xác thực chủ sở hữu.
+- Mobile app sẽ có **Access Manager modal** với hai danh sách: public key đã được cấp quyền và các đề cử mới; thao tác click để thêm/bỏ, tự động sync sau khi backend xác nhận.
+- Khi revoke thành công, backend ghi `anonymousAuditLog` với event `grant_revoked`, cập nhật `anonymousFileAccess.status = 'revoked'` và phát tín hiệu để client xóa cache/ẩn file khỏi danh sách người nhận.
+- Các nội dung chi tiết và kế hoạch thực thi được chuyển sang `issue_plan.md` (phiên bản 2025-10-18) để triển khai ngay sau đợt cập nhật này.
+
 ---
 
 ## 📋 MỤC LỤC

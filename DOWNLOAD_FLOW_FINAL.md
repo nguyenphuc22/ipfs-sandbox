@@ -157,6 +157,20 @@ Tất cả endpoints KHÔNG sử dụng userId, chỉ authenticate bằng public
 | `/api/files/:id/anonymous-access` | POST | Get chunk manifest | publicKey + ringSignature + nonce |
 | `/api/files/:id/anonymous-integrity-alert` | POST | Report chunk issue | publicKey + ringSignature + nonce |
 | `/api/audit/anonymous-log` | POST | Log audit event | publicKey + ringSignature + nonce |
+| `/api/files/:id/anonymous-grants` | GET | Chủ sở hữu xem danh sách public key đã được cấp quyền | ownershipPublicKey + Schnorr proof + LSAG |
+| `/api/files/:id/anonymous-grants` | POST | Thêm/cập nhật danh sách người nhận (grant mới hoặc chỉnh sửa hạn) | ownershipPublicKey + Schnorr proof + LSAG |
+| `/api/files/:id/anonymous-grants/:grantId` | DELETE | Thu hồi quyền truy cập cho một public key cụ thể | ownershipPublicKey + Schnorr proof + LSAG |
+
+### **Giai đoạn -1: Quản trị quyền truy cập (Owner Flow)**
+
+1. **Tải danh sách quyền hiện tại** – Mobile owner gọi `GET /api/files/:id/anonymous-grants` với Schnorr proof + LSAG để chứng minh quyền sở hữu. Backend trả về mỗi grant gồm `accessorPublicKeyHash`, trạng thái (`active|revoked|pending`), fingerprint key package và metadata audit gần nhất.
+2. **Trình bày trong Access Manager modal** – UI hiển thị hai nhóm: `Đang có quyền` (active) và `Đề cử mới` (owner nhập/dán public key). Các hàng đi kèm hành động `Revoke` (ẩn/bật) và `Grant` (thêm mới).
+3. **Thêm người nhận** – Khi chọn `Grant`, client tạo Schnorr proof + LSAG với message chuẩn `grant:fileId:timestamp:nonce`, gửi POST cùng metadata (fingerprint, expiry, ghi chú). Backend tạo bản ghi mới hoặc cập nhật grant cũ, ghi audit event `grant_issued`, phản hồi `operation` = `created|updated`.
+4. **Thu hồi quyền** – Khi chọn `Revoke`, client gọi `DELETE /api/files/:id/anonymous-grants/:grantId` với message `revoke:fileId:grantId:timestamp:nonce`. Backend đặt `status='revoked'`, ghi log `grant_revoked` và trả về payload để client cập nhật UI.
+5. **Đồng bộ người nhận** – Backend phát `lastModified` (RFC3339). Mobile dùng giá trị này để invalid cache và thông báo người nhận (qua refresh) rằng file đã bị revoke; UI trên phía nhận hiển thị badge `Revoked` và ẩn nút download.
+6. **Chia sẻ key package** – Khi grant thành công, modal sẽ tự động copy JSON key package (như hiện tại) hoặc hiển thị QR code. Đây vẫn là bước ngoại tuyến giữa owner và recipient, nhưng được nhắc nhở trực tiếp trong flow quản trị.
+
+Khung quy trình này đảm bảo demo có thể minh hoạ rõ: chủ sở hữu thêm quyền, chia sẻ key package, rồi thu hồi lại quyền bằng một cú click.
 
 ### **Request Body Format (Chuẩn cho tất cả endpoints)**
 

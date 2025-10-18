@@ -1,27 +1,56 @@
-# Kế hoạch triển khai: Anonymous Sharing Grant
+# Kế hoạch triển khai: Anonymous Access Lifecycle
 
 **Last Updated:** 2025-10-18
 
 ## Mục tiêu
-- Cho phép uploader cấp quyền truy cập cho public key khác sau khi file đã được upload ẩn danh.
-- Đảm bảo người nhận nhìn thấy file trong `AnonymousFileAccess` ngay sau khi grant, không cần thao tác DB thủ công.
-- Gắn kết luồng chia sẻ với việc chuyển giao key package để demo hai thiết bị trơn tru.
+- Cho phép chủ sở hữu quản lý toàn bộ vòng đời quyền truy cập ẩn danh (grant, cập nhật, revoke) bằng chữ ký Schnorr + LSAG.
+- Đảm bảo mobile app hiển thị rõ danh sách public key được cấp quyền, thao tác thêm/bớt chỉ bằng một chạm.
+- Đồng bộ phía người nhận để phản ánh grant/revoke tức thời và xử lý key package an toàn.
+- Hoàn thiện kiểm thử, audit log và tài liệu phục vụ demo chính thức.
+
+## Phạm vi
+- Backend Express + Prisma, mobile React Native, tài liệu vận hành/QA.
+- Không mở rộng sang adjudicator/escrow workflow ở giai đoạn này.
 
 ---
 
-## Task A – Backend grant endpoint (DONE)
-- [x] Thiết kế endpoint `POST /api/files/:fileId/anonymous-grant` nhận `targetPublicKey`, nonce, ring signature.
-- [x] Kiểm tra quyền: chỉ chủ sở hữu (hash public key trùng với uploader) mới được grant; xác thực Schnorr + LSAG theo thiết kế hiện hành.
-- [x] Tạo hoặc cập nhật bản ghi `anonymousFileAccess` cho `targetPublicKeyHash`, copy fingerprint và trạng thái `client-managed`.
-- [x] Ghi audit log `grant` để theo dõi ai cấp quyền cho ai.
+## Initiative 1 – Backend Access Management API (TODO)
+- [x] Cập nhật Prisma schema (`AnonymousFileAccess`, `AnonymousAuditLog`) thêm các trường `status`, `revokedAt`, `lastOwnerProof`, index `fileId + accessorPublicKeyHash`.
+- [x] Tạo service `AccessManagementService` gom logic list/grant/revoke, tái sử dụng `RingSignatureService` & `SchnorrOwnershipService`.
+- [x] Triển khai REST endpoints:
+  - `GET /api/files/:fileId/anonymous-grants`
+  - `POST /api/files/:fileId/anonymous-grants`
+  - `DELETE /api/files/:fileId/anonymous-grants/:grantId`
+  (Tất cả yêu cầu Schnorr proof + LSAG, middleware chống replay theo nonce.)
+- [x] Ghi `anonymousAuditLog` với event `grant_issued`, `grant_updated`, `grant_revoked`; phát event nội bộ `AccessGrantChanged` để phục vụ mobile sync.
 
-## Task B – Mobile grant UI & service (DONE)
-- [x] Thêm action trong `IPFSFileList` (nút **Grant**) mở modal nhập/dán public key của người nhận.
-- [x] Gọi service mới `AnonymousFileAccessService.grantAccess` với Schnorr proof + LSAG để gửi request tới backend.
-- [x] Hiển thị feedback thành công/thất bại, tự động sao chép key package JSON khi grant thành công.
-- [x] Làm mới `IPFSFileList` sau khi grant để phản ánh trạng thái truy cập mới.
+## Initiative 2 – Mobile Access Manager UX (TODO)
+- [x] Xây dựng component `AccessManagerModal` hiển thị hai danh sách: "Đang có quyền" (active) và "Thêm mới" (input/dán/scan).
+- [x] Mở rộng `AnonymousFileAccessService` với method `listOwnerGrants`, `grantAccess`, `revokeAccess`, `syncGrantJournal`.
+- [x] Cho phép người dùng thêm public key, chỉnh expiry, toggle revoke; hiển thị trạng thái (`active`, `revoked`, `pending`).
+- [ ] Sau grant thành công: copy tự động key package JSON, hiển thị QR code optional và toast hướng dẫn chia sẻ. *(Clipboard hoạt động; QR/toast chưa triển khai.)*
+- [x] UI phản hồi realtime sau khi backend xác nhận (loading state, optimistic update, error handling).
 
-## Task C – Thử nghiệm & tài liệu (TODO)
-- [ ] Viết test tích hợp: uploader grant → người nhận refresh thấy file → download hoàn tất với key package đã import.
-- [ ] Cập nhật `README.md` (mục demo hai thiết bị) mô tả thêm bước grant tự động qua UI/API mới.
-- [ ] Chuẩn bị checklist QA: kiểm tra audit log, trạng thái `anonymousFileAccess`, và xử lý revoke trên flow mới.
+## Initiative 3 – Recipient Sync & Key Package Handling (TODO)
+- [ ] Mobile phía người nhận: cập nhật `anonymous-list` sử dụng `lastModified`/ETag, ẩn file khi `status='revoked'`.
+- [ ] Thêm badge "Revoked" và logic xoá cache/key package khi quyền bị thu hồi.
+- [ ] Thông báo UI khi owner grant mới (toast hoặc banner "Bạn vừa được cấp quyền").
+- [ ] Script hỗ trợ QA (`scripts/reset-anonymous-grants.js`) để reset dữ liệu demo.
+
+## Initiative 4 – Validation & Documentation (TODO)
+- [ ] Integration test end-to-end: upload → grant → recipient download → revoke → recipient bị chặn.
+- [ ] Cập nhật tài liệu (`DOWNLOAD_FLOW_FINAL.md`, `ANONYMOUS_DOWNLOAD_REDESIGN.md`, `HUONG_DAN_PHAT_TRIEN.md`, `README.md`) với flow grant/revoke.
+- [ ] Lập QA checklist (audit log, fingerprint, key package, retry cases).
+- [ ] Chuẩn bị demo script & slide Access Manager, ghi lại video backup.
+
+---
+
+**Ghi chú trạng thái:**
+- AccessManagerModal đã sẵn sàng nhưng chưa được nối vào luồng chính (`IPFSFileList`) nên chủ file hiện vẫn thấy giao diện cấp quyền legacy.
+- QR code/toast chia sẻ key package, recipient sync, QA script và bộ tài liệu/demo vẫn cần thực hiện.
+
+## Cột mốc đề xuất
+- **Milestone 1:** Backend API + migration hoàn tất, seed data demo sẵn sàng.
+- **Milestone 2:** Mobile Access Manager hoạt động end-to-end (grant + revoke) với backend mới.
+- **Milestone 3:** Recipient trải nghiệm đầy đủ, integration test xanh.
+- **Milestone 4:** Tài liệu/QA/demo kit hoàn thiện, sẵn sàng trình chiếu.

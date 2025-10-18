@@ -8,6 +8,7 @@ const crypto = require('crypto');
 const { getSchnorr } = require('../utils/schnorr');
 const { FileAccessService } = require('../services/FileAccessService');
 const { RingSignatureService } = require('../services/RingSignatureService');
+const { AccessManagementService, AccessManagementEvents } = require('../services/AccessManagementService');
 const { secureLog, maskHashForLogging } = require('../utils/monitoring');
 const { verifyLsagRingSignature } = require('../utils/ringSignature');
 
@@ -17,6 +18,7 @@ const router = express.Router();
 // Store dependencies for dependency injection
 let prismaInstance;
 let fileAccessService;
+let accessManagementService;
 
 function extractOwnershipProof(payload = {}) {
     if (payload.ownershipProof && typeof payload.ownershipProof === 'object') {
@@ -42,6 +44,24 @@ function init(prismaClient) {
     // Create services with dependency injection
     const ringSignatureService = new RingSignatureService(prismaInstance);
     fileAccessService = new FileAccessService(ringSignatureService, prismaInstance);
+    accessManagementService = new AccessManagementService({
+        prismaClient: prismaInstance,
+        ringService: ringSignatureService,
+    });
+
+    AccessManagementEvents.removeAllListeners('AccessGrantChanged');
+    AccessManagementEvents.on('AccessGrantChanged', (payload) => {
+        try {
+            const maskedFileId = payload?.fileId || 'unknown';
+            secureLog('AccessGrantChanged', `Grant lifecycle event ${payload?.type || 'unknown'} for file ${maskedFileId}`, 'info', {
+                fileId: payload?.fileId,
+                grantId: payload?.grant?.id,
+                status: payload?.grant?.status,
+            });
+        } catch (error) {
+            console.error('[AccessGrantChanged] Failed to log event', error);
+        }
+    });
     
     // Return the configured router
     return router;
@@ -152,11 +172,64 @@ router.post('/:fileId/anonymous-access', async (req, res) => {
     }
 });
 
+async function handleAnonymousGrantList(req, res) {
+    const startTime = Date.now();
+
+    try {
+        const { fileId } = req.params;
+        const payload = { ...(req.body || {}), ...(req.query || {}) };
+        const ownershipProof = extractOwnershipProof(payload);
+        const ringSignature = payload.ringSignature || payload.lsagSignature;
+        const timestamp = payload.timestamp || payload.requestTimestamp;
+        const nonce = payload.nonce;
+
+        if (!ringSignature || !timestamp || !nonce) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required fields: ringSignature, timestamp, nonce',
+            });
+        }
+
+        const grants = await accessManagementService.listGrants({
+            fileId,
+            timestamp: Number(timestamp),
+            nonce,
+            ringSignature,
+            ownershipProof,
+        });
+
+        const duration = Date.now() - startTime;
+        secureLog('AnonymousGrantsList', `Listed ${grants.length} grants for file ${fileId} [${duration}ms]`, 'info', {
+            fileId,
+        });
+
+        return res.json({
+            success: true,
+            fileId,
+            total: grants.length,
+            grants,
+        });
+    } catch (error) {
+        const duration = Date.now() - startTime;
+        secureLog('AnonymousGrantsList', `Failed to list grants for file ${req.params.fileId}: ${error.message} [${duration}ms]`, 'error', {
+            fileId: req.params.fileId,
+        });
+
+        return res.status(400).json({
+            success: false,
+            error: error.message || 'Unable to list grants',
+        });
+    }
+}
+
 /**
- * POST /api/files/:fileId/anonymous-grant
- * Grant anonymous access to a new public key
+ * GET /api/files/:fileId/anonymous-grants
+ * List anonymous grants for owner management
  */
-router.post('/:fileId/anonymous-grant', async (req, res) => {
+router.get('/:fileId/anonymous-grants', handleAnonymousGrantList);
+router.post('/:fileId/anonymous-grants/list', handleAnonymousGrantList);
+
+async function handleAnonymousGrantCreation(req, res) {
     const startTime = Date.now();
 
     try {
@@ -181,7 +254,7 @@ router.post('/:fileId/anonymous-grant', async (req, res) => {
             });
         }
 
-        const result = await fileAccessService.grantAnonymousAccess({
+        const result = await accessManagementService.grantAccess({
             fileId,
             targetPublicKey,
             ringSignature,
@@ -219,15 +292,83 @@ router.post('/:fileId/anonymous-grant', async (req, res) => {
         const message = error instanceof Error ? error.message : 'Internal server error';
         const isClientError = [
             'required',
-            'Invalid',
+            'invalid',
             'already been used',
             'too old',
-            'Ownership',
+            'ownership',
             'not active',
         ].some((token) => message.toLowerCase().includes(token.toLowerCase()));
 
         const statusCode = message.includes('not found') ? 404 : isClientError ? 400 : 500;
 
+        return res.status(statusCode).json({
+            success: false,
+            error: message,
+        });
+    }
+}
+
+router.post('/:fileId/anonymous-grants', handleAnonymousGrantCreation);
+router.post('/:fileId/anonymous-grant', handleAnonymousGrantCreation);
+
+/**
+ * DELETE /api/files/:fileId/anonymous-grants/:grantId
+ * Revoke an existing grant
+ */
+router.delete('/:fileId/anonymous-grants/:grantId', async (req, res) => {
+    const startTime = Date.now();
+
+    try {
+        const { fileId, grantId } = req.params;
+        const {
+            ringSignature,
+            timestamp,
+            nonce,
+            reason,
+        } = req.body || {};
+
+        const ownershipProof = extractOwnershipProof(req.body);
+
+        if (!ringSignature || !timestamp || !nonce || !ownershipProof) {
+            secureLog('AnonymousRevoke', `Missing required fields for grant ${grantId} on file ${fileId}`, 'warn', { fileId, grantId });
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required fields',
+            });
+        }
+
+        const result = await accessManagementService.revokeAccess({
+            fileId,
+            grantId,
+            ringSignature,
+            timestamp,
+            nonce,
+            ownershipProof,
+            reason,
+        });
+
+        const duration = Date.now() - startTime;
+        secureLog('AnonymousRevoke', `Revocation ${result.operation} for grant ${grantId} on file ${fileId} [${duration}ms]`, 'info', {
+            fileId,
+            grantId,
+            operation: result.operation,
+        });
+
+        return res.json({
+            success: true,
+            operation: result.operation,
+            grant: result.grant,
+        });
+
+    } catch (error) {
+        const duration = Date.now() - startTime;
+        secureLog('AnonymousRevoke', `Error revoking grant ${req.params.grantId} on file ${req.params.fileId}: ${error.message} [${duration}ms]`, 'error', {
+            fileId: req.params.fileId,
+            grantId: req.params.grantId,
+        });
+
+        const message = error instanceof Error ? error.message : 'Internal server error';
+        const statusCode = message.toLowerCase().includes('not found') ? 404 : 400;
         return res.status(statusCode).json({
             success: false,
             error: message,

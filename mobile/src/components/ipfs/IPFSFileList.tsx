@@ -100,7 +100,7 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
             publicKey: ownerPublicKey,
             ringSignature: anonymousAuth.ringSignature,
             timestamp: anonymousAuth.timestamp,
-            nonce: anonymousAuth.nonce
+            nonce: anonymousAuth.nonce,
           });
         } else if (ownerPublicKey) {
           // Use AnonymousFileAccessService to generate proper auth parameters
@@ -133,7 +133,7 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
                 chunks: file.cid
                   ? [{ index: 0, cid: file.cid, hash: file.chunkHash || '' }]
                   : undefined,
-              }))
+              })),
             };
           }
         } else {
@@ -219,7 +219,9 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
         console.log('[IPFSFileList] Grant completed', response.grant);
       }
 
-      void handleRefresh();
+      handleRefresh().catch(error => {
+        console.warn('Failed to refresh file list after grant:', error);
+      });
     },
     [handleRefresh],
   );
