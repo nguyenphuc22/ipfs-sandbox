@@ -380,12 +380,28 @@ export const AOTUploadModal: React.FC<AOTUploadModalProps> = ({
       // ========================================================================
       if (shouldPersistKeyPackage) {
         try {
+          const keyPackageForSharing = {
+            fileId: uploadResponse.fileId,
+            masterKey: chunkUploadResult.masterKey,
+            chunkKeys: chunkUploadResult.chunkKeys,
+            fingerprint: chunkUploadResult.keyPackageFingerprint,
+          };
           await saveKeyPackage(uploadResponse.fileId, {
             masterKey: chunkUploadResult.masterKey,
             chunkKeys: chunkUploadResult.chunkKeys,
             fingerprint: chunkUploadResult.keyPackageFingerprint,
           });
           console.log('[AOT Upload Modal] Key package saved locally');
+          if (__DEV__) {
+            console.log('[AOT Upload Modal] Share this key package JSON:\n', JSON.stringify(keyPackageForSharing, null, 2));
+            console.log('[AOT Upload Modal] Paste on device B console:\n',
+              `await saveKeyPackage("${uploadResponse.fileId}", ${JSON.stringify({
+                masterKey: chunkUploadResult.masterKey,
+                chunkKeys: chunkUploadResult.chunkKeys,
+                fingerprint: chunkUploadResult.keyPackageFingerprint,
+              }, null, 2)});`
+            );
+          }
         } catch (storageError) {
           console.warn('[AOT Upload Modal] Failed to persist key package', storageError);
         }
