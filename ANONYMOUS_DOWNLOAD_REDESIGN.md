@@ -20,6 +20,7 @@
 - Khi revoke thành công, backend ghi `anonymousAuditLog` với event `grant_revoked`, cập nhật `anonymousFileAccess.status = 'revoked'` và phát tín hiệu để client xóa cache/ẩn file khỏi danh sách người nhận.
 - Các nội dung chi tiết và kế hoạch thực thi được chuyển sang `issue_plan.md` (phiên bản 2025-10-18) để triển khai ngay sau đợt cập nhật này.
 - Trên mobile, danh sách anonymous sử dụng `ETag` + `Last-Modified` để đồng bộ: nhận 304 → dùng snapshot cục bộ, đồng thời tự động lọc `status='revoked'`, xóa key package tương ứng và gửi audit event `delete_cache`; UI hiển thị banner "granted/revoked" ngay lập tức.
+- `IPFSFileList` phân biệt chế độ xem chủ sở hữu vs. người nhận: khi dữ liệu đến từ `AnonymousFileAccessService`, danh sách bỏ lọc theo `ownershipPublicKey` để recipient luôn thấy file được grant sau khi refresh.
 - Bổ sung script `scripts/reset-anonymous-grants.js` giúp QA/dev reset dữ liệu demo nhanh chóng (xóa AnonymousFileAccess + audit liên quan theo `fileId`/`recipient`).
 
 ---

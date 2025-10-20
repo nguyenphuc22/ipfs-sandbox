@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -95,6 +95,18 @@ export const AccessManagerModal: React.FC<AccessManagerModalProps> = ({
     () => (file ? serializeKeyPackage(file.id, storedKeyPackage) : null),
     [file, storedKeyPackage],
   );
+
+  const loggedKeyPackageRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (visible && keyPackageJson && includeKeyPackage) {
+      if (loggedKeyPackageRef.current !== keyPackageJson) {
+        console.log('[AccessManagerModal] Key package JSON ready to share:\n', keyPackageJson);
+        loggedKeyPackageRef.current = keyPackageJson;
+      }
+    } else if (!visible) {
+      loggedKeyPackageRef.current = null;
+    }
+  }, [visible, keyPackageJson, includeKeyPackage]);
 
   const styles = useMemo(
     () =>

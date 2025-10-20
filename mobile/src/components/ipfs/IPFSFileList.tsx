@@ -6,6 +6,7 @@ import { FileData } from '../../types';
 import { FileViewer } from './FileViewer';
 import { AccessManagerModal } from './AccessManagerModal';
 import { normalizeHex } from '../../utils/aotCrypto';
+import { filterFilesByOwnership } from '../../utils';
 import {
   createAnonymousFileAccessService,
   GrantAccessResponse,
@@ -95,6 +96,7 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
 
       try {
         let result;
+        let fetchedViaAnonymousAccess = false;
         if (ownerPublicKey && anonymousAuth) {
           // Use anonymous authentication with provided parameters
           result = await getUserFiles({
@@ -116,6 +118,7 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
           } else {
             // Get files using proper anonymous authentication
             const accessibleList = await anonymousService.listAccessibleFiles();
+            fetchedViaAnonymousAccess = true;
 
             if (__DEV__) {
               console.log('[IPFSFileList] Anonymous list metadata', accessibleList.metadata);
@@ -151,13 +154,10 @@ export const IPFSFileList: React.FC<IPFSFileListProps> = ({
 
         if (result.success && result.files) {
           const filesList: FileData[] = Array.isArray(result.files) ? result.files : [];
-          const filtered: FileData[] = normalizedOwnerKey
-            ? filesList.filter((file: FileData) =>
-                file.ownershipPublicKey
-                  ? normalizeHex(file.ownershipPublicKey) === normalizedOwnerKey
-                  : true,
-              )
-            : filesList;
+          const filtered: FileData[] = filterFilesByOwnership(filesList, {
+            normalizedOwnerKey,
+            skipOwnershipFilter: fetchedViaAnonymousAccess,
+          });
           setApiFiles(filtered);
         } else {
           console.warn('Failed to load files:', result?.error);

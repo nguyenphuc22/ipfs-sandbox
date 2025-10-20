@@ -10,6 +10,15 @@ const SECRET_KEY_STORAGE_KEY = 'aot_secret_key';
 
 const createRandomIdentifier = () => `user-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
+const logIdentityKeyMaterial = (context: string, identity: AOTIdentity) => {
+  const identifier = identity.identifier || 'unknown';
+  const publicKey = identity.publicKey || 'N/A';
+  const privateKey = identity.privateKey || 'N/A';
+  console.log(
+    `[AOT Identity] ${context} identity ${identifier} with publicKey: ${publicKey} and privateKey: ${privateKey}`,
+  );
+};
+
 const serializeIdentity = (identity: AOTIdentity) => JSON.stringify(identity);
 const deserializeIdentity = (value: string | null): AOTIdentity | null => {
   if (!value) {
@@ -197,6 +206,7 @@ export const useAOTIdentity = (): UseAOTIdentityResult => {
 
         try {
           const registered = await registerIdentity(draft);
+          logIdentityKeyMaterial('Registered', registered.identity);
           setRingContext(registered.context);
           setIdentity(registered.identity);
           setError(null);
@@ -205,6 +215,7 @@ export const useAOTIdentity = (): UseAOTIdentityResult => {
           const message = err instanceof Error ? err.message : 'Failed to initialize identity';
           if (message.toLowerCase().includes('already registered')) {
             const resolved = await resolveIdentityFromContext(draft);
+            logIdentityKeyMaterial('Resolved existing', resolved.identity);
             setIdentity(resolved.identity);
             setError(null);
             return resolved.identity;

@@ -120,11 +120,14 @@ class FileAccessService {
 
     // 3. Verify ring signature
     const message = `list-files:${timestamp}:${nonce}`;
+    const ringPublicKeys = await this.ringService.getAllPublicKeys();
     const isValid = await this.ringService.verifyRingSignature({
       publicKey,
       signature: ringSignature,
       message,
-      ringPublicKeys: await this.ringService.getAllPublicKeys(),
+      ringPublicKeys,
+      usageContext: 'anonymous-access',
+      actorPublicKey: publicKey,
     });
 
     if (!isValid) {

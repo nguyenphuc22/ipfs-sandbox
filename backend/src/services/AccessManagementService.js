@@ -117,6 +117,7 @@ class AccessManagementService {
     ringSignature,
     messageBuilder,
     ownerPublicKey,
+    activityType,
   }) {
     if (!timestamp || !Number.isFinite(Number(timestamp))) {
       throw new Error('Missing or invalid timestamp');
@@ -139,11 +140,17 @@ class AccessManagementService {
     }
 
     const message = messageBuilder({ fileId, grantId, timestamp: numericTs, nonce: nonce.trim() });
+    const keyImageContext = {
+      usageContext: 'owner-management',
+      scopeId: fileId,
+      activityType: activityType || null,
+    };
     const ringValid = await this.ringService.verifyRingSignature({
       publicKey: ownerPublicKey,
       signature: ringSignature,
       message,
       ringPublicKeys: await this.ringService.getAllPublicKeys(),
+      keyImageContext,
     });
 
     if (!ringValid) {
@@ -183,6 +190,7 @@ class AccessManagementService {
       nonce,
       ringSignature,
       ownerPublicKey: file.ownershipPublicKey,
+      activityType: 'list-grants',
       messageBuilder: ({ fileId: fid, timestamp: ts, nonce: n }) => `list-grants:${fid}:${ts}:${n}`,
     });
 
@@ -249,6 +257,7 @@ class AccessManagementService {
       nonce,
       ringSignature,
       ownerPublicKey: file.ownershipPublicKey,
+      activityType: 'grant',
       messageBuilder: ({ fileId: fid, timestamp: ts, nonce: n }) => {
         const recipientHash = this.ringService.hashPublicKey(targetPublicKey);
         return `grant:${fid}:${recipientHash}:${ts}:${n}`;
@@ -377,6 +386,7 @@ class AccessManagementService {
       nonce,
       ringSignature,
       ownerPublicKey: file.ownershipPublicKey,
+      activityType: 'revoke',
       messageBuilder: ({ fileId: fid, grantId: gid, timestamp: ts, nonce: n }) => `revoke:${fid}:${gid}:${ts}:${n}`,
     });
 

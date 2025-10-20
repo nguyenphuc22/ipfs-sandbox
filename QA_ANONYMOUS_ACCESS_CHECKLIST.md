@@ -17,7 +17,7 @@
 - [ ] Backend:
   - `AnonymousFileAccess` có record mới (`status='active'`, `accessorPublicKeyHash` đúng hash recipient).
   - `AnonymousAuditLog` sinh `grant_issued` (metadata chứa `recipientPublicKeyHash`, `nonce`).
-- [ ] Recipient kéo refresh danh sách `anonymous-list` → file xuất hiện ngay, meta `etag` được lưu trong AsyncStorage (`aot_anonymous_list_cache_v1_<hash>`).
+- [ ] Recipient kéo refresh danh sách `anonymous-list` → file xuất hiện ngay dù `ownershipPublicKey` != public key của recipient, kiểm tra dev log/Redux store để thấy owner key còn nguyên; meta `etag` được lưu trong AsyncStorage (`aot_anonymous_list_cache_v1_<hash>`).
 - [ ] UI hiển thị banner "Bạn vừa được cấp quyền" (có thể tắt thủ công).
 
 ## 3. Recipient Sync & Cache
@@ -35,6 +35,7 @@
 
 ## 5. Regression Checks
 - [ ] Grant lại cùng public key → `operation='updated'`, `grantedAt` mới, banner `granted` hiển thị, Recipient nhận lại file.
+- [ ] Sau chuỗi `list → grant → revoke`, mở Prisma Studio (hoặc `sqlite3`) xác nhận event `key_image_verification` mới nhất có `metadata.usageContext='owner-management'` và `metadata.allowedByPolicy=true` (không báo `Invalid ring signature`).
 - [ ] Hết hạn (`expiresAt` trong quá khứ) → recipient list tự động lọc ra, banner revoke xuất hiện.
 - [ ] Kiểm tra log lint/test: `npm test -- --runTestsByPath src/tests/anonymous-flow.integration.test.ts` (đảm bảo 2 testcase mới PASS, các section cũ đang skip với TODO rõ ràng).
 

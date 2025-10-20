@@ -17,13 +17,152 @@ class RingSignatureService {
   constructor(prismaClient, redisClient = null) {
     this.prisma = prismaClient || new PrismaClient();
     this.redis = redisClient; // Optional Redis client for production use
-    
+
     // For demo purposes, using in-memory storage when Redis not available
     this.usedNonces = new Map();
     this.usedKeyImages = new Map();
     this.MAX_NONCE_CACHE_SIZE = 10000;
     this.NONCE_TTL_MS = 5 * 60 * 1000; // 5 minutes (max age for replay protection)
     this.KEYIMAGE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours to prevent double spending
+  }
+
+  _normalizeKeyImageContext(context = {}) {
+    const normalized = {};
+    normalized.usageContext = typeof context.usageContext === 'string' && context.usageContext.trim().length > 0
+      ? context.usageContext.trim()
+      : 'anonymous-access';
+
+    if (typeof context.actorPublicKeyHash === 'string' && context.actorPublicKeyHash.trim().length > 0) {
+      normalized.actorPublicKeyHash = context.actorPublicKeyHash.trim();
+    } else if (typeof context.actorPublicKey === 'string' && context.actorPublicKey.trim().length > 0) {
+      normalized.actorPublicKeyHash = this.hashPublicKey(context.actorPublicKey.trim());
+    } else {
+      normalized.actorPublicKeyHash = null;
+    }
+
+    normalized.scopeId = typeof context.scopeId === 'string' && context.scopeId.trim().length > 0
+      ? context.scopeId.trim()
+      : null;
+
+    normalized.activityType = typeof context.activityType === 'string' && context.activityType.trim().length > 0
+      ? context.activityType.trim()
+      : null;
+
+    normalized.messageDigest = typeof context.messageDigest === 'string' && context.messageDigest.trim().length > 0
+      ? context.messageDigest.trim()
+      : null;
+
+    if (Array.isArray(context.ringPublicKeys)) {
+      normalized.ringSize = context.ringPublicKeys.length;
+    } else if (typeof context.ringSize === 'number') {
+      normalized.ringSize = context.ringSize;
+    } else {
+      normalized.ringSize = null;
+    }
+
+    normalized.recordedAt = new Date();
+    return normalized;
+  }
+
+  _parseAuditMetadata(entry) {
+    if (!entry || !entry.metadata) {
+      return null;
+    }
+
+    try {
+      return JSON.parse(entry.metadata);
+    } catch (error) {
+      console.warn('[Ring Signature] Failed to parse key image metadata payload');
+      return null;
+    }
+  }
+
+  _shouldAllowKeyImageReuse(existingMetadata, context) {
+    if (!context) {
+      return false;
+    }
+
+    const usageContext = context.usageContext || 'anonymous-access';
+
+    if (usageContext === 'owner-management') {
+      if (!existingMetadata) {
+        return true;
+      }
+
+      if (existingMetadata.usageContext && existingMetadata.usageContext !== 'owner-management') {
+        return false;
+      }
+
+      if (!context.actorPublicKeyHash || !existingMetadata.actorPublicKeyHash) {
+        return true;
+      }
+
+      return existingMetadata.actorPublicKeyHash === context.actorPublicKeyHash;
+    }
+
+    if (usageContext === 'anonymous-access') {
+      if (!existingMetadata) {
+        return true;
+      }
+
+      if (existingMetadata.usageContext && existingMetadata.usageContext !== 'anonymous-access') {
+        return false;
+      }
+
+      if (!context.actorPublicKeyHash || !existingMetadata.actorPublicKeyHash) {
+        return true;
+      }
+
+      return existingMetadata.actorPublicKeyHash === context.actorPublicKeyHash;
+    }
+
+    return false;
+  }
+
+  _buildKeyImageAuditMetadata({ keyImage, reused, context, existingMetadata, allowed }) {
+    const observedAt = context?.recordedAt instanceof Date ? context.recordedAt : new Date();
+    const ttlHours = Math.round(this.KEYIMAGE_TTL_MS / (60 * 60 * 1000));
+
+    const metadata = {
+      keyImage,
+      reused,
+      usageContext: context?.usageContext || 'anonymous-access',
+      observedAt: observedAt.toISOString(),
+      ttlHours,
+    };
+
+    metadata.verifiedAt = observedAt.toISOString();
+
+    if (context?.scopeId) {
+      metadata.scopeId = context.scopeId;
+    }
+
+    if (context?.activityType) {
+      metadata.activityType = context.activityType;
+    }
+
+    if (context?.actorPublicKeyHash) {
+      metadata.actorPublicKeyHash = context.actorPublicKeyHash;
+    }
+
+    if (context?.messageDigest) {
+      metadata.messageDigest = context.messageDigest;
+    }
+
+    if (typeof context?.ringSize === 'number') {
+      metadata.ringSize = context.ringSize;
+    }
+
+    if (!reused) {
+      metadata.firstSeenAt = metadata.observedAt;
+    } else {
+      const existingFirstSeen = existingMetadata?.firstSeenAt || existingMetadata?.verifiedAt || existingMetadata?.observedAt;
+      metadata.firstSeenAt = existingFirstSeen || metadata.observedAt;
+      metadata.allowedByPolicy = Boolean(allowed);
+      metadata.attemptedAt = metadata.observedAt;
+    }
+
+    return metadata;
   }
 
   /**
@@ -41,7 +180,17 @@ class RingSignatureService {
    */
   async verifyRingSignature(params) {
     try {
-      const { publicKey, signature, message, ringPublicKeys } = params;
+      const {
+        publicKey,
+        signature,
+        message,
+        ringPublicKeys,
+        keyImageContext: providedKeyImageContext = {},
+        usageContext,
+        scopeId,
+        activityType,
+        actorPublicKey,
+      } = params;
 
       // 1. Validate parameters
       if (!publicKey || !signature || !message || !ringPublicKeys || ringPublicKeys.length === 0) {
@@ -106,7 +255,17 @@ class RingSignatureService {
       }
 
       // 10. Verify key image uniqueness to prevent double spending
-      const isKeyImageUnique = await this.checkKeyImage(sig.keyImage);
+      const keyImageContext = {
+        ...providedKeyImageContext,
+        actorPublicKey: actorPublicKey || providedKeyImageContext.actorPublicKey || publicKey,
+        usageContext: usageContext || providedKeyImageContext.usageContext,
+        scopeId: scopeId ?? providedKeyImageContext.scopeId,
+        activityType: activityType || providedKeyImageContext.activityType,
+        ringPublicKeys: providedKeyImageContext.ringPublicKeys || sig.ringMembers,
+        messageDigest: providedKeyImageContext.messageDigest || sig.messageDigest,
+      };
+
+      const isKeyImageUnique = await this.checkKeyImage(sig.keyImage, keyImageContext);
       if (!isKeyImageUnique) {
         console.warn('[Ring Signature] Key image already seen (double spend attempt?)');
         return false;
@@ -182,13 +341,14 @@ class RingSignatureService {
    * @param {string} keyImage - The key image to check
    * @returns {Promise<boolean>} - True if key image is unique, false if already seen
    */
-  async checkKeyImage(keyImage) {
+  async checkKeyImage(keyImage, context = {}) {
     if (!keyImage) {
       console.warn('[Ring Signature] Missing key image');
       return false;
     }
 
-    const now = new Date();
+    const normalizedContext = this._normalizeKeyImageContext(context);
+    const now = normalizedContext.recordedAt instanceof Date ? normalizedContext.recordedAt : new Date();
     const expiryTime = new Date(now.getTime() - this.KEYIMAGE_TTL_MS);
 
     try {
@@ -210,38 +370,56 @@ class RingSignatureService {
           timestamp: {
             gte: expiryTime
           }
+        },
+        orderBy: {
+          timestamp: 'desc'
         }
       });
 
       if (existingKeyImage) {
         console.warn('[Ring Signature] Key image already seen - treating as linked activity');
+        const existingMetadata = this._parseAuditMetadata(existingKeyImage);
+        const allowReuse = this._shouldAllowKeyImageReuse(existingMetadata, normalizedContext);
 
-  // Record reuse for observability and block potential double-spend attempts
+        const reuseMetadata = this._buildKeyImageAuditMetadata({
+          keyImage,
+          reused: true,
+          context: normalizedContext,
+          existingMetadata,
+          allowed: allowReuse,
+        });
+
         await this.prisma.anonymousAuditLog.create({
           data: {
             eventType: 'key_image_verification',
-            metadata: JSON.stringify({
-              keyImage: keyImage,
-              reused: true,
-              attemptedAt: now.toISOString()
-            }),
-            timestamp: now
+            fileId: normalizedContext.scopeId || null,
+            publicKeyHash: normalizedContext.actorPublicKeyHash || null,
+            metadata: JSON.stringify(reuseMetadata),
+            timestamp: now,
+            status: allowReuse ? 'allowed' : 'blocked',
           }
         }).catch(() => {});
 
-        return false;
+        return allowReuse;
       }
 
       // Store the key image in database (full key image for proper lookup)
+      const initialMetadata = this._buildKeyImageAuditMetadata({
+        keyImage,
+        reused: false,
+        context: normalizedContext,
+        existingMetadata: null,
+        allowed: true,
+      });
+
       await this.prisma.anonymousAuditLog.create({
         data: {
           eventType: 'key_image_verification',
-          metadata: JSON.stringify({
-            keyImage: keyImage, // Store full key image for proper double-spend detection
-            reused: false,
-            verifiedAt: now.toISOString()
-          }),
-          timestamp: now
+          fileId: normalizedContext.scopeId || null,
+          publicKeyHash: normalizedContext.actorPublicKeyHash || null,
+          metadata: JSON.stringify(initialMetadata),
+          timestamp: now,
+          status: 'accepted',
         }
       });
 
@@ -253,11 +431,33 @@ class RingSignatureService {
       // Fallback to Redis if available
       if (this.redis) {
         try {
-          const existing = await this.redis.get(`keyimage:${keyImage}`);
+          const redisKey = `keyimage:${keyImage}`;
+          const existing = await this.redis.get(redisKey);
           if (existing) {
-            return false;
+            let existingContext;
+            try {
+              existingContext = JSON.parse(existing);
+            } catch (error) {
+              existingContext = null;
+            }
+
+            const allowReuse = this._shouldAllowKeyImageReuse(existingContext, normalizedContext);
+            if (!allowReuse) {
+              return false;
+            }
+
+            await this.redis.setex(redisKey, this.KEYIMAGE_TTL_MS / 1000, JSON.stringify({
+              ...existingContext,
+              lastReuseAt: now.toISOString(),
+            }));
+            return true;
           }
-          await this.redis.setex(`keyimage:${keyImage}`, this.KEYIMAGE_TTL_MS / 1000, '1');
+          await this.redis.setex(redisKey, this.KEYIMAGE_TTL_MS / 1000, JSON.stringify({
+            usageContext: normalizedContext.usageContext,
+            actorPublicKeyHash: normalizedContext.actorPublicKeyHash,
+            scopeId: normalizedContext.scopeId,
+            firstSeenAt: now.toISOString(),
+          }));
           return true;
         } catch (redisError) {
           console.error('[Ring Signature] Redis error checking key image:', redisError);
@@ -270,10 +470,19 @@ class RingSignatureService {
 
       const keyImageRecord = this.usedKeyImages.get(keyImageKey);
       if (keyImageRecord && (nowMs - keyImageRecord.timestamp) < this.KEYIMAGE_TTL_MS) {
-        return false;
+        const allowReuse = this._shouldAllowKeyImageReuse(keyImageRecord.context, normalizedContext);
+        if (!allowReuse) {
+          return false;
+        }
+
+        this.usedKeyImages.set(keyImageKey, {
+          timestamp: nowMs,
+          context: keyImageRecord.context || normalizedContext,
+        });
+        return true;
       }
 
-      this.usedKeyImages.set(keyImageKey, { timestamp: nowMs });
+      this.usedKeyImages.set(keyImageKey, { timestamp: nowMs, context: normalizedContext });
 
       // Clean up old key images
       const cutoffTime = nowMs - this.KEYIMAGE_TTL_MS;

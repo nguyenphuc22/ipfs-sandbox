@@ -1,55 +1,33 @@
-# Kế hoạch triển khai: Anonymous Access Lifecycle
+# Issue Plan: Anonymous refresh fails after share
 
-**Last Updated:** 2025-10-18
+**Last Updated:** 2025-10-20
+
+## Tóm tắt sự cố
+- Thiết bị nhận quyền gọi `/api/files/anonymous-list` lần đầu (trước khi có grant) thành công, nhưng lưu key image vào audit log.
+- Sau khi chủ sở hữu cấp quyền, lần refresh tiếp theo trả về 500 `Internal server error`; UI hiển thị `Files (0)` và log `Invalid ring signature`.
+- Backend `RingSignatureService.checkKeyImage` không cho phép tái sử dụng key image khi `usageContext !== 'owner-management'` nên chặn mọi request lặp lại của cùng một public key (`backend/src/services/RingSignatureService.js:80`).
+- Kết quả: grant đã lưu trong DB nhưng người nhận không thể liệt kê file do bị chặn ở bước xác thực LSAG.
 
 ## Mục tiêu
-- Cho phép chủ sở hữu quản lý toàn bộ vòng đời quyền truy cập ẩn danh (grant, cập nhật, revoke) bằng chữ ký Schnorr + LSAG.
-- Đảm bảo mobile app hiển thị rõ danh sách public key được cấp quyền, thao tác thêm/bớt chỉ bằng một chạm.
-- Đồng bộ phía người nhận để phản ánh grant/revoke tức thời và xử lý key package an toàn.
-- Hoàn thiện kiểm thử, audit log và tài liệu phục vụ demo chính thức.
+- Cho phép người dùng anonymous gọi `anonymous-list` nhiều lần liên tiếp mà không bị xem là double spend.
+- Giữ nguyên cơ chế bảo vệ key image cho các ngữ cảnh khác (owner management, integrity alerts) để tránh lạm dụng.
+- Bổ sung test đảm bảo regression không quay lại.
 
-## Phạm vi
-- Backend Express + Prisma, mobile React Native, tài liệu vận hành/QA.
-- Không mở rộng sang adjudicator/escrow workflow ở giai đoạn này.
+## Công việc cần làm
+1. **Cập nhật policy reuse key image**
+  - Điều chỉnh `_shouldAllowKeyImageReuse` để cho phép `usageContext === 'anonymous-access'` tái sử dụng khi cùng `actorPublicKeyHash` và (tuỳ chọn) cùng `messageDigest`.
+  - Đảm bảo route `anonymous-list` truyền `actorPublicKey`/hash xuống `verifyRingSignature` để policy hoạt động chính xác.
 
----
+2. **Kiểm thử backend**
+  - Thêm unit test cho `RingSignatureService` và integration test cho `FileAccessService.listAccessibleFiles` chứng minh hai lần gọi liên tiếp với cùng khóa vẫn hợp lệ.
+  - Bao phủ trường hợp grant revoked để chắc chắn cache key image không gây lỗi lặp lại.
 
-## Initiative 1 – Backend Access Management API (**DONE**)
-- [x] Cập nhật Prisma schema (`AnonymousFileAccess`, `AnonymousAuditLog`) thêm các trường `status`, `revokedAt`, `lastOwnerProof`, index `fileId + accessorPublicKeyHash`.
-- [x] Tạo service `AccessManagementService` gom logic list/grant/revoke, tái sử dụng `RingSignatureService` & `SchnorrOwnershipService`.
-- [x] Triển khai REST endpoints:
-  - `GET /api/files/:fileId/anonymous-grants`
-  - `POST /api/files/:fileId/anonymous-grants`
-  - `DELETE /api/files/:fileId/anonymous-grants/:grantId`
-  (Tất cả yêu cầu Schnorr proof + LSAG, middleware chống replay theo nonce.)
-- [x] Ghi `anonymousAuditLog` với event `grant_issued`, `grant_updated`, `grant_revoked`; phát event nội bộ `AccessGrantChanged` để phục vụ mobile sync.
-/new
-## Initiative 2 – Mobile Access Manager UX (**DONE**)
-- [x] Xây dựng component `AccessManagerModal` hiển thị hai danh sách: "Đang có quyền" (active) và "Thêm mới" (input/dán/scan).
-- [x] Mở rộng `AnonymousFileAccessService` với method `listOwnerGrants`, `grantAccess`, `revokeAccess`, `syncGrantJournal`.
-- [x] Cho phép người dùng thêm public key, chỉnh expiry, toggle revoke; hiển thị trạng thái (`active`, `revoked`, `pending`).
-- [x] UI phản hồi realtime sau khi backend xác nhận (loading state, optimistic update, error handling).
-- [x] Tích hợp `AccessManagerModal` vào luồng chính (`IPFSFileList`), thay thế `GrantAccessModal` legacy và bật truy cập ẩn danh end-to-end.
+3. **Kiểm thử manual & thông báo UI**
+  - Sau khi backend sửa, kiểm tra lại trên thiết bị: grant -> refresh -> file xuất hiện.
+  - Cập nhật toast/error handler trên mobile (`mobile/src/components/ipfs/IPFSFileList.tsx`) để hiển thị thông điệp thân thiện khi backend trả về lỗi xác thực, giúp QA dễ phát hiện nếu backend bị regress.
 
-## Initiative 3 – Recipient Sync & Key Package Handling (**DONE**)
-- [x] Mobile phía người nhận: cập nhật `anonymous-list` sử dụng `lastModified`/ETag, ẩn file khi `status='revoked'`.
-- [x] Thêm badge "Revoked" và logic xoá cache/key package khi quyền bị thu hồi.
-- [x] Thông báo UI khi owner grant mới (toast hoặc banner "Bạn vừa được cấp quyền").
-- [x] Script hỗ trợ QA (`scripts/reset-anonymous-grants.js`) để reset dữ liệu demo.
-
-## Initiative 4 – Validation & Documentation (**DONE**)
-- [x] Integration test end-to-end: upload → grant → recipient download → revoke → recipient bị chặn (được cover bởi testcase caching/revoke mới trong `mobile/src/tests/anonymous-flow.integration.test.ts`).
-- [x] Cập nhật tài liệu (`DOWNLOAD_FLOW_FINAL.md`, `ANONYMOUS_DOWNLOAD_REDESIGN.md`, `HUONG_DAN_PHAT_TRIEN.md`, `README.md`) với flow grant/revoke.
-- [x] Lập QA checklist (audit log, fingerprint, key package, retry cases).
-- [x] Chuẩn bị demo script & slide Access Manager, ghi lại video backup.
-
----
-
-**Ghi chú trạng thái:**
-- AccessManagerModal đã được bật mặc định trong `IPFSFileList`; chủ file giờ quản lý grant/revoke ngay trong modal mới.
-
-## Cột mốc đề xuất
-- **Milestone 1:** Backend API + migration hoàn tất, seed data demo sẵn sàng. ✅
-- **Milestone 2:** Mobile Access Manager hoạt động end-to-end (grant + revoke) với backend mới. ✅
-- **Milestone 3:** Recipient trải nghiệm đầy đủ, integration test xanh. ✅
-- **Milestone 4:** Tài liệu/QA/demo kit hoàn thiện, sẵn sàng trình chiếu. ✅
+4. **Hoàn thiện secure key exchange cho download**
+  - Chủ sở hữu cần chia sẻ key package (JSON) sau khi grant; hiện component `AccessManagerModal` chỉ copy clipboard mà không tự động gửi.
+  - Bổ sung hướng dẫn rõ ràng hơn cho owner/recipient và flow import thực sự đọc file JSON (thay mock trong `SecureDownloadScreen.importSecureKeyPackage`).
+  - Tích hợp `KeyPackageStorage` để lưu/bắt lỗi fingerprint mismatch và hiển thị yêu cầu nhập thủ công nếu chưa có package.
+  - Viết test e2e mô phỏng grant -> export key package -> import key package -> download thành công.

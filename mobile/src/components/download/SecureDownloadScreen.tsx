@@ -13,6 +13,8 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
+  Modal,
+  TextInput,
 } from 'react-native';
 import type { ViewStyle } from 'react-native';
 import { useTheme } from '../../styles';
@@ -23,6 +25,17 @@ import { getKeyPackage, saveKeyPackage } from '../../services/KeyPackageStorage'
 import { useChunkDownloader } from '../../hooks';
 import type { ChunkStatus, DownloadPhase, SecureKeyPackage } from '../../types/download';
 import { chunkDownloadManager } from '../../services/chunkDownloadManager';
+
+const KEY_PACKAGE_PLACEHOLDER = `{
+  "fileId": "...",
+  "masterKey": "...",
+  "chunkKeys": { "0": "..." }
+}`;
+
+const openManualModalDefaults = {
+  draft: '',
+  error: null as string | null,
+};
 
 interface SecureDownloadScreenProps {
   file: FileData;
@@ -48,6 +61,15 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
   const combinedError = error ?? sessionError;
   const sandboxPath = session.sandboxPath;
   const exportPath = session.exportPath;
+  const [manualKeyModalVisible, setManualKeyModalVisible] = useState(false);
+  const [manualKeyDraft, setManualKeyDraft] = useState(openManualModalDefaults.draft);
+  const [manualKeyError, setManualKeyError] = useState<string | null>(openManualModalDefaults.error);
+
+  const openManualKeyModal = () => {
+    setManualKeyDraft(openManualModalDefaults.draft);
+    setManualKeyError(openManualModalDefaults.error);
+    setManualKeyModalVisible(true);
+  };
 
   // Phase 1: Access Negotiation
   const requestAccess = async () => {
@@ -95,6 +117,8 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
   const hasLocalKeyFlag = Boolean(file.hasLocalKey);
   const manifestHasLocalKey = hasLocalKeyMaterial || hasLocalKeyFlag;
 
+      const resolvedFingerprint = hydratedPackage?.fingerprint ?? file.keyPackageFingerprint ?? undefined;
+
       const mockManifest: FileAccessManifest = {
         success: true,
         file: {
@@ -115,7 +139,7 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
           expiresAt: null,
           accessCount: 1,
           hasLocalKey: manifestHasLocalKey,
-          keyPackageFingerprint: file.keyPackageFingerprint ?? 'mock_fingerprint',
+          keyPackageFingerprint: resolvedFingerprint,
           keyStatus: 'client-managed',
         },
       };
@@ -136,6 +160,11 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
 
       if (hasLocalKeyMaterial && hydratedPackage) {
         resolveKeys(hydratedPackage);
+      } else if (!hasLocalKeyMaterial) {
+        const missingMessage = 'Secure key package not available. Import the package provided by the owner.';
+        setError(missingMessage);
+        actions.setError(missingMessage);
+        openManualKeyModal();
       }
 
     } catch (err) {
@@ -147,42 +176,85 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
     }
   };
 
-  const importSecureKeyPackage = async () => {
+  const importSecureKeyPackage = () => {
     if (!accessInfo) {
       return;
     }
 
+    setError(null);
+    actions.setError(null);
+    actions.setPhase('waitingKey');
+    openManualKeyModal();
+  };
+
+  const handleManualKeyImport = async () => {
+    if (!accessInfo) {
+      return;
+    }
+
+    if (!manualKeyDraft || manualKeyDraft.trim().length === 0) {
+      setManualKeyError('Vui lòng dán JSON key package do chủ sở hữu cung cấp.');
+      return;
+    }
+
     try {
-      setError(null);
-      actions.setPhase('waitingKey');
+      const parsed = JSON.parse(manualKeyDraft.trim());
+      const masterKey = typeof parsed.masterKey === 'string' ? parsed.masterKey.trim() : '';
+      const rawChunkKeys = parsed.chunkKeys;
 
-      // Simulate user scanning/importing secure key package (QR / file)
-      await new Promise(resolve => setTimeout(resolve, 1200));
+      if (!masterKey) {
+        throw new Error('Key package thiếu masterKey.');
+      }
 
-      const mockPackage: SecureKeyPackage = {
-        masterKey: 'mock_master_key',
-        chunkKeys: Object.fromEntries(
-          (accessInfo.chunkManifest || []).map((chunk: FileAccessManifest['chunkManifest'][number]) => [
-            chunk.index,
-            `mock_chunk_key_${chunk.index}`,
-          ])
-        ),
-        fingerprint: accessInfo.grantContext?.keyPackageFingerprint,
+      if (!rawChunkKeys || typeof rawChunkKeys !== 'object') {
+        throw new Error('Key package thiếu chunkKeys hợp lệ.');
+      }
+
+      const normalizedEntries = Object.entries(rawChunkKeys).map(([index, value]) => {
+        const numericIndex = Number(index);
+        if (!Number.isInteger(numericIndex)) {
+          throw new Error(`Chunk key index không hợp lệ: ${index}`);
+        }
+        if (typeof value !== 'string' || value.trim().length === 0) {
+          throw new Error(`Chunk key trống tại index ${index}`);
+        }
+        return [numericIndex, value];
+      });
+
+      const normalizedChunkKeys: Record<number, string> = Object.fromEntries(normalizedEntries);
+
+      const fingerprint = typeof parsed.fingerprint === 'string' && parsed.fingerprint.trim().length > 0
+        ? parsed.fingerprint.trim()
+        : undefined;
+
+      if (parsed.fileId && String(parsed.fileId) !== file.id) {
+        console.warn('[SecureDownloadScreen] Imported key package fileId mismatch', {
+          expected: file.id,
+          received: parsed.fileId,
+        });
+      }
+
+      const importedPackage: SecureKeyPackage = {
+        masterKey,
+        chunkKeys: normalizedChunkKeys,
+        fingerprint,
       };
 
-      setSecureKeyPackage(mockPackage);
-      actions.setSecureKeyPackage(mockPackage);
+      setSecureKeyPackage(importedPackage);
+      actions.setSecureKeyPackage(importedPackage);
+
       if (shouldPersistKeyPackage) {
         try {
           await saveKeyPackage(file.id, {
-            masterKey: mockPackage.masterKey,
-            chunkKeys: mockPackage.chunkKeys,
-            fingerprint: mockPackage.fingerprint,
+            masterKey: importedPackage.masterKey,
+            chunkKeys: importedPackage.chunkKeys,
+            fingerprint: importedPackage.fingerprint,
           });
         } catch (storageError) {
           console.warn('[SecureDownloadScreen] Failed to persist imported key package', storageError);
         }
       }
+
       setAccessInfo((prev: FileAccessManifest | null) =>
         prev
           ? {
@@ -192,16 +264,23 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
                 hasLocalKey: true,
               },
             }
-          : prev
+          : prev,
       );
 
-      actions.setPhase('keys');
-      resolveKeys();
+    setManualKeyModalVisible(false);
+    setManualKeyError(null);
+
+      await resolveKeys(importedPackage);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to import key package';
-      setError(message);
-      Alert.alert('Key Package Error', message);
+      const message = err instanceof Error ? err.message : 'Key package không hợp lệ.';
+      setManualKeyError(message);
     }
+  };
+
+  const handleManualKeyCancel = () => {
+    setManualKeyModalVisible(false);
+    setManualKeyDraft(openManualModalDefaults.draft);
+    setManualKeyError(openManualModalDefaults.error);
   };
 
   // Phase 2: Key Orchestration
@@ -226,13 +305,21 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
       actions.setError(null);
       setError(null);
 
-      // TODO: Validate fingerprint with Secure Storage fingerprint hash
-      if (
-        accessInfo.grantContext?.keyPackageFingerprint &&
-        activePackage.fingerprint &&
-        accessInfo.grantContext.keyPackageFingerprint !== activePackage.fingerprint
-      ) {
-        throw new Error('Secure key package fingerprint mismatch');
+      // Validate fingerprint when both manifest and package provide consistent values
+      const expectedFingerprint = accessInfo.grantContext?.keyPackageFingerprint;
+      const incomingFingerprint = activePackage.fingerprint;
+      if (expectedFingerprint && incomingFingerprint) {
+        const normalizedExpected = expectedFingerprint.trim().toLowerCase();
+        const normalizedIncoming = incomingFingerprint.trim().toLowerCase();
+
+        if (
+          normalizedExpected.length > 0 &&
+          normalizedIncoming.length > 0 &&
+          !normalizedExpected.startsWith('mock_') &&
+          normalizedExpected !== normalizedIncoming
+        ) {
+          throw new Error('Secure key package fingerprint mismatch');
+        }
       }
 
       // TODO: Persist master key + chunk keys into Secure Storage
@@ -624,6 +711,56 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
       fontSize: 16,
       fontWeight: '600',
     },
+    manualModalBackdrop: {
+      flex: 1,
+      backgroundColor: '#00000088',
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 24,
+    },
+    manualModalContainer: {
+      width: '100%',
+      maxHeight: '85%',
+      borderRadius: 20,
+      padding: 20,
+    },
+    manualModalTitle: {
+      fontSize: 18,
+      fontWeight: '700',
+      color: colors.text,
+      marginBottom: 8,
+    },
+    manualModalSubtitle: {
+      fontSize: 13,
+      color: colors.textSecondary,
+      marginBottom: 12,
+      lineHeight: 18,
+    },
+    manualModalInput: {
+      minHeight: 190,
+      borderWidth: 1,
+      borderRadius: 12,
+      padding: 12,
+      fontSize: 13,
+      textAlignVertical: 'top',
+      marginBottom: 12,
+      fontFamily: 'monospace',
+    },
+    manualModalError: {
+      color: colors.error,
+      fontSize: 12,
+      marginBottom: 12,
+    },
+    manualModalButtonRow: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+    },
+    manualModalButton: {
+      minWidth: 120,
+    },
+    manualModalButtonPrimary: {
+      marginLeft: 12,
+    },
   });
 
   const renderPhaseStepper = () => {
@@ -814,6 +951,54 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
           )}
         </View>
       </ScrollView>
+
+      <Modal
+        visible={manualKeyModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={handleManualKeyCancel}
+      >
+        <View style={styles.manualModalBackdrop}>
+          <View style={[styles.manualModalContainer, { backgroundColor: colors.surface }] }>
+            <Text style={styles.manualModalTitle}>Import Key Package</Text>
+            <Text style={styles.manualModalSubtitle}>
+              Dán JSON key package do chủ sở hữu cung cấp vào khung bên dưới rồi chọn "Import".
+            </Text>
+            <TextInput
+              value={manualKeyDraft}
+              onChangeText={setManualKeyDraft}
+              multiline
+              style={[
+                styles.manualModalInput,
+                {
+                  color: colors.text,
+                  borderColor: colors.border,
+                  backgroundColor: colors.background,
+                },
+              ]}
+              placeholder={KEY_PACKAGE_PLACEHOLDER}
+              placeholderTextColor={colors.textSecondary}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            {manualKeyError ? <Text style={styles.manualModalError}>{manualKeyError}</Text> : null}
+            <View style={styles.manualModalButtonRow}>
+              <TouchableOpacity
+                style={[styles.button, styles.buttonSecondary, styles.manualModalButton]}
+                onPress={handleManualKeyCancel}
+              >
+                <Text style={styles.buttonTextSecondary}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.button, styles.buttonPrimary, styles.manualModalButton, styles.manualModalButtonPrimary]}
+                onPress={handleManualKeyImport}
+              >
+                <Text style={styles.buttonText}>Import</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
