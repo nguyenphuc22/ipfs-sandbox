@@ -23,7 +23,7 @@ import {
   anonymousFileAccessService,
 } from '../../services/AnonymousFileAccessService';
 import { FilePickerService } from '../../services/FilePickerService';
-import { getKeyPackage, StoredKeyPackage } from '../../services/KeyPackageStorage';
+import { getKeyPackage, saveKeyPackage, StoredKeyPackage } from '../../services/KeyPackageStorage';
 import { normalizeHex, toCompressedPublicKey } from '../../utils/aotCrypto';
 
 interface AccessManagerModalProps {
@@ -627,45 +627,103 @@ export const AccessManagerModal: React.FC<AccessManagerModalProps> = ({
     }
   }, [file, recipientKey, expiryDays, includeKeyPackage, storedKeyPackage, keyPackageJson, onGranted]);
 
-  const handleRevokeGrant = useCallback(
+  const performReencryptRevoke = useCallback(
     async (grant: AnonymousGrantRecord) => {
       if (!file) {
         return;
       }
-      if (grant.status !== 'active') {
+
+      if (!storedKeyPackage) {
+        Alert.alert(
+          'Thiếu key package',
+          'Không tìm thấy key package trên thiết bị. Vui lòng bật "Đính kèm key package" khi upload để lưu lại.',
+        );
+        return;
+      }
+
+      try {
+        setRevokingId(grant.id);
+        const response = await anonymousFileAccessService.revokeAccessWithReencryption({
+          fileId: file.id,
+          grant,
+          keyPackage: {
+            masterKey: storedKeyPackage.masterKey,
+            chunkKeys: storedKeyPackage.chunkKeys,
+          },
+        });
+
+        const normalizedChunkKeys: Record<number, string> = {};
+        Object.entries(response.updatedChunkKeys).forEach(([index, value]) => {
+          const numericIndex = Number(index);
+          if (Number.isNaN(numericIndex)) {
+            return;
+          }
+          normalizedChunkKeys[numericIndex] = value;
+        });
+
+        const updatedPackage: StoredKeyPackage = {
+          masterKey: response.newMasterKey,
+          chunkKeys: normalizedChunkKeys,
+          fingerprint: response.newKeyFingerprint,
+          storedAt: new Date().toISOString(),
+        };
+
+        await saveKeyPackage(file.id, updatedPackage);
+        setStoredKeyPackage(updatedPackage);
+        setIncludeKeyPackage(true);
+
+        const updatedGrants = await anonymousFileAccessService.syncGrantJournal(file.id);
+        setGrants(updatedGrants);
+
+        const prettyPackage = serializeKeyPackage(file.id, updatedPackage);
+        if (prettyPackage) {
+          Clipboard.setString(prettyPackage);
+        }
+
+        Alert.alert(
+          'Thu hồi & mã hóa lại',
+          `Đã mã hóa lại ${response.chunksReencrypted.length}/${response.totalChunks} chunks (${response.percentage}%).\nFingerprint mới: ${truncate(response.newKeyFingerprint, 12, 8)}.\nKey package mới đã được copy vào clipboard.`,
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Không thể thu hồi và mã hóa lại.';
+        Alert.alert('Thu hồi thất bại', message);
+      } finally {
+        setRevokingId(null);
+      }
+    },
+    [file, storedKeyPackage],
+  );
+
+  const handleRevokeGrant = useCallback(
+    (grant: AnonymousGrantRecord) => {
+      if (!file || grant.status !== 'active') {
+        return;
+      }
+
+      if (!storedKeyPackage) {
+        Alert.alert(
+          'Thiếu key package',
+          'Không tìm thấy key package đã lưu cho file này. Vui lòng bật “Đính kèm key package” khi upload để lưu lại khóa trước khi thu hồi.',
+        );
         return;
       }
 
       Alert.alert(
-        'Thu hồi quyền truy cập',
-        'Bạn có chắc chắn muốn thu hồi quyền truy cập của public key này?',
+        'Thu hồi & mã hóa lại',
+        'Hành động này sẽ mã hóa lại file và tạo key package mới. Tiếp tục?',
         [
           { text: 'Huỷ', style: 'cancel' },
           {
             text: 'Thu hồi',
             style: 'destructive',
-            onPress: async () => {
-              try {
-                setRevokingId(grant.id);
-                const response = await anonymousFileAccessService.revokeAccess({
-                  fileId: file.id,
-                  grantId: grant.id,
-                });
-                onRevoked?.(response);
-                const updated = await anonymousFileAccessService.syncGrantJournal(file.id);
-                setGrants(updated);
-              } catch (error) {
-                const message = error instanceof Error ? error.message : 'Không thể thu hồi quyền.';
-                Alert.alert('Thu hồi thất bại', message);
-              } finally {
-                setRevokingId(null);
-              }
+            onPress: () => {
+              void performReencryptRevoke(grant);
             },
           },
         ],
       );
     },
-    [file, onRevoked],
+    [file, performReencryptRevoke, storedKeyPackage],
   );
 
   const renderGrantCard = (grant: AnonymousGrantRecord) => {

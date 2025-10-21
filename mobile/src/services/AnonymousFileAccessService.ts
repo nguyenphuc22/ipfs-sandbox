@@ -127,6 +127,24 @@ export interface RevokeAccessResponse {
   grant: AnonymousGrantRecord;
 }
 
+export interface ReencryptionRevocationResponse {
+  success: boolean;
+  revocationId: string;
+  chunksReencrypted: number[];
+  totalChunks: number;
+  percentage: number;
+  message: string;
+  newMasterKey: string;
+  newKeyFingerprint: string;
+  updatedChunkKeys: Record<string, string>;
+  reencryptedChunkDetails?: Array<{
+    index: number;
+    oldCid: string;
+    newCid: string;
+    hash: string;
+  }>;
+}
+
 export interface GrantAccessParams {
   fileId: string;
   targetPublicKey: string;
@@ -1226,6 +1244,96 @@ export class AnonymousFileAccessService {
       ...response,
       grant: normalizedGrant,
     };
+  }
+
+  async revokeAccessWithReencryption(params: {
+    fileId: string;
+    grant: AnonymousGrantRecord;
+    keyPackage: {
+      masterKey: string;
+      chunkKeys: Record<string | number, string>;
+    };
+    securityLevel?: 'standard' | 'high' | 'maximum';
+  }): Promise<ReencryptionRevocationResponse> {
+    const { fileId, grant, keyPackage, securityLevel = 'standard' } = params;
+
+    if (!fileId) {
+      throw new Error('fileId is required');
+    }
+    if (!grant || !grant.accessorPublicKeyHash) {
+      throw new Error('Grant with accessorPublicKeyHash is required');
+    }
+    if (!keyPackage?.masterKey || !keyPackage.chunkKeys) {
+      throw new Error('Key package with masterKey and chunkKeys is required');
+    }
+
+    const [ownerPublicKey, ownerPrivateKey] = await Promise.all([
+      this.getPublicKey(),
+      this.getSecretKey(),
+    ]);
+
+    const compressedOwnerKey = toCompressedPublicKey(ownerPublicKey);
+    const timestamp = Date.now();
+    const nonce = this.generateNonce();
+    const ringMembers = await this.getRingMembersForSigning(compressedOwnerKey);
+    const normalizedOwnerKey = normalizeHex(compressedOwnerKey);
+    const signerIndex = ringMembers.findIndex(
+      (member) => normalizeHex(member) === normalizedOwnerKey,
+    );
+
+    if (signerIndex === -1) {
+      throw new Error('Owner key missing from ring membership');
+    }
+
+    const message = `revoke-reencrypt:${fileId}:${grant.accessorPublicKeyHash}:${timestamp}:${nonce}`;
+    const ringSignaturePayload = await createLsagRingSignature({
+      message,
+      ringPublicKeys: ringMembers,
+      signerIndex,
+      signerPrivateKey: ownerPrivateKey,
+    });
+    const ringSignature = JSON.stringify(ringSignaturePayload);
+
+    const schnorrMessageHex = sha256Hex(message);
+    const schnorrProof = await createSchnorrProof(schnorrMessageHex, ownerPrivateKey);
+
+    const chunkKeysPayload: Record<string, string> = {};
+    Object.entries(keyPackage.chunkKeys).forEach(([index, value]) => {
+      if (typeof value !== 'string' || value.trim().length === 0) {
+        throw new Error(`Invalid chunk key for index ${index}`);
+      }
+      chunkKeysPayload[String(index)] = value;
+    });
+
+    const response = await this.makeRequest<ReencryptionRevocationResponse>(
+      `/api/files/revoke-with-reencryption`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          fileId,
+          message,
+          ringSignature,
+          ownershipProof: {
+            R: schnorrProof.R,
+            s: schnorrProof.s,
+            message: schnorrMessageHex,
+            publicKey: compressedOwnerKey,
+          },
+          securityLevel,
+          revokedPublicKeyHash: grant.accessorPublicKeyHash,
+          keyPackage: {
+            masterKey: keyPackage.masterKey,
+            chunkKeys: chunkKeysPayload,
+          },
+        }),
+      }
+    );
+
+    if (!response?.success) {
+      throw new Error(response?.message || 'Re-encryption revocation failed');
+    }
+
+    return response;
   }
 
   async syncGrantJournal(fileId: string): Promise<AnonymousGrantRecord[]> {

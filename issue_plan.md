@@ -30,4 +30,9 @@
   - Chủ sở hữu cần chia sẻ key package (JSON) sau khi grant; hiện component `AccessManagerModal` chỉ copy clipboard mà không tự động gửi.
   - Bổ sung hướng dẫn rõ ràng hơn cho owner/recipient và flow import thực sự đọc file JSON (thay mock trong `SecureDownloadScreen.importSecureKeyPackage`).
   - Tích hợp `KeyPackageStorage` để lưu/bắt lỗi fingerprint mismatch và hiển thị yêu cầu nhập thủ công nếu chưa có package.
-  - Viết test e2e mô phỏng grant -> export key package -> import key package -> download thành công.
+ - Viết test e2e mô phỏng grant -> export key package -> import key package -> download thành công.
+
+5. **Thu hồi kèm re-encryption (theo luận văn)** ✅
+  - Đã ép owner chỉ sử dụng luồng thu hồi + re-encrypt; modal cảnh báo nếu thiếu key package cục bộ.
+  - Backend `/api/files/revoke-with-reencryption` hiện kiểm tra key package, giải mã các chunk, mã hóa lại với master key mới rồi gửi trả key package mới cho owner.
+  - Mobile lưu/copy key package mới sau khi thu hồi để owner phát offline cho các recipient còn quyền.

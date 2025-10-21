@@ -20,6 +20,14 @@ const { maskHashForLogging, secureLog } = require('../utils/monitoring');
 
 const IPFS_API_URL = process.env.IPFS_API_URL || 'http://127.0.0.1:5001';
 
+function normalizeHex(value) {
+  if (typeof value !== 'string') {
+    throw new Error('Invalid hex value');
+  }
+  const trimmed = value.trim().toLowerCase();
+  return trimmed.startsWith('0x') ? trimmed.slice(2) : trimmed;
+}
+
 /**
  * Select chunks for re-encryption based on strategy
  * Implements thesis architecture (New_Thesis.md lines 926-956)
@@ -80,10 +88,32 @@ async function executePartialReencryption(
   revokedPublicKeyHash,
   ownershipProof,
   securityLevel = 'standard',
-  prismaClient
+  prismaClient,
+  keyPackage,
 ) {
   try {
     secureLog('RevocationService', `Starting partial re-encryption for file ${fileId}`, 'info', { fileId });
+
+    if (!keyPackage || typeof keyPackage !== 'object') {
+      throw new Error('Key package is required for re-encryption');
+    }
+
+    const { masterKey: masterKeyHex, chunkKeys: providedChunkKeys } = keyPackage;
+
+    if (!masterKeyHex || typeof masterKeyHex !== 'string') {
+      throw new Error('Key package missing masterKey');
+    }
+
+    if (!providedChunkKeys || typeof providedChunkKeys !== 'object') {
+      throw new Error('Key package missing chunkKeys');
+    }
+
+    const masterKeyBuffer = Buffer.from(normalizeHex(masterKeyHex), 'hex');
+    if (masterKeyBuffer.length !== 32) {
+      throw new Error('masterKey must be a 32-byte hex string');
+    }
+
+    const chunkKeysObject = { ...providedChunkKeys };
 
     // 1. Get file and chunks
     const prisma = prismaClient || new PrismaClient();
@@ -104,6 +134,10 @@ async function executePartialReencryption(
       throw new Error('File not found');
     }
 
+    if (file.chunkCount <= 0) {
+      throw new Error('File does not contain chunk metadata');
+    }
+
     // 2. Select chunks for re-encryption
     const chunksToReencrypt = selectChunksForReencryption(
       file.chunkCount,
@@ -112,16 +146,35 @@ async function executePartialReencryption(
 
     secureLog('RevocationService', `Selected ${chunksToReencrypt.length}/${file.chunkCount} chunks for re-encryption`, 'info', { fileId, chunksCount: chunksToReencrypt.length, totalChunks: file.chunkCount });
 
-    // 3. Decrypt current encrypted chunk keys
+    // 3. Validate and decrypt chunk keys provided by owner
     const encryptedChunkKeysData = JSON.parse(file.encryptedChunkKeys);
+    const existingChunkKeys = decryptChunkKeys(
+      encryptedChunkKeysData.encryptedData,
+      encryptedChunkKeysData.iv,
+      encryptedChunkKeysData.authTag,
+      masterKeyBuffer,
+    );
 
-    // TODO: In production, should get master key from secure storage
-    // For demo, we'll generate new keys for selected chunks
-    const oldChunkKeysObject = {}; // Will be populated when we have master key
+    const missingIndices = [];
+    for (let i = 0; i < file.chunkCount; i += 1) {
+      const keyFromOwner = chunkKeysObject[i] ?? chunkKeysObject[String(i)];
+      const keyFromStore = existingChunkKeys[i] ?? existingChunkKeys[String(i)];
+      if (!keyFromOwner || !keyFromStore) {
+        missingIndices.push(i);
+        continue;
+      }
+      if (normalizeHex(keyFromOwner) !== normalizeHex(keyFromStore)) {
+        throw new Error(`Chunk key mismatch detected at index ${i}`);
+      }
+    }
+
+    if (missingIndices.length > 0) {
+      throw new Error(`Key package missing chunk keys for indices: ${missingIndices.join(', ')}`);
+    }
 
     // 4. Download, decrypt, and re-encrypt selected chunks
     const reencryptedChunks = [];
-    const newChunkKeys = {};
+    const updatedChunkKeysObject = { ...chunkKeysObject };
 
     for (const chunkIndex of chunksToReencrypt) {
       const chunk = file.chunks.find(c => c.chunkIndex === chunkIndex);
@@ -133,6 +186,16 @@ async function executePartialReencryption(
       secureLog('RevocationService', `Re-encrypting chunk ${chunkIndex}`, 'info', { fileId, chunkIndex });
 
       try {
+        const existingChunkKeyHex = chunkKeysObject[chunkIndex] ?? chunkKeysObject[String(chunkIndex)];
+        if (!existingChunkKeyHex) {
+          throw new Error(`Missing chunk key for index ${chunkIndex}`);
+        }
+
+        const existingChunkKey = Buffer.from(normalizeHex(existingChunkKeyHex), 'hex');
+        if (existingChunkKey.length !== 32) {
+          throw new Error(`Chunk key for index ${chunkIndex} must be 32 bytes`);
+        }
+
         // Download encrypted chunk from IPFS
         const response = await axios.get(
           `${IPFS_API_URL}/api/v0/cat?arg=${chunk.ipfsCid}`,
@@ -141,23 +204,14 @@ async function executePartialReencryption(
 
         const encryptedBuffer = Buffer.from(response.data);
 
-        // Parse encrypted package
+        // Parse encrypted package and decrypt using old key
         const { iv, authTag, encryptedData } = parseEncryptedChunkPackage(encryptedBuffer);
+        const decryptedData = decryptChunk(encryptedData, existingChunkKey, iv, authTag);
 
-        // TODO: Decrypt with old key (need master key to get chunk key)
-        // For demo, we'll create new encrypted version
-        // In production: const decryptedData = decryptChunk(encryptedData, oldChunkKey, iv, authTag);
-
-        // For demo: Use encrypted data as "decrypted" (skip actual decryption)
-        const pseudoDecryptedData = encryptedData;
-
-        // Generate new chunk key
+        // Generate a new chunk key and re-encrypt plaintext
         const newChunkKey = generateChunkKey();
-        newChunkKeys[chunkIndex] = newChunkKey.toString('hex');
-
-        // Create new encrypted package
-        const { encryptedBuffer: newEncryptedBuffer } = createEncryptedChunkPackage(
-          pseudoDecryptedData,
+        const { encryptedBuffer: newEncryptedBuffer, hash: newPlainHash } = createEncryptedChunkPackage(
+          decryptedData,
           newChunkKey
         );
 
@@ -181,11 +235,13 @@ async function executePartialReencryption(
         const newCid = uploadResponse.data.Hash;
         secureLog('RevocationService', `Chunk ${chunkIndex} re-uploaded to IPFS`, 'info', { fileId, chunkIndex, newCid });
 
+        updatedChunkKeysObject[chunkIndex] = newChunkKey.toString('hex');
+
         reencryptedChunks.push({
           index: chunkIndex,
           oldCid: chunk.ipfsCid,
           newCid,
-          hash: chunk.chunkHash, // Keep same hash (plaintext unchanged)
+          hash: newPlainHash,
         });
 
       } catch (error) {
@@ -205,6 +261,7 @@ async function executePartialReencryption(
         },
         data: {
           ipfsCid: chunk.newCid,
+          chunkHash: chunk.hash,
         },
       });
     }
@@ -215,9 +272,6 @@ async function executePartialReencryption(
       .createHash('sha256')
       .update(`${fileId}:${newMasterKey.toString('hex')}`)
       .digest('hex');
-
-    // Merge old keys with new keys for re-encrypted chunks
-    const updatedChunkKeysObject = { ...oldChunkKeysObject, ...newChunkKeys };
 
     const newEncryptedChunkKeys = encryptChunkKeys(updatedChunkKeysObject, newMasterKey);
 
@@ -313,7 +367,8 @@ async function executePartialReencryption(
       fileId,
       revocationId,
       publicKeyHash: revokedPublicKeyHash,
-      chunksReencrypted: reencryptedChunks.length
+      chunksReencrypted: reencryptedChunks.length,
+      newFingerprint: newKeyFingerprint,
     });
 
     return {
@@ -323,6 +378,10 @@ async function executePartialReencryption(
       totalChunks: file.chunkCount,
       percentage: Math.round((reencryptedChunks.length / file.chunkCount) * 100),
       message: `Successfully revoked access. Re-encrypted ${reencryptedChunks.length} of ${file.chunkCount} chunks (${Math.round((reencryptedChunks.length / file.chunkCount) * 100)}%)`,
+      newMasterKey: newMasterKey.toString('hex'),
+      newKeyFingerprint,
+      updatedChunkKeys: updatedChunkKeysObject,
+      reencryptedChunkDetails: reencryptedChunks,
     };
 
   } catch (error) {

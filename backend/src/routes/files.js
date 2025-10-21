@@ -534,15 +534,23 @@ router.post('/revoke-with-reencryption', async (req, res) => {
         const {
             fileId,
             targetUserId,
+            revokedPublicKeyHash,
             ringSignature,
             message,
             ownershipProof = {},
             securityLevel = 'standard', // standard, high, maximum
+            keyPackage,
         } = req.body || {};
 
         if (!fileId || !message) {
             return res.status(400).json({
                 error: 'fileId and message are required'
+            });
+        }
+
+        if (!keyPackage || typeof keyPackage !== 'object') {
+            return res.status(400).json({
+                error: 'keyPackage (masterKey + chunkKeys) is required for re-encryption'
             });
         }
 
@@ -578,9 +586,10 @@ router.post('/revoke-with-reencryption', async (req, res) => {
 
         console.log('[Route] Starting partial re-encryption revocation...');
 
-        // Convert targetUserId to publicKeyHash if provided
-        let revokedPublicKeyHash = null;
-        if (targetUserId) {
+        // Determine revoked public key hash
+        let resolvedPublicKeyHash = revokedPublicKeyHash || null;
+
+        if (!resolvedPublicKeyHash && targetUserId) {
             const { PrismaClient } = require('@prisma/client');
             const prisma = new PrismaClient();
             const targetUser = await prisma.user.findUnique({
@@ -596,20 +605,23 @@ router.post('/revoke-with-reencryption', async (req, res) => {
 
             // Hash the public key
             const crypto = require('crypto');
-            revokedPublicKeyHash = crypto
+            const hashed = crypto
                 .createHash('sha256')
                 .update(targetUser.publicKey)
                 .digest('hex');
 
             await prisma.$disconnect();
+            resolvedPublicKeyHash = hashed;
         }
 
         // Execute partial re-encryption with publicKeyHash (not userId)
         const result = await executePartialReencryption(
             fileId,
-            revokedPublicKeyHash,
+            resolvedPublicKeyHash,
             ownershipProof,
-            securityLevel
+            securityLevel,
+            undefined,
+            keyPackage
         );
 
         res.json(result);
