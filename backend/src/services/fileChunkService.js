@@ -3,7 +3,7 @@
  * Handles chunked file upload/download with AOT integration
  */
 
-const { PrismaClient } = require('@prisma/client');
+const { PrismaClient } = require('../config/prismaClient');
 const prisma = new PrismaClient();
 const axios = require('axios');
 const FormData = require('form-data');

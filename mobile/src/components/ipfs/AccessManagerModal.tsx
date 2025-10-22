@@ -653,7 +653,7 @@ export const AccessManagerModal: React.FC<AccessManagerModalProps> = ({
         });
 
         const normalizedChunkKeys: Record<number, string> = {};
-        Object.entries(response.updatedChunkKeys).forEach(([index, value]) => {
+        Object.entries(response.rotatedKeyPackage.chunkKeys).forEach(([index, value]) => {
           const numericIndex = Number(index);
           if (Number.isNaN(numericIndex)) {
             return;
@@ -662,7 +662,7 @@ export const AccessManagerModal: React.FC<AccessManagerModalProps> = ({
         });
 
         const updatedPackage: StoredKeyPackage = {
-          masterKey: response.newMasterKey,
+          masterKey: response.rotatedKeyPackage.masterKey,
           chunkKeys: normalizedChunkKeys,
           fingerprint: response.newKeyFingerprint,
           storedAt: new Date().toISOString(),

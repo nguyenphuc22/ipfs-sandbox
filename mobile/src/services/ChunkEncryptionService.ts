@@ -100,7 +100,7 @@ export interface ProgressCallback {
 /**
  * Convert hex string to Uint8Array
  */
-function hexToBytes(hex: string): Uint8Array {
+export function hexToBytes(hex: string): Uint8Array {
   const cleaned = hex.trim().toLowerCase().replace(/^0x/, '');
   if (cleaned.length % 2 !== 0) {
     throw new Error('Hex string must have even length');
@@ -115,7 +115,7 @@ function hexToBytes(hex: string): Uint8Array {
 /**
  * Convert Uint8Array to hex string
  */
-function bytesToHex(bytes: Uint8Array): string {
+export function bytesToHex(bytes: Uint8Array): string {
   return Array.from(bytes)
     .map(b => b.toString(16).padStart(2, '0'))
     .join('');
@@ -448,7 +448,7 @@ export async function decryptChunkWithAESGCM(
  * Create encrypted chunk package ready for IPFS upload
  * Format: [12 bytes IV][16 bytes AuthTag][N bytes EncryptedData]
  */
-async function createEncryptedChunkPackage(
+export async function createEncryptedChunkPackage(
   chunkData: Uint8Array,
   chunkKey: Uint8Array
 ): Promise<{
@@ -671,6 +671,15 @@ async function uploadChunkToIPFS(
     console.error(`[ChunkEncryption] Failed to upload chunk ${chunkIndex}:`, error);
     throw new Error(`Chunk ${chunkIndex} upload failed: ${error instanceof Error ? error.message : String(error)}`);
   }
+}
+
+export async function uploadEncryptedChunkBuffer(
+  encryptedChunk: Uint8Array,
+  chunkIndex: number,
+  fileName: string,
+  ipfsGatewayUrl: string
+): Promise<string> {
+  return uploadChunkToIPFS(encryptedChunk, chunkIndex, fileName, ipfsGatewayUrl);
 }
 
 /**

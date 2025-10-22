@@ -27,11 +27,15 @@
 ## 4. Revoke & Cleanup
 - [ ] Owner revoke public key Recipient trong Access Manager → modal cập nhật `status='revoked'`.
 - [ ] Backend logs `grant_revoked`, `AnonymousFileAccess.status='revoked'`, `revokedAt` có giá trị.
+- [ ] Gói manifest trả về từ `POST /api/files/revocation/prepare` liệt kê đúng danh sách chunk (chỉ số + CID). Thử gọi `/revocation/finalize` với key cũ → backend trả lỗi "Chunk key for index ... was not rotated".
 - [ ] Recipient refresh anonymous list:
   - File vừa revoke **biến mất** khỏi danh sách.
   - Banner "Quyền truy cập đã bị thu hồi" hiển thị (kèm số lượng key package bị xoá).
   - AsyncStorage key `ipfs_key_packages_v1` không còn record cho `fileId` đó.
   - Audit log sinh event `delete_cache` (metadata `reason='grant_revoked'`).
+- [ ] Access Manager hiển thị fingerprint mới, clipboard chứa `rotatedKeyPackage` (master key + chunk keys mới); AsyncStorage `ipfs_key_packages_v1` lưu fingerprint khớp với response.
+- [ ] Gửi payload thu hồi với Schnorr proof cũ (timestamp > 5 phút) hoặc nonce trùng → backend trả 400 `Schnorr proof timestamp is stale` / `message has already been used`.
+- [ ] Thử gọi API quick revoke (`POST /api/files/revoke-quick`) **không** bật `adminOverride` → backend từ chối với thông báo "Quick revoke is disabled".
 
 ## 5. Regression Checks
 - [ ] Grant lại cùng public key → `operation='updated'`, `grantedAt` mới, banner `granted` hiển thị, Recipient nhận lại file.

@@ -42,14 +42,16 @@ function loadRouterWithMocks({
     axiosResponse = {
         data: { Hash: 'QmMockCid1234567890' },
     },
+    fileRecord = null,
 } = {}) {
     jest.resetModules();
 
     const addFileRecord = addFileRecordImpl || jest.fn((record) => record);
     const getRingContext = jest.fn(() => ringContext);
+    const getFileRecord = jest.fn(() => fileRecord);
 
     jest.doMock('../../utils/aotStorage', () => ({
-        getFileRecord: jest.fn(),
+        getFileRecord,
         addRevocationRecord: jest.fn(),
         listFileRecords: jest.fn(),
         listFileRecordsByOwnershipKey: jest.fn(),
@@ -71,6 +73,7 @@ function loadRouterWithMocks({
             addFileRecord,
             axiosPost,
             getRingContext,
+            getFileRecord,
         },
     };
 }
@@ -119,6 +122,41 @@ describe('Upload route wiring', () => {
 
         expect(res.statusCode).toBe(400);
         expect(res.body).toHaveProperty('error');
+    });
+});
+
+describe('Anonymous revocation validation', () => {
+    it('returns 400 when ownership proof is missing publicKey', async () => {
+        const { router, mocks } = loadRouterWithMocks({
+            fileRecord: {
+                fileId: 'file-demo',
+                ownershipPublicKey: VALID_OWNERSHIP_PUBLIC_KEY,
+            },
+        });
+        const handler = findRouteHandler(router, 'post', '/aot/revoke');
+        expect(handler).toBeDefined();
+
+        const req = {
+            body: {
+                fileId: 'file-demo',
+                message: 'revoke:file-demo:target:1732234672000:nonce',
+                ownershipProof: {
+                    R: 'aa'.repeat(32),
+                    s: 'bb'.repeat(32),
+                    message: 'cc'.repeat(32),
+                    // publicKey intentionally omitted
+                },
+            },
+        };
+        const res = createMockResponse();
+
+        await handler(req, res);
+
+        expect(mocks.getFileRecord).toHaveBeenCalled();
+        expect(res.statusCode).toBe(400);
+        expect(res.body).toHaveProperty('error');
+        expect(res.body.error).toMatch(/ownership proof/i);
+        expect(res.body.error).toMatch(/missing publicKey/);
     });
 });
 

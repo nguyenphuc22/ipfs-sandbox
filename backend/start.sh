@@ -232,12 +232,10 @@ fi
 # Create data directory if it doesn't exist
 mkdir -p /app/data
 
-# Always ensure database schema is up to date
-if ! apply_prisma_schema; then
-    echo "FATAL: Database schema application failed"
-    kill $IPFS_PID 2>/dev/null || true
-    exit 1
-fi
+# Skip Prisma migrations during startup - run manually after container starts
+# To run migrations: docker exec ipfs-sandbox-gateway-1 npx prisma migrate deploy
+echo "⚠️  Skipping Prisma migrations during startup"
+echo "💡 Run migrations manually: docker exec ipfs-sandbox-gateway-1 npx prisma migrate deploy"
 
 # Start Node.js application
 echo "Starting Node.js application..."

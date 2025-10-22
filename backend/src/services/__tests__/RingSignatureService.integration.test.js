@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 const { RingSignatureService } = require('../RingSignatureService');
-const { PrismaClient } = require('@prisma/client');
+const { PrismaClient } = require('../../config/prismaClient');
 
 const TEST_RING_PUBLIC_KEYS = [
   `02${'11'.repeat(32)}`,

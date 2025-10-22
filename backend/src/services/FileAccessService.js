@@ -8,7 +8,7 @@
  */
 
 const crypto = require('crypto');
-const { PrismaClient } = require('@prisma/client');
+const { PrismaClient } = require('../config/prismaClient');
 const { ringSignatureService } = require('./RingSignatureService');
 const { secureLog, maskHashForLogging } = require('../utils/monitoring');
 const { getSchnorr } = require('../utils/schnorr');

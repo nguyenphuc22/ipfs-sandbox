@@ -1,0 +1,186 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-arm64-openssl-3.0.x"]
+  output        = "../generated/prismaClient"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String      @id @default(uuid())
+  publicKey     String      @unique
+  displayLabel  String?
+  role          String      @default("user")
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  uploadedFiles File[]      @relation("FileUploader")
+  signatures    Signature[]
+}
+
+model File {
+  id                    String                    @id @default(uuid())
+  fileName              String
+  totalSize             Int
+  mimeType              String?
+  chunkCount            Int                       @default(0)
+  metadata              String?
+  metadataHash          String
+  encryptedChunkKeys    String
+  ringSignature         String?
+  ringPublicKeys        String?
+  escrowedIdentity      String?
+  ownershipPublicKey    String
+  ownershipCreatedAt    DateTime                  @default(now())
+  uploaderId            String?
+  uploaderPublicKeyHash String?
+  status                String                    @default("active")
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
+  lastRevocationId      String?
+  lastRevocationAt      DateTime?
+  anonymousAccess       AnonymousFileAccess[]
+  revocations           AnonymousRevocation[]
+  sharingRequests       AnonymousSharingRequest[]
+  uploader              User?                     @relation("FileUploader", fields: [uploaderId], references: [id])
+  chunks                FileChunk[]
+  integrityAlerts       IntegrityAlert[]
+  signatures            Signature[]
+
+  @@index([ownershipPublicKey])
+  @@index([uploaderId])
+  @@index([uploaderPublicKeyHash])
+  @@index([status])
+}
+
+model FileChunk {
+  id          String   @id @default(uuid())
+  fileId      String
+  chunkIndex  Int
+  chunkHash   String
+  ipfsCid     String
+  size        Int
+  encryptedAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+  file        File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@unique([fileId, chunkIndex])
+  @@index([ipfsCid])
+}
+
+model AnonymousRevocation {
+  id                   String   @id @default(uuid())
+  fileId               String
+  revokedPublicKeyHash String?
+  proofR               String
+  proofS               String
+  proofMessage         String
+  proofTimestamp       DateTime
+  ringSignature        String?
+  ringPublicKeys       String?
+  chunksReencrypted    String
+  revocationStrategy   String?
+  createdAt            DateTime @default(now())
+  executedBySystem     Boolean  @default(false)
+  file                 File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@index([fileId])
+  @@index([revokedPublicKeyHash])
+  @@index([createdAt])
+}
+
+model IntegrityAlert {
+  id                      String    @id @default(uuid())
+  fileId                  String
+  chunkIndex              Int
+  expectedHash            String
+  actualHash              String?
+  reportedByPublicKeyHash String
+  reportedAt              DateTime  @default(now())
+  resolved                Boolean   @default(false)
+  resolvedAt              DateTime?
+  resolution              String?
+  file                    File      @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@index([fileId])
+  @@index([resolved])
+  @@index([reportedByPublicKeyHash])
+}
+
+model AnonymousFileAccess {
+  id                    String    @id @default(uuid())
+  accessorPublicKeyHash String
+  fileId                String
+  grantedAt             DateTime  @default(now())
+  expiresAt             DateTime?
+  lastAccessProof       String?
+  lastAccessAt          DateTime?
+  accessCount           Int       @default(0)
+  keyStatus             String    @default("client-managed")
+  keyPackageFingerprint String?
+  status                String    @default("active")
+  revokedAt             DateTime?
+  lastOwnerProof        String?
+  file                  File      @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@unique([accessorPublicKeyHash, fileId])
+  @@index([accessorPublicKeyHash])
+  @@index([fileId])
+  @@index([status])
+  @@index([fileId, accessorPublicKeyHash])
+}
+
+model AnonymousAuditLog {
+  id                String    @id @default(uuid())
+  eventType         String
+  fileId            String?
+  publicKeyHash     String?
+  deviceFingerprint String?
+  ringSignature     String?
+  ringPublicKeys    String?
+  metadata          String?
+  timestamp         DateTime  @default(now())
+  status            String?
+  revokedAt         DateTime?
+  lastOwnerProof    String?
+
+  @@index([publicKeyHash])
+  @@index([eventType])
+  @@index([timestamp])
+  @@index([fileId])
+}
+
+model AnonymousSharingRequest {
+  id                     String    @id @default(uuid())
+  fileId                 String
+  sharerPublicKeyHash    String
+  recipientPublicKeyHash String
+  ownershipProof         String
+  ringSignature          String
+  keyPackageFingerprint  String?
+  status                 String    @default("pending")
+  requestedAt            DateTime  @default(now())
+  respondedAt            DateTime?
+  file                   File      @relation(fields: [fileId], references: [id])
+
+  @@index([sharerPublicKeyHash])
+  @@index([recipientPublicKeyHash])
+  @@index([fileId])
+  @@index([status])
+}
+
+model Signature {
+  id           String   @id @default(uuid())
+  fileId       String
+  signerId     String
+  ringUserIds  String
+  signature    String
+  isOpened     Boolean  @default(false)
+  openingProof String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  signer       User     @relation(fields: [signerId], references: [id])
+  file         File     @relation(fields: [fileId], references: [id])
+}

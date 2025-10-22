@@ -810,7 +810,7 @@ router.get('/:fileId/info', async (req, res) => {
             });
         }
 
-        const { PrismaClient } = require('@prisma/client');
+        const { PrismaClient } = require('../config/prismaClient');
         const prisma = new PrismaClient();
 
         const file = await prisma.file.findUnique({

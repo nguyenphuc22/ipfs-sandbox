@@ -19,6 +19,16 @@ import {
 import { sha256Hex } from './crypto/hash';
 import { RingContext } from '../types';
 import { getKeyPackage, removeKeyPackage } from './KeyPackageStorage';
+import {
+  bytesToHex as chunkBytesToHex,
+  hexToBytes as chunkHexToBytes,
+  parseEncryptedChunkPackage,
+  decryptChunkWithAESGCM,
+  generateChunkKey,
+  createEncryptedChunkPackage,
+  uploadEncryptedChunkBuffer,
+  generateMasterKey as generateChunkMasterKey,
+} from './ChunkEncryptionService';
 
 // ============================================================================
 // TYPES & INTERFACES
@@ -108,6 +118,13 @@ export interface AnonymousGrantRecord {
   accessCount?: number;
 }
 
+type OwnershipProofPayload = {
+  R: string;
+  s: string;
+  message: string;
+  publicKey: string;
+};
+
 export interface GrantAccessResponse {
   success: boolean;
   operation: 'created' | 'updated';
@@ -134,15 +151,49 @@ export interface ReencryptionRevocationResponse {
   totalChunks: number;
   percentage: number;
   message: string;
-  newMasterKey: string;
   newKeyFingerprint: string;
-  updatedChunkKeys: Record<string, string>;
-  reencryptedChunkDetails?: Array<{
+  manifestStatus?: string;
+  rotatedKeyPackage: {
+    masterKey: string;
+    chunkKeys: Record<string, string>;
+  };
+  reencryptedChunkDetails: Array<{
     index: number;
     oldCid: string;
     newCid: string;
     hash: string;
   }>;
+}
+
+interface RevocationManifestChunk {
+  index: number;
+  cid: string;
+  size: number;
+  originalHash?: string;
+}
+
+interface RevocationPrepareResponse {
+  success: boolean;
+  revocationId: string;
+  fileId: string;
+  revokedPublicKeyHash?: string | null;
+  manifest: {
+    securityLevel: string;
+    chunkCount: number;
+    preparedAt: string;
+    selectedChunks: RevocationManifestChunk[];
+  };
+}
+
+interface RevocationFinalizeResponse {
+  success: boolean;
+  revocationId: string;
+  chunksReencrypted: number[];
+  totalChunks: number;
+  percentage: number;
+  newKeyFingerprint: string;
+  manifestStatus?: string;
+  message?: string;
 }
 
 export interface GrantAccessParams {
@@ -271,6 +322,54 @@ export class AnonymousFileAccessService {
     const normalized = normalizeHex(publicKey);
     const hash = sha256Hex(normalized);
     return `${AnonymousFileAccessService.ANONYMOUS_LIST_CACHE_PREFIX}${hash}`;
+  }
+
+  private buildOwnershipProofPayload(
+    schnorrProof: { R?: string; s?: string },
+    messageHex: string,
+    publicKeyHex: string,
+    context: string,
+  ): OwnershipProofPayload {
+    const scope = context ? ` for ${context}` : '';
+
+    const trimmedR = `${schnorrProof?.R ?? ''}`.trim();
+    const trimmedS = `${schnorrProof?.s ?? ''}`.trim();
+    const trimmedMessage = `${messageHex ?? ''}`.trim();
+    const trimmedPublicKey = `${publicKeyHex ?? ''}`.trim();
+
+    const missingFields: string[] = [];
+    if (!trimmedR) missingFields.push('R');
+    if (!trimmedS) missingFields.push('s');
+    if (!trimmedMessage) missingFields.push('message');
+    if (!trimmedPublicKey) missingFields.push('publicKey');
+
+    if (missingFields.length > 0) {
+      throw new Error(`Ownership proof is missing ${missingFields.join(', ')}${scope}.`);
+    }
+
+    const invalidLengths: string[] = [];
+    if (trimmedR.length !== 64) invalidLengths.push('R');
+    if (trimmedS.length !== 64) invalidLengths.push('s');
+    if (trimmedMessage.length !== 64) invalidLengths.push('message');
+
+    const publicKeyLength = trimmedPublicKey.length;
+    const allowedPublicKeyLengths = [64, 66, 130];
+    if (!allowedPublicKeyLengths.includes(publicKeyLength)) {
+      invalidLengths.push('publicKey');
+    }
+
+    if (invalidLengths.length > 0) {
+      throw new Error(
+        `Ownership proof${scope} must provide 32-byte hex values for ${invalidLengths.join(', ')}.`,
+      );
+    }
+
+    return {
+      R: trimmedR,
+      s: trimmedS,
+      message: trimmedMessage,
+      publicKey: trimmedPublicKey,
+    };
   }
 
   private normalizeGrantRecord(raw: any): AnonymousGrantRecord {
@@ -655,6 +754,63 @@ export class AnonymousFileAccessService {
         throw error;
       }
       throw new Error('Network request failed');
+    }
+  }
+
+  private resolveIpfsGatewayUrl(): string {
+    if (API_CONFIG.ipfsGatewayUrl) {
+      return API_CONFIG.ipfsGatewayUrl.replace(/\/$/, '');
+    }
+
+    try {
+      const parsed = new URL(this.baseUrl);
+      parsed.port = '5001';
+      parsed.pathname = '';
+      return parsed.toString().replace(/\/$/, '');
+    } catch (error) {
+      return this.baseUrl.replace(/:(\d+)/, ':5001');
+    }
+  }
+
+  private normalizeChunkKeyMap(input: Record<string | number, string>): Record<string, string> {
+    const normalized: Record<string, string> = {};
+    Object.entries(input || {}).forEach(([index, value]) => {
+      if (typeof value !== 'string' || value.trim().length === 0) {
+        throw new Error(`Invalid chunk key for index ${index}`);
+      }
+      const keyHex = normalizeHex(value);
+      if (keyHex.length !== 64) {
+        throw new Error(`Chunk key for index ${index} must be 32-byte hex string`);
+      }
+      normalized[String(index)] = keyHex;
+    });
+    return normalized;
+  }
+
+  private async downloadEncryptedChunk(cid: string, gatewayUrl: string): Promise<Uint8Array> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+    try {
+      const response = await fetch(`${gatewayUrl}/api/v0/cat?arg=${cid}`, {
+        method: 'POST',
+        signal: controller.signal,
+      } as RequestInit);
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`IPFS fetch failed (${response.status} ${response.statusText})`);
+      }
+
+      const buffer = await response.arrayBuffer();
+      return new Uint8Array(buffer);
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('IPFS chunk download timed out');
+      }
+      throw error instanceof Error ? error : new Error('Failed to download chunk from IPFS');
     }
   }
 
@@ -1051,17 +1207,19 @@ export class AnonymousFileAccessService {
     const schnorrMessageHex = sha256Hex(grantMessage);
     const schnorrProof = await createSchnorrProof(schnorrMessageHex, ownerPrivateKey);
 
+    const ownershipProofPayload = this.buildOwnershipProofPayload(
+      schnorrProof,
+      schnorrMessageHex,
+      compressedOwnerKey,
+      'grant access',
+    );
+
     const body: Record<string, any> = {
       targetPublicKey: compressedTargetKey,
       ringSignature,
       timestamp,
       nonce,
-      ownershipProof: {
-        R: schnorrProof.R,
-        s: schnorrProof.s,
-        message: schnorrMessageHex,
-        publicKey: compressedOwnerKey,
-      },
+      ownershipProof: ownershipProofPayload,
       metadata: {
         source: 'mobile-app',
         ringSize: ringMembers.length,
@@ -1149,6 +1307,13 @@ export class AnonymousFileAccessService {
     const schnorrMessageHex = sha256Hex(message);
     const schnorrProof = await createSchnorrProof(schnorrMessageHex, ownerPrivateKey);
 
+    const ownershipProofPayload = this.buildOwnershipProofPayload(
+      schnorrProof,
+      schnorrMessageHex,
+      compressedOwnerKey,
+      'grant list',
+    );
+
     const response = await this.makeRequest<OwnerGrantListResponse>(
       `/api/files/${fileId}/anonymous-grants/list`,
       {
@@ -1157,12 +1322,7 @@ export class AnonymousFileAccessService {
           ringSignature,
           timestamp,
           nonce,
-          ownershipProof: {
-            R: schnorrProof.R,
-            s: schnorrProof.s,
-            message: schnorrMessageHex,
-            publicKey: compressedOwnerKey,
-          },
+          ownershipProof: ownershipProofPayload,
         }),
       }
     );
@@ -1216,6 +1376,13 @@ export class AnonymousFileAccessService {
     const schnorrMessageHex = sha256Hex(message);
     const schnorrProof = await createSchnorrProof(schnorrMessageHex, ownerPrivateKey);
 
+    const ownershipProofPayload = this.buildOwnershipProofPayload(
+      schnorrProof,
+      schnorrMessageHex,
+      compressedOwnerKey,
+      'grant revocation',
+    );
+
     const response = await this.makeRequest<RevokeAccessResponse>(
       `/api/files/${fileId}/anonymous-grants/${grantId}`,
       {
@@ -1225,12 +1392,7 @@ export class AnonymousFileAccessService {
           timestamp,
           nonce,
           reason: reason || null,
-          ownershipProof: {
-            R: schnorrProof.R,
-            s: schnorrProof.s,
-            message: schnorrMessageHex,
-            publicKey: compressedOwnerKey,
-          },
+          ownershipProof: ownershipProofPayload,
         }),
       }
     );
@@ -1297,28 +1459,24 @@ export class AnonymousFileAccessService {
     const schnorrMessageHex = sha256Hex(message);
     const schnorrProof = await createSchnorrProof(schnorrMessageHex, ownerPrivateKey);
 
-    const chunkKeysPayload: Record<string, string> = {};
-    Object.entries(keyPackage.chunkKeys).forEach(([index, value]) => {
-      if (typeof value !== 'string' || value.trim().length === 0) {
-        throw new Error(`Invalid chunk key for index ${index}`);
-      }
-      chunkKeysPayload[String(index)] = value;
-    });
+    const ownershipProofPayload = this.buildOwnershipProofPayload(
+      schnorrProof,
+      schnorrMessageHex,
+      compressedOwnerKey,
+      'client-side revocation',
+    );
 
-    const response = await this.makeRequest<ReencryptionRevocationResponse>(
-      `/api/files/revoke-with-reencryption`,
+    const chunkKeysPayload = this.normalizeChunkKeyMap(keyPackage.chunkKeys);
+
+    const prepareResponse = await this.makeRequest<RevocationPrepareResponse>(
+      `/api/files/revocation/prepare`,
       {
         method: 'POST',
         body: JSON.stringify({
           fileId,
           message,
           ringSignature,
-          ownershipProof: {
-            R: schnorrProof.R,
-            s: schnorrProof.s,
-            message: schnorrMessageHex,
-            publicKey: compressedOwnerKey,
-          },
+          ownershipProof: ownershipProofPayload,
           securityLevel,
           revokedPublicKeyHash: grant.accessorPublicKeyHash,
           keyPackage: {
@@ -1329,11 +1487,96 @@ export class AnonymousFileAccessService {
       }
     );
 
-    if (!response?.success) {
-      throw new Error(response?.message || 'Re-encryption revocation failed');
+    if (!prepareResponse?.success) {
+      throw new Error('Failed to prepare revocation manifest');
     }
 
-    return response;
+    const selectedChunks = prepareResponse.manifest?.selectedChunks ?? [];
+    if (!Array.isArray(selectedChunks) || selectedChunks.length === 0) {
+      throw new Error('Revocation manifest did not include any chunks to re-encrypt');
+    }
+
+    const ipfsGatewayUrl = this.resolveIpfsGatewayUrl();
+    const updatedChunkKeys: Record<string, string> = { ...chunkKeysPayload };
+    const reencryptedChunkDetails: Array<{ index: number; oldCid: string; newCid: string; hash: string }> = [];
+
+    for (const chunk of selectedChunks) {
+      const indexKey = String(chunk.index);
+      const currentKeyHex = updatedChunkKeys[indexKey];
+      if (!currentKeyHex) {
+        throw new Error(`Key package missing chunk key for index ${indexKey}`);
+      }
+
+      const encryptedBuffer = await this.downloadEncryptedChunk(chunk.cid, ipfsGatewayUrl);
+      const { iv, authTag, encryptedData } = parseEncryptedChunkPackage(encryptedBuffer);
+      const plaintext = await decryptChunkWithAESGCM(
+        encryptedData,
+        chunkHexToBytes(currentKeyHex),
+        iv,
+        authTag,
+      );
+
+      const computedHash = normalizeHex(sha256Hex(plaintext));
+      if (chunk.originalHash && normalizeHex(chunk.originalHash) !== computedHash) {
+        throw new Error(`Chunk integrity check failed for index ${chunk.index}`);
+      }
+
+      const newChunkKeyBytes = generateChunkKey();
+      const { encryptedBuffer: rotatedBuffer, hash } = await createEncryptedChunkPackage(
+        plaintext,
+        newChunkKeyBytes,
+      );
+
+      const newCid = await uploadEncryptedChunkBuffer(
+        rotatedBuffer,
+        chunk.index,
+        `${fileId}.revocation`,
+        ipfsGatewayUrl,
+      );
+
+      updatedChunkKeys[indexKey] = normalizeHex(chunkBytesToHex(newChunkKeyBytes));
+      reencryptedChunkDetails.push({
+        index: chunk.index,
+        oldCid: chunk.cid,
+        newCid,
+        hash,
+      });
+    }
+
+    const newMasterKey = normalizeHex(generateChunkMasterKey());
+
+    const finalizeResponse = await this.makeRequest<RevocationFinalizeResponse>(
+      `/api/files/revocation/finalize`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          revocationId: prepareResponse.revocationId,
+          fileId,
+          message,
+          ringSignature,
+          ownershipProof: ownershipProofPayload,
+          keyPackage: {
+            masterKey: newMasterKey,
+            chunkKeys: updatedChunkKeys,
+          },
+          reencryptedChunks: reencryptedChunkDetails,
+        }),
+      }
+    );
+
+    if (!finalizeResponse?.success) {
+      throw new Error(finalizeResponse?.message || 'Re-encryption revocation failed');
+    }
+
+    return {
+      ...finalizeResponse,
+      message: finalizeResponse.message || 'Client-side re-encryption finalized',
+      rotatedKeyPackage: {
+        masterKey: newMasterKey,
+        chunkKeys: updatedChunkKeys,
+      },
+      reencryptedChunkDetails,
+    };
   }
 
   async syncGrantJournal(fileId: string): Promise<AnonymousGrantRecord[]> {

@@ -92,7 +92,7 @@
 ## Backend
 - ✅ `anonymous-endpoints-addition.js` mount trước `files.js`, `FileAccessService` truy vấn `AnonymousFileAccess` bằng `accessorPublicKeyHash` và trả manifest không chứa `userId`.
 - ✅ `RingSignatureService` đã tích hợp kiểm chứng LSAG đầy đủ + lưu toàn bộ nonce/keyImage để chống replay theo `issue_plan.md#task-5` (44 tests pass).
-- ✅ Prisma migrations (20251009154345, 20251014120425) đã loại bỏ toàn bộ PII khỏi bảng `User`; `revocationService.executePartialReencryption()` và `revokeAccessByPublicKeyHash()` chỉ nhận `revokedPublicKeyHash`.
+- ✅ Prisma migrations (20251009154345, 20251014120425) đã loại bỏ toàn bộ PII khỏi bảng `User`; luồng revoke dùng `revocationService.prepareClientReencryption()` + `finalizeClientReencryption()` để phát manifest và khóa xác thực, `revokeAccessByPublicKeyHash()` chỉ cho phép khi bật flag.
 - ⚠️ Chưa có checklist/test thủ công xác nhận anonymous router luôn mount trước legacy routes và không expose path cũ (thiếu `backend/test-anonymous-routes-priority.md`).
 
 ## Mobile
@@ -112,6 +112,7 @@
   - Verifies SHA-256 integrity per chunk
   - Reassembles file from decrypted chunks
   - Proper error handling and retry logic
+- ✅ Access Manager chuyển sang re-encrypt client-side: dùng manifest `/revocation/prepare`, tải chunk từ IPFS, rotate key, upload CID mới, gửi `rotatedKeyPackage` vào `/revocation/finalize`.
 
 ## Data & Audit Layer
 - ✅ `fileChunkService` tạo `AnonymousFileAccess` mặc định bằng `hash(publicKey)` khi upload, toàn bộ audit/revocation log sử dụng `maskHashForLogging`.

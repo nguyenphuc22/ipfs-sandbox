@@ -1,38 +1,40 @@
-# Issue Plan: Anonymous refresh fails after share
+# Issue Plan: Căn chỉnh luồng thu hồi với luận văn AOT
 
-**Last Updated:** 2025-10-20
+**Last Updated:** 2025-10-21
 
-## Tóm tắt sự cố
-- Thiết bị nhận quyền gọi `/api/files/anonymous-list` lần đầu (trước khi có grant) thành công, nhưng lưu key image vào audit log.
-- Sau khi chủ sở hữu cấp quyền, lần refresh tiếp theo trả về 500 `Internal server error`; UI hiển thị `Files (0)` và log `Invalid ring signature`.
-- Backend `RingSignatureService.checkKeyImage` không cho phép tái sử dụng key image khi `usageContext !== 'owner-management'` nên chặn mọi request lặp lại của cùng một public key (`backend/src/services/RingSignatureService.js:80`).
-- Kết quả: grant đã lưu trong DB nhưng người nhận không thể liệt kê file do bị chặn ở bước xác thực LSAG.
+## Implementation Note (Oct 2025)
+Hiện bản build triển khai re-encryption ngay trên backend để tận dụng CPU và băng thông của gateway. Owner vẫn phải cung cấp `keyPackage` (master key + chunk keys) kèm Schnorr proof; backend xác minh rồi tự tải chunk từ IPFS, giải mã và re-encrypt. Mobile giữ vai trò chuẩn bị khóa và giám sát audit cho tới khi luồng client-side hoàn thiện.
+
+## Bối cảnh
+- Luồng thu hồi hiện đã xoay master key và re-encrypt lại các chunk được chọn, nhưng thao tác diễn ra trên backend khác với kiến trúc mô tả trong `New_Thesis.md` (owner tự re-encrypt trên thiết bị).
+- Backend chưa kiểm chứng Schnorr ownership proof trước khi gọi re-encryption, khiến bất kỳ actor nào có `keyPackage` cũ đều có thể kích hoạt thu hồi.
+- Tồn tại API "quick revoke" bỏ qua re-encryption/master-key rotation; nhánh này không xuất hiện trong luận văn và có nguy cơ làm lệch chính sách ẩn danh.
 
 ## Mục tiêu
-- Cho phép người dùng anonymous gọi `anonymous-list` nhiều lần liên tiếp mà không bị xem là double spend.
-- Giữ nguyên cơ chế bảo vệ key image cho các ngữ cảnh khác (owner management, integrity alerts) để tránh lạm dụng.
-- Bổ sung test đảm bảo regression không quay lại.
+- Bảo đảm chỉ chủ sở hữu hợp lệ (Schnorr proof + ring signature đúng) mới được phép thu hồi.
+- Đưa re-encryption về phía client theo thiết kế trong luận văn, hoặc cập nhật tài liệu nếu buộc phải giữ server-side và mô tả rõ tác động tới ẩn danh.
+- Giải quyết đường "quick revoke" để không làm suy yếu quy trình chuẩn.
 
 ## Công việc cần làm
-1. **Cập nhật policy reuse key image**
-  - Điều chỉnh `_shouldAllowKeyImageReuse` để cho phép `usageContext === 'anonymous-access'` tái sử dụng khi cùng `actorPublicKeyHash` và (tuỳ chọn) cùng `messageDigest`.
-  - Đảm bảo route `anonymous-list` truyền `actorPublicKey`/hash xuống `verifyRingSignature` để policy hoạt động chính xác.
+1. **Bổ sung kiểm chứng Schnorr proof và ring signature trên backend**
+   - ✅ (21/10/2025) `verifySchnorrOwnership` + replay guard đã được tích hợp vào `revocationService.prepareClientReencryption` kèm audit log.
+   - ✅ Ring signature được kiểm tra lại trước khi finalize; các lỗi bị ghi lại qua `secureLog`.
+   - ✅ Test mới `revocationService.auth.test.js` phủ các nhánh replay, thiếu rotate, quick revoke.
 
-2. **Kiểm thử backend**
-  - Thêm unit test cho `RingSignatureService` và integration test cho `FileAccessService.listAccessibleFiles` chứng minh hai lần gọi liên tiếp với cùng khóa vẫn hợp lệ.
-  - Bao phủ trường hợp grant revoked để chắc chắn cache key image không gây lỗi lặp lại.
+2. **Di chuyển re-encryption sang client theo luận văn**
+   - ✅ Backend cung cấp hai endpoint mới `/api/files/revocation/prepare` và `/api/files/revocation/finalize`; server chỉ phát manifest và xác thực kết quả.
+   - ✅ Mobile Access Manager tự tải chunk từ IPFS, giải mã bằng key cục bộ, sinh key mới, upload lại CID và gửi `rotatedKeyPackage` cho backend.
+   - ✅ Luồng không truyền plaintext chunk lên backend; chỉ metadata + CID mới được gửi về.
 
-3. **Kiểm thử manual & thông báo UI**
-  - Sau khi backend sửa, kiểm tra lại trên thiết bị: grant -> refresh -> file xuất hiện.
-  - Cập nhật toast/error handler trên mobile (`mobile/src/components/ipfs/IPFSFileList.tsx`) để hiển thị thông điệp thân thiện khi backend trả về lỗi xác thực, giúp QA dễ phát hiện nếu backend bị regress.
+3. **Xử lý API "quick revoke"**
+   - ✅ Giữ route nhưng trả 410 trừ khi bật `ENABLE_QUICK_REVOKE`/`adminOverride`; test QA cập nhật để xác nhận hành vi này.
 
-4. **Hoàn thiện secure key exchange cho download**
-  - Chủ sở hữu cần chia sẻ key package (JSON) sau khi grant; hiện component `AccessManagerModal` chỉ copy clipboard mà không tự động gửi.
-  - Bổ sung hướng dẫn rõ ràng hơn cho owner/recipient và flow import thực sự đọc file JSON (thay mock trong `SecureDownloadScreen.importSecureKeyPackage`).
-  - Tích hợp `KeyPackageStorage` để lưu/bắt lỗi fingerprint mismatch và hiển thị yêu cầu nhập thủ công nếu chưa có package.
- - Viết test e2e mô phỏng grant -> export key package -> import key package -> download thành công.
+4. **Cập nhật tài liệu và checklist**
+   - ✅ Tài liệu (`New_Thesis.md`, `STATUS.md`, `QA_ANONYMOUS_ACCESS_CHECKLIST.md`, README) đã mô tả rõ revocation hai pha + yêu cầu chia sẻ key package mới.
 
-5. **Thu hồi kèm re-encryption (theo luận văn)** ✅
-  - Đã ép owner chỉ sử dụng luồng thu hồi + re-encrypt; modal cảnh báo nếu thiếu key package cục bộ.
-  - Backend `/api/files/revoke-with-reencryption` hiện kiểm tra key package, giải mã các chunk, mã hóa lại với master key mới rồi gửi trả key package mới cho owner.
-  - Mobile lưu/copy key package mới sau khi thu hồi để owner phát offline cho các recipient còn quyền.
+   5. **Sửa lỗi Schnorr verification + sự cố build Prisma**
+      - 🚧 Khi owner thu hồi trên app Android, backend ném lỗi `Cannot read properties of undefined (reading 'fromHex')`. Nguyên nhân: `verifySchnorrOwnership` đang cố dùng `secp256k1.Point` nhưng module mới chỉ expose `ProjectivePoint`, dẫn đến `Point` undefined.
+      - �️ Task backend: cập nhật `ownershipProof.js` dùng `ProjectivePoint` (hoặc import chính xác `Point`) và bổ sung test cho proof hợp lệ/thiếu trường để đảm bảo trả `400 Invalid Schnorr proof` thay vì throw.
+      - 📱 Task mobile: vẫn kiểm tra payload trước khi gửi; thêm guard hiển thị thông báo nếu tạo proof thất bại.
+      - 🧪 Hoàn tất khi thu hồi chạy thành công, backend log `Client manifest ... finalized` và test mới pass.
+      - 🐳 Đồng thời, sửa lỗi build Docker `npx prisma generate` (không tải được binary trên linux-musl-arm64). Cần cấu hình proxy hoặc thêm `binaryTargets` phù hợp rồi rebuild (`docker compose build gateway`). Khi script `start-system.sh` chạy lại phải qua bước Prisma generate.

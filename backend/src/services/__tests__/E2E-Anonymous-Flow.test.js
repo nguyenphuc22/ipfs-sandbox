@@ -10,10 +10,10 @@
  * 6. Verify audit logs contain NO userId leaks
  */
 
-const { PrismaClient } = require('@prisma/client');
+const { PrismaClient } = require('../../config/prismaClient');
 const { RingSignatureService } = require('../RingSignatureService');
 const { FileAccessService } = require('../FileAccessService');
-const { executePartialReencryption } = require('../revocationService');
+const { revocationService } = require('../revocationService');
 const crypto = require('crypto');
 
 describe('E2E: Anonymous File Access Flow', () => {
@@ -311,17 +311,12 @@ describe('E2E: Anonymous File Access Flow', () => {
    */
   it('Step 5: Should revoke access using publicKeyHash (not userId)', async () => {
     // Revoke access for user 2
-    const revocationResult = await executePartialReencryption(
+    const revocationResult = await revocationService.revokeAccessByPublicKeyHash(
       testFileId,
-      testPublicKeyHash2, // ✅ Revoke by hash, not userId
-      {
-        R: 'mock-R',
-        s: 'mock-s',
-        message: 'revoke-user-2',
-        publicKey: testPublicKey1
-      },
-      'standard',
-      prisma
+      testPublicKeyHash2,
+      'integrity_violation',
+      prisma,
+      { adminOverride: true, requestedBy: 'E2E_TEST' }
     );
 
     expect(revocationResult.success).toBe(true);

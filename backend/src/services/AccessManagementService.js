@@ -13,7 +13,7 @@
 
 const { EventEmitter } = require('events');
 const crypto = require('crypto');
-const { PrismaClient } = require('@prisma/client');
+const { PrismaClient } = require('../config/prismaClient');
 const { getSchnorr } = require('../utils/schnorr');
 const { RingSignatureService } = require('./RingSignatureService');
 const { secureLog, maskHashForLogging } = require('../utils/monitoring');

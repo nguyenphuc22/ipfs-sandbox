@@ -232,8 +232,11 @@ See `TASK_A_IMPLEMENTATION_SUMMARY.md` and `TASK_B_C_IMPLEMENTATION_SUMMARY.md` 
 
 ### Anonymous Access Lifecycle
 - **Access Manager modal** cho phép chủ sở hữu grant/revoke nhanh chóng; UI hiển thị banner "Bạn vừa được cấp quyền" / "Quyền truy cập đã bị thu hồi" ngay sau khi backend xác nhận.
+- **Revocation manifest hai pha**: Backend phát `/api/files/revocation/prepare`, mobile tự xoay key bằng key package cục bộ, upload CID mới lên IPFS rồi gọi `/api/files/revocation/finalize` (không còn re-encrypt trên server).
 - **Recipient sync thông minh**: danh sách `anonymous-list` dùng `ETag` + `Last-Modified`, cache theo `sha256(publicKey)`, 304 → bật chế độ offline, tự động ẩn `status='revoked'`, xoá key package và ghi audit `delete_cache`.
 - **QA tooling**: chạy `node scripts/reset-anonymous-grants.js --yes` để reset AnonymousFileAccess + audit log cho demo/testing.
+- **Schnorr + LSAG hardening**: Backend kiểm tra `s·G == R + e·Q`, băm thông điệp có timestamp/nonce và từ chối reuse proof → replay không còn tác dụng.
+- **Quick revoke bị khóa mặc định**: API `revokeAccessByPublicKeyHash` chỉ hoạt động khi bật `ENABLE_QUICK_REVOKE=true` hoặc truyền `adminOverride=true`. Mặc định người dùng phải đi qua luồng partial re-encryption mới.
 
 ### Ring Signature Operations
 - **Create Signatures**: Generate ring signatures for files

@@ -158,6 +158,8 @@ function verifySchnorrOwnership(
 }
 ```
 
+_(Pseudo-code: `awaitClientSubmission` biểu thị payload mà thiết bị owner gửi lại qua `/api/files/revocation/finalize` sau khi xoay key và upload CID mới.)_
+
 #### **Tính chất Bảo mật (Dựa trên Discrete Logarithm Problem):**
 
 1. **DLP Security**: Không thể tính được `k` từ `Q = k·G` (256-bit security trên secp256k1)
@@ -1007,8 +1009,15 @@ class SchnorrRevocationService {
                 return { success: false, message: "Invalid ring signature" };
             }
 
-            // Phase 3: Execute partial re-encryption
-            const result = await this.executePartialReencryption(request);
+            // Phase 3: Phát manifest cho client tự re-encrypt
+            const manifest = await this.prepareClientReencryption(request);
+
+            // (Client tải chunk, xoay key, upload CID mới, gọi /revocation/finalize)
+            const result = await this.finalizeClientReencryption({
+                ...request,
+                revocationId: manifest.revocationId,
+                reencryptedChunks: await this.awaitClientSubmission(manifest.revocationId),
+            });
 
             // Phase 4: Log anonymous revocation
             await this.logAnonymousRevocation(request, result);

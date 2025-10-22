@@ -19,7 +19,8 @@ const {
     reportIntegrityAlert,
 } = require('../services/fileChunkService');
 const {
-    executePartialReencryption,
+    prepareClientReencryption,
+    finalizeClientReencryption,
     getRevocationHistory,
 } = require('../services/revocationService');
 const router = express.Router();
@@ -480,12 +481,36 @@ router.post('/aot/revoke', async (req, res) => {
             });
         }
 
-        await verifySchnorrProof({
+        const requiredProofFields = ['R', 's', 'message', 'publicKey'];
+        const missingProofFields = requiredProofFields.filter((key) => {
+            const value = ownershipProof?.[key];
+            return typeof value !== 'string' || value.trim().length === 0;
+        });
+
+        if (missingProofFields.length > 0) {
+            return res.status(400).json({
+                error: `Invalid ownership proof: missing ${missingProofFields.join(', ')}`,
+            });
+        }
+
+        const proofPayload = {
             R: ownershipProof.R,
             s: ownershipProof.s,
             message: ownershipProof.message || message,
-            publicKey: ownershipProof.publicKey || record.ownershipPublicKey,
-        }, record.ownershipPublicKey);
+            publicKey: ownershipProof.publicKey,
+        };
+
+        try {
+            await verifySchnorrProof(proofPayload, record.ownershipPublicKey);
+        } catch (verificationError) {
+            console.warn('AOT revocation ownership proof rejected', {
+                fileId,
+                error: verificationError instanceof Error ? verificationError.message : verificationError,
+            });
+            return res.status(400).json({
+                error: `Invalid ownership proof: ${verificationError instanceof Error ? verificationError.message : 'verification failed'}`,
+            });
+        }
 
         const revocation = addRevocationRecord({
             revocationId: crypto.randomUUID(),
@@ -499,7 +524,7 @@ router.post('/aot/revoke', async (req, res) => {
             ownershipProof: {
                 R: ownershipProof.R,
                 s: ownershipProof.s,
-                publicKey: ownershipProof.publicKey || record.ownershipPublicKey,
+                publicKey: ownershipProof.publicKey,
             },
             createdAt: new Date().toISOString(),
         });
@@ -526,10 +551,10 @@ router.post('/aot/revoke', async (req, res) => {
 });
 
 // ============================================================================
-// NEW PARTIAL RE-ENCRYPTION REVOCATION (Thesis Implementation)
+// CLIENT-SIDE RE-ENCRYPTION REVOCATION (Two-Phase Flow)
 // ============================================================================
 
-router.post('/revoke-with-reencryption', async (req, res) => {
+router.post('/revocation/prepare', async (req, res) => {
     try {
         const {
             fileId,
@@ -538,73 +563,35 @@ router.post('/revoke-with-reencryption', async (req, res) => {
             ringSignature,
             message,
             ownershipProof = {},
-            securityLevel = 'standard', // standard, high, maximum
+            securityLevel = 'standard',
             keyPackage,
         } = req.body || {};
 
         if (!fileId || !message) {
-            return res.status(400).json({
-                error: 'fileId and message are required'
-            });
+            return res.status(400).json({ error: 'fileId and message are required' });
         }
 
         if (!keyPackage || typeof keyPackage !== 'object') {
-            return res.status(400).json({
-                error: 'keyPackage (masterKey + chunkKeys) is required for re-encryption'
-            });
+            return res.status(400).json({ error: 'keyPackage (masterKey + chunkKeys) is required' });
         }
 
-        // Verify ring signature if configured
-        const ringContext = getRingContext();
-        const ringMembers = ringContext.ringMemberPublicKeys || [];
-
-        if (ringMembers.length >= 2 && ringSignature) {
-            await verifyLsagRingSignature({
-                message,
-                ringSignature,
-                expectedRingPublicKeys: ringMembers,
-            });
-        }
-
-        // Verify Schnorr ownership proof
-        if (!ownershipProof.R || !ownershipProof.s) {
-            return res.status(400).json({
-                error: 'Valid Schnorr ownership proof (R, s) is required'
-            });
-        }
-
-        // Note: In production, get file ownership key from database
-        // For demo, accept publicKey from request
-        const ownershipPublicKey = ownershipProof.publicKey;
-
-        await verifySchnorrProof({
-            R: ownershipProof.R,
-            s: ownershipProof.s,
-            message: ownershipProof.message || message,
-            publicKey: ownershipPublicKey,
-        }, ownershipPublicKey);
-
-        console.log('[Route] Starting partial re-encryption revocation...');
-
-        // Determine revoked public key hash
         let resolvedPublicKeyHash = revokedPublicKeyHash || null;
 
         if (!resolvedPublicKeyHash && targetUserId) {
-            const { PrismaClient } = require('@prisma/client');
+            const { PrismaClient } = require('../config/prismaClient');
             const prisma = new PrismaClient();
             const targetUser = await prisma.user.findUnique({
                 where: { id: targetUserId },
-                select: { publicKey: true }
+                select: { publicKey: true },
             });
 
             if (!targetUser || !targetUser.publicKey) {
+                await prisma.$disconnect();
                 return res.status(400).json({
-                    error: 'Target user not found or does not have a public key'
+                    error: 'Target user not found or does not have a public key',
                 });
             }
 
-            // Hash the public key
-            const crypto = require('crypto');
             const hashed = crypto
                 .createHash('sha256')
                 .update(targetUser.publicKey)
@@ -614,26 +601,77 @@ router.post('/revoke-with-reencryption', async (req, res) => {
             resolvedPublicKeyHash = hashed;
         }
 
-        // Execute partial re-encryption with publicKeyHash (not userId)
-        const result = await executePartialReencryption(
+        const result = await prepareClientReencryption({
             fileId,
-            resolvedPublicKeyHash,
+            revokedPublicKeyHash: resolvedPublicKeyHash,
+            message,
+            ringSignature,
             ownershipProof,
             securityLevel,
-            undefined,
-            keyPackage
-        );
+            keyPackage,
+        });
 
         res.json(result);
-
     } catch (error) {
-        console.error('[Route] Revocation with re-encryption error:', error);
-        const message = error instanceof Error ? error.message : 'Failed to execute revocation';
-        const statusCode = message.includes('Schnorr') || message.includes('not found')
+        console.error('[Route] Revocation manifest prepare error:', error);
+        const messageText = error instanceof Error ? error.message : 'Failed to prepare revocation manifest';
+        const statusCode = messageText.includes('Schnorr') || messageText.includes('ring') || messageText.includes('key')
             ? 400
             : 500;
-        res.status(statusCode).json({ success: false, error: message });
+        res.status(statusCode).json({ success: false, error: messageText });
     }
+});
+
+router.post('/revocation/finalize', async (req, res) => {
+    try {
+        const {
+            revocationId,
+            fileId,
+            message,
+            ringSignature,
+            ownershipProof = {},
+            keyPackage,
+            reencryptedChunks = [],
+        } = req.body || {};
+
+        if (!revocationId || !fileId || !message) {
+            return res.status(400).json({
+                error: 'revocationId, fileId, and message are required',
+            });
+        }
+
+        if (!keyPackage || typeof keyPackage !== 'object') {
+            return res.status(400).json({
+                error: 'keyPackage (masterKey + chunkKeys) is required to finalize',
+            });
+        }
+
+        const result = await finalizeClientReencryption({
+            revocationId,
+            fileId,
+            message,
+            ringSignature,
+            ownershipProof,
+            keyPackage,
+            reencryptedChunks,
+        });
+
+        res.json(result);
+    } catch (error) {
+        console.error('[Route] Revocation manifest finalize error:', error);
+        const messageText = error instanceof Error ? error.message : 'Failed to finalize revocation manifest';
+        const statusCode = messageText.includes('Schnorr') || messageText.includes('ring') || messageText.includes('key')
+            ? 400
+            : 500;
+        res.status(statusCode).json({ success: false, error: messageText });
+    }
+});
+
+router.post('/revoke-with-reencryption', (req, res) => {
+    res.status(410).json({
+        success: false,
+        error: 'Server-side re-encryption is deprecated. Use /api/files/revocation/prepare and /api/files/revocation/finalize.',
+    });
 });
 
 // Get revocation history
@@ -665,7 +703,7 @@ router.get('/:fileId/info', async (req, res) => {
             });
         }
 
-        const { PrismaClient } = require('@prisma/client');
+        const { PrismaClient } = require('../config/prismaClient');
         const prisma = new PrismaClient();
 
         const file = await prisma.file.findUnique({

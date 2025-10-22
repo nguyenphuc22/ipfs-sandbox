@@ -7,7 +7,7 @@
 
 const { RingSignatureService } = require('../RingSignatureService');
 const { createLsagRingSignature, derivePublicKeyFromPrivateKey } = require('../../utils/ringSignature');
-const { PrismaClient } = require('@prisma/client');
+const { PrismaClient } = require('../../config/prismaClient');
 
 describe('RingSignatureService - Real Cryptography Tests', () => {
   let ringSignatureService;

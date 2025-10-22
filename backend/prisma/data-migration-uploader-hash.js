@@ -7,7 +7,7 @@
  * Run with: node backend/prisma/data-migration-uploader-hash.js
  */
 
-const { PrismaClient } = require('@prisma/client');
+const { PrismaClient } = require('../src/config/prismaClient');
 const crypto = require('crypto');
 
 const prisma = new PrismaClient();

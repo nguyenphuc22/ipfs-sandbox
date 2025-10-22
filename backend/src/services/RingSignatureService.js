@@ -9,7 +9,7 @@
  */
 
 const crypto = require('crypto');
-const { PrismaClient } = require('@prisma/client');
+const { PrismaClient } = require('../config/prismaClient');
 const { verifyLsagRingSignature } = require('../utils/ringSignature');
 const { getRingContext } = require('../utils/aotStorage');
 
@@ -35,9 +35,21 @@ class RingSignatureService {
     if (typeof context.actorPublicKeyHash === 'string' && context.actorPublicKeyHash.trim().length > 0) {
       normalized.actorPublicKeyHash = context.actorPublicKeyHash.trim();
     } else if (typeof context.actorPublicKey === 'string' && context.actorPublicKey.trim().length > 0) {
-      normalized.actorPublicKeyHash = this.hashPublicKey(context.actorPublicKey.trim());
+      const trimmedKey = context.actorPublicKey.trim();
+      const canonicalKey = this._canonicalizePublicKey(trimmedKey);
+      if (canonicalKey) {
+        normalized.actorPublicKeyCanonical = canonicalKey;
+      }
+      normalized.actorPublicKeyHash = this.hashPublicKey(trimmedKey);
     } else {
       normalized.actorPublicKeyHash = null;
+    }
+
+    if (!normalized.actorPublicKeyCanonical && typeof context.actorPublicKey === 'string' && context.actorPublicKey.trim().length > 0) {
+      const canonicalKey = this._canonicalizePublicKey(context.actorPublicKey.trim());
+      if (canonicalKey) {
+        normalized.actorPublicKeyCanonical = canonicalKey;
+      }
     }
 
     normalized.scopeId = typeof context.scopeId === 'string' && context.scopeId.trim().length > 0
@@ -77,43 +89,114 @@ class RingSignatureService {
     }
   }
 
+  _getUsageGroup(usageContext) {
+    if (typeof usageContext !== 'string') {
+      return null;
+    }
+
+    const normalized = usageContext.trim();
+    if (normalized.length === 0) {
+      return null;
+    }
+
+    if (normalized.startsWith('owner-')) {
+      return 'owner-management';
+    }
+
+    return normalized;
+  }
+
+  _canonicalizePublicKey(value) {
+    if (!value || typeof value !== 'string') {
+      return null;
+    }
+
+    const hex = value.trim().toLowerCase().replace(/^0x/, '');
+
+    if (/^(02|03)[0-9a-f]{64}$/.test(hex)) {
+      return hex;
+    }
+
+    if (/^04[0-9a-f]{128}$/.test(hex)) {
+      const x = hex.slice(2, 66);
+      const y = hex.slice(66);
+      const lastByte = parseInt(y.slice(-2), 16);
+      const prefix = (lastByte % 2 === 0) ? '02' : '03';
+      return `${prefix}${x}`;
+    }
+
+    if (/^[0-9a-f]{64}$/.test(hex)) {
+      return `02${hex}`;
+    }
+
+    return null;
+  }
+
   _shouldAllowKeyImageReuse(existingMetadata, context) {
     if (!context) {
       return false;
     }
 
-    const usageContext = context.usageContext || 'anonymous-access';
+    const usageGroup = this._getUsageGroup(context.usageContext) || 'anonymous-access';
+    const existingGroup = this._getUsageGroup(existingMetadata?.usageContext);
 
-    if (usageContext === 'owner-management') {
-      if (!existingMetadata) {
-        return true;
-      }
+    const contextCanonical = typeof context?.actorPublicKeyCanonical === 'string'
+      ? context.actorPublicKeyCanonical.toLowerCase()
+      : null;
 
-      if (existingMetadata.usageContext && existingMetadata.usageContext !== 'owner-management') {
-        return false;
-      }
+    const existingCanonical = typeof existingMetadata?.actorPublicKeyCanonical === 'string'
+      ? existingMetadata.actorPublicKeyCanonical.toLowerCase()
+      : null;
 
-      if (!context.actorPublicKeyHash || !existingMetadata.actorPublicKeyHash) {
-        return true;
-      }
+    const canonicalMatches = Boolean(contextCanonical && existingCanonical && contextCanonical === existingCanonical);
 
-      return existingMetadata.actorPublicKeyHash === context.actorPublicKeyHash;
+    const contextHash = typeof context?.actorPublicKeyHash === 'string' && context.actorPublicKeyHash.trim().length > 0
+      ? context.actorPublicKeyHash.trim()
+      : null;
+
+    const existingHash = existingMetadata && typeof existingMetadata.actorPublicKeyHash === 'string'
+      ? existingMetadata.actorPublicKeyHash.trim()
+      : null;
+
+    // Always allow reuse when we can positively link the same actor
+    if (canonicalMatches) {
+      return true;
     }
 
-    if (usageContext === 'anonymous-access') {
+    if (contextHash && existingHash && contextHash === existingHash) {
+      return true;
+    }
+
+    if (usageGroup === 'owner-management') {
+      if (existingGroup && existingGroup !== 'owner-management') {
+        return false;
+      }
+
       if (!existingMetadata) {
         return true;
       }
 
-      if (existingMetadata.usageContext && existingMetadata.usageContext !== 'anonymous-access') {
-        return false;
-      }
-
-      if (!context.actorPublicKeyHash || !existingMetadata.actorPublicKeyHash) {
+      if (!contextHash || !existingHash) {
         return true;
       }
 
-      return existingMetadata.actorPublicKeyHash === context.actorPublicKeyHash;
+      if (!contextCanonical || !existingCanonical) {
+        return true;
+      }
+
+      return false;
+    }
+
+    if (usageGroup === 'anonymous-access') {
+      if (existingGroup && existingGroup !== 'anonymous-access') {
+        return false;
+      }
+
+      if (!contextHash || !existingHash) {
+        return false;
+      }
+
+      return existingHash === contextHash;
     }
 
     return false;
@@ -143,6 +226,10 @@ class RingSignatureService {
 
     if (context?.actorPublicKeyHash) {
       metadata.actorPublicKeyHash = context.actorPublicKeyHash;
+    }
+
+    if (context?.actorPublicKeyCanonical) {
+      metadata.actorPublicKeyCanonical = context.actorPublicKeyCanonical;
     }
 
     if (context?.messageDigest) {

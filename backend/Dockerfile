@@ -1,7 +1,12 @@
-FROM node:20-alpine
+FROM node:20-slim
 
-# Install dependencies including OpenSSL
-RUN apk add --no-cache wget tar openssl openssl-dev
+# Install dependencies including OpenSSL and other required tools
+RUN apt-get update && apt-get install -y \
+    wget \
+    tar \
+    openssl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install IPFS - ARM64 version for M1
 RUN wget https://dist.ipfs.tech/kubo/v0.24.0/kubo_v0.24.0_linux-arm64.tar.gz
@@ -20,8 +25,8 @@ RUN npm ci
 # Copy prisma schema first
 COPY prisma ./prisma
 
-# Generate Prisma client
-RUN npx prisma generate
+# Copy pre-generated Prisma client
+COPY generated ./generated
 
 # Copy rest of source code
 COPY . .
