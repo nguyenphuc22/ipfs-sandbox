@@ -19,6 +19,7 @@ import {
   ClientChunkedUploadPayload,
 } from '../../services/GatewayApiService';
 import { saveKeyPackage } from '../../services/KeyPackageStorage';
+import { createEscrowedIdentity } from '../../services/crypto/escrow';
 import {
   computeMetadataHash,
   createLsagRingSignature,
@@ -30,6 +31,7 @@ import {
 } from '../../utils/aotCrypto';
 import { API_CONFIG } from '../../config/api';
 import { processAndUploadFile, ProgressCallback } from '../../services/ChunkEncryptionService';
+import { bytesToHex, randomBytes } from '@noble/hashes/utils';
 
 interface AOTUploadModalProps {
   visible: boolean;
@@ -266,43 +268,6 @@ export const AOTUploadModal: React.FC<AOTUploadModalProps> = ({
         allKeysAreCompressed: orderedRing.every(k => k.length === 66),
       });
 
-      const metadataPayload = {
-        fileName: file.name || 'unnamed',
-        fileSize: file.size ?? 0,
-        mimeType: file.type || 'application/octet-stream',
-        createdAt: new Date().toISOString(),
-        ownerIdentifier: identity.identifier,
-        ownerPublicKey: ownerKey,
-        ringMembers: orderedRing,
-      };
-
-      const { metadataHash: computedHash } = await computeMetadataHash(metadataPayload);
-      const schnorrProof = await createSchnorrProof(computedHash, identity.privateKey);
-
-      console.log('[AOT Upload Modal] Schnorr proof created:', {
-        metadataHash: computedHash,
-      });
-
-      let ringSignaturePayload: Record<string, any> | null = null;
-      if (orderedRing.length >= 2) {
-        const signerIndex = orderedRing.findIndex(
-          (key) => normalizeHex(key) === normalizeHex(ownerKey),
-        );
-
-        if (signerIndex === -1) {
-          throw new Error('Owner key not found in ring members');
-        }
-
-        ringSignaturePayload = await createLsagRingSignature({
-          message: computedHash,
-          ringPublicKeys: orderedRing,
-          signerIndex,
-          signerPrivateKey: identity.privateKey,
-        });
-
-        console.log('[AOT Upload Modal] Ring signature created');
-      }
-
       // ========================================================================
       // CLIENT-SIDE CHUNKING & ENCRYPTION (Task A Implementation)
       // ========================================================================
@@ -339,6 +304,40 @@ export const AOTUploadModal: React.FC<AOTUploadModalProps> = ({
         keyPackageFingerprint: chunkUploadResult.keyPackageFingerprint,
       });
 
+      const metadataForHash = {
+        fileName: file.name || 'unnamed',
+        fileSize: file.size ?? 0,
+        chunkCount: chunkUploadResult.manifest.length,
+      };
+
+      const { metadataHash: computedHash } = await computeMetadataHash(metadataForHash);
+      const schnorrProof = await createSchnorrProof(computedHash, identity.privateKey);
+
+      console.log('[AOT Upload Modal] Schnorr proof created:', {
+        metadataHash: computedHash,
+      });
+
+      let ringSignaturePayload: Record<string, any> | null = null;
+      if (orderedRing.length >= 2) {
+        const signerIndex = orderedRing.findIndex(
+          (key) => normalizeHex(key) === normalizeHex(ownerKey),
+        );
+
+        if (signerIndex === -1) {
+          throw new Error('Owner key not found in ring members');
+        }
+
+        ringSignaturePayload = await createLsagRingSignature({
+          message: computedHash,
+          ringPublicKeys: orderedRing,
+          signerIndex,
+          signerPrivateKey: identity.privateKey,
+        });
+
+        console.log('[AOT Upload Modal] Ring signature created');
+      }
+
+
       // ========================================================================
       // Send manifest to backend
       // ========================================================================
@@ -346,6 +345,22 @@ export const AOTUploadModal: React.FC<AOTUploadModalProps> = ({
 
       const { createDefaultGatewayService } = await import('../../services/GatewayApiService');
       const gatewayService = createDefaultGatewayService();
+
+      setUploadProgress('Đang xin ValidationToken...');
+      const nonce = bytesToHex(randomBytes(16));
+      const tokenTimestamp = Date.now();
+      const validationToken = await gatewayService.requestValidationToken({
+        userPublicKey: ownerKey,
+        fileMetadataHash: computedHash,
+        timestamp: tokenTimestamp,
+        nonce,
+      });
+
+      setUploadProgress('Đang mã hóa danh tính...');
+      const escrowedIdentity = await createEscrowedIdentity(
+        identity.publicKey,
+        validationToken.adjudicatorPublicKey,
+      );
 
       const uploadPayload: ClientChunkedUploadPayload = {
         fileName: file.name || 'unnamed',
@@ -358,8 +373,11 @@ export const AOTUploadModal: React.FC<AOTUploadModalProps> = ({
         encryptedChunkKeys: chunkUploadResult.encryptedChunkKeys,
         keyPackageFingerprint: chunkUploadResult.keyPackageFingerprint,
         ringSignature: ringSignaturePayload ? JSON.stringify(ringSignaturePayload) : undefined,
-        escrowedIdentity: identity.escrowedIdentity || `escrow:${identity.identifier}`,
+        escrowedIdentity,
         ringMembers: orderedRing,
+        validationToken,
+        timestamp: tokenTimestamp,
+        nonce,
         schnorr: {
           R: schnorrProof.R,
           s: schnorrProof.s,
@@ -368,6 +386,7 @@ export const AOTUploadModal: React.FC<AOTUploadModalProps> = ({
         },
       };
 
+      console.log('[AOT Upload Modal] About to call uploadWithClientChunking, payload keys:', Object.keys(uploadPayload));
       const uploadResponse = await gatewayService.uploadWithClientChunking(uploadPayload);
 
       console.log('[AOT Upload Modal] Backend response received:', {

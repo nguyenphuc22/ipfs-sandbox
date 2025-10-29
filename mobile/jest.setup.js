@@ -19,7 +19,7 @@ jest.mock(
   { virtual: true },
 );
 
-jest.mock('@noble/hashes/sha2');
+jest.mock('@noble/hashes/sha2.js');
 
 jest.mock('react-native-fs');
 

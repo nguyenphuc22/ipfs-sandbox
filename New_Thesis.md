@@ -953,7 +953,7 @@ interface NonceTracker {
 
 > **Implementation status (2025-10-16):** Bước 7–9 hiện chưa chạy trên client trong mã nguồn. Backend vẫn đang đảm nhiệm việc chia nhỏ/mã hóa/upload chunk. Cần ưu tiên dịch chuyển logic này sang mobile và chỉ gửi manifest/chứng cứ lên backend.
 
-> **ValidationToken Implementation (2025-10-27):** Adjudicator service cần được triển khai như một microservice riêng biệt với endpoints `/api/validate-upload` và `/api/decrypt-escrow`. Backend gateway chỉ verify token signatures, không issue tokens.
+> **ValidationToken Implementation (2025-10-27):** Adjudicator microservice (`/api/validate-upload`, `/api/decrypt-escrow`) + gateway verification đã được hiện thực hoá trong prototype demo; bước tiếp theo là harden auth & dashboard.
 
 ### **B. Anonymous Revocation với Schnorr Ownership Proof**
 

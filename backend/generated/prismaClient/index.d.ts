@@ -58,6 +58,31 @@ export type AnonymousSharingRequest = $Result.DefaultSelection<Prisma.$Anonymous
  * 
  */
 export type Signature = $Result.DefaultSelection<Prisma.$SignaturePayload>
+/**
+ * Model ValidationToken
+ * 
+ */
+export type ValidationToken = $Result.DefaultSelection<Prisma.$ValidationTokenPayload>
+/**
+ * Model InvestigationAudit
+ * 
+ */
+export type InvestigationAudit = $Result.DefaultSelection<Prisma.$InvestigationAuditPayload>
+/**
+ * Model ValidationNonce
+ * 
+ */
+export type ValidationNonce = $Result.DefaultSelection<Prisma.$ValidationNoncePayload>
+/**
+ * Model ValidationTokenAudit
+ * 
+ */
+export type ValidationTokenAudit = $Result.DefaultSelection<Prisma.$ValidationTokenAuditPayload>
+/**
+ * Model BannedUser
+ * 
+ */
+export type BannedUser = $Result.DefaultSelection<Prisma.$BannedUserPayload>
 
 /**
  * ##  Prisma Client ʲˢ
@@ -271,6 +296,56 @@ export class PrismaClient<
     * ```
     */
   get signature(): Prisma.SignatureDelegate<ExtArgs>;
+
+  /**
+   * `prisma.validationToken`: Exposes CRUD operations for the **ValidationToken** model.
+    * Example usage:
+    * ```ts
+    * // Fetch zero or more ValidationTokens
+    * const validationTokens = await prisma.validationToken.findMany()
+    * ```
+    */
+  get validationToken(): Prisma.ValidationTokenDelegate<ExtArgs>;
+
+  /**
+   * `prisma.investigationAudit`: Exposes CRUD operations for the **InvestigationAudit** model.
+    * Example usage:
+    * ```ts
+    * // Fetch zero or more InvestigationAudits
+    * const investigationAudits = await prisma.investigationAudit.findMany()
+    * ```
+    */
+  get investigationAudit(): Prisma.InvestigationAuditDelegate<ExtArgs>;
+
+  /**
+   * `prisma.validationNonce`: Exposes CRUD operations for the **ValidationNonce** model.
+    * Example usage:
+    * ```ts
+    * // Fetch zero or more ValidationNonces
+    * const validationNonces = await prisma.validationNonce.findMany()
+    * ```
+    */
+  get validationNonce(): Prisma.ValidationNonceDelegate<ExtArgs>;
+
+  /**
+   * `prisma.validationTokenAudit`: Exposes CRUD operations for the **ValidationTokenAudit** model.
+    * Example usage:
+    * ```ts
+    * // Fetch zero or more ValidationTokenAudits
+    * const validationTokenAudits = await prisma.validationTokenAudit.findMany()
+    * ```
+    */
+  get validationTokenAudit(): Prisma.ValidationTokenAuditDelegate<ExtArgs>;
+
+  /**
+   * `prisma.bannedUser`: Exposes CRUD operations for the **BannedUser** model.
+    * Example usage:
+    * ```ts
+    * // Fetch zero or more BannedUsers
+    * const bannedUsers = await prisma.bannedUser.findMany()
+    * ```
+    */
+  get bannedUser(): Prisma.BannedUserDelegate<ExtArgs>;
 }
 
 export namespace Prisma {
@@ -720,7 +795,12 @@ export namespace Prisma {
     AnonymousFileAccess: 'AnonymousFileAccess',
     AnonymousAuditLog: 'AnonymousAuditLog',
     AnonymousSharingRequest: 'AnonymousSharingRequest',
-    Signature: 'Signature'
+    Signature: 'Signature',
+    ValidationToken: 'ValidationToken',
+    InvestigationAudit: 'InvestigationAudit',
+    ValidationNonce: 'ValidationNonce',
+    ValidationTokenAudit: 'ValidationTokenAudit',
+    BannedUser: 'BannedUser'
   };
 
   export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -736,7 +816,7 @@ export namespace Prisma {
 
   export type TypeMap<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs, ClientOptions = {}> = {
     meta: {
-      modelProps: "user" | "file" | "fileChunk" | "anonymousRevocation" | "integrityAlert" | "anonymousFileAccess" | "anonymousAuditLog" | "anonymousSharingRequest" | "signature"
+      modelProps: "user" | "file" | "fileChunk" | "anonymousRevocation" | "integrityAlert" | "anonymousFileAccess" | "anonymousAuditLog" | "anonymousSharingRequest" | "signature" | "validationToken" | "investigationAudit" | "validationNonce" | "validationTokenAudit" | "bannedUser"
       txIsolationLevel: Prisma.TransactionIsolationLevel
     }
     model: {
@@ -1367,6 +1447,356 @@ export namespace Prisma {
           count: {
             args: Prisma.SignatureCountArgs<ExtArgs>
             result: $Utils.Optional<SignatureCountAggregateOutputType> | number
+          }
+        }
+      }
+      ValidationToken: {
+        payload: Prisma.$ValidationTokenPayload<ExtArgs>
+        fields: Prisma.ValidationTokenFieldRefs
+        operations: {
+          findUnique: {
+            args: Prisma.ValidationTokenFindUniqueArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$ValidationTokenPayload> | null
+          }
+          findUniqueOrThrow: {
+            args: Prisma.ValidationTokenFindUniqueOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$ValidationTokenPayload>
+          }
+          findFirst: {
+            args: Prisma.ValidationTokenFindFirstArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$ValidationTokenPayload> | null
+          }
+          findFirstOrThrow: {
+            args: Prisma.ValidationTokenFindFirstOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$ValidationTokenPayload>
+          }
+          findMany: {
+            args: Prisma.ValidationTokenFindManyArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$ValidationTokenPayload>[]
+          }
+          create: {
+            args: Prisma.ValidationTokenCreateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$ValidationTokenPayload>
+          }
+          createMany: {
+            args: Prisma.ValidationTokenCreateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          createManyAndReturn: {
+            args: Prisma.ValidationTokenCreateManyAndReturnArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$ValidationTokenPayload>[]
+          }
+          delete: {
+            args: Prisma.ValidationTokenDeleteArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$ValidationTokenPayload>
+          }
+          update: {
+            args: Prisma.ValidationTokenUpdateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$ValidationTokenPayload>
+          }
+          deleteMany: {
+            args: Prisma.ValidationTokenDeleteManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          updateMany: {
+            args: Prisma.ValidationTokenUpdateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          upsert: {
+            args: Prisma.ValidationTokenUpsertArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$ValidationTokenPayload>
+          }
+          aggregate: {
+            args: Prisma.ValidationTokenAggregateArgs<ExtArgs>
+            result: $Utils.Optional<AggregateValidationToken>
+          }
+          groupBy: {
+            args: Prisma.ValidationTokenGroupByArgs<ExtArgs>
+            result: $Utils.Optional<ValidationTokenGroupByOutputType>[]
+          }
+          count: {
+            args: Prisma.ValidationTokenCountArgs<ExtArgs>
+            result: $Utils.Optional<ValidationTokenCountAggregateOutputType> | number
+          }
+        }
+      }
+      InvestigationAudit: {
+        payload: Prisma.$InvestigationAuditPayload<ExtArgs>
+        fields: Prisma.InvestigationAuditFieldRefs
+        operations: {
+          findUnique: {
+            args: Prisma.InvestigationAuditFindUniqueArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$InvestigationAuditPayload> | null
+          }
+          findUniqueOrThrow: {
+            args: Prisma.InvestigationAuditFindUniqueOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$InvestigationAuditPayload>
+          }
+          findFirst: {
+            args: Prisma.InvestigationAuditFindFirstArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$InvestigationAuditPayload> | null
+          }
+          findFirstOrThrow: {
+            args: Prisma.InvestigationAuditFindFirstOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$InvestigationAuditPayload>
+          }
+          findMany: {
+            args: Prisma.InvestigationAuditFindManyArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$InvestigationAuditPayload>[]
+          }
+          create: {
+            args: Prisma.InvestigationAuditCreateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$InvestigationAuditPayload>
+          }
+          createMany: {
+            args: Prisma.InvestigationAuditCreateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          createManyAndReturn: {
+            args: Prisma.InvestigationAuditCreateManyAndReturnArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$InvestigationAuditPayload>[]
+          }
+          delete: {
+            args: Prisma.InvestigationAuditDeleteArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$InvestigationAuditPayload>
+          }
+          update: {
+            args: Prisma.InvestigationAuditUpdateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$InvestigationAuditPayload>
+          }
+          deleteMany: {
+            args: Prisma.InvestigationAuditDeleteManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          updateMany: {
+            args: Prisma.InvestigationAuditUpdateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          upsert: {
+            args: Prisma.InvestigationAuditUpsertArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$InvestigationAuditPayload>
+          }
+          aggregate: {
+            args: Prisma.InvestigationAuditAggregateArgs<ExtArgs>
+            result: $Utils.Optional<AggregateInvestigationAudit>
+          }
+          groupBy: {
+            args: Prisma.InvestigationAuditGroupByArgs<ExtArgs>
+            result: $Utils.Optional<InvestigationAuditGroupByOutputType>[]
+          }
+          count: {
+            args: Prisma.InvestigationAuditCountArgs<ExtArgs>
+            result: $Utils.Optional<InvestigationAuditCountAggregateOutputType> | number
+          }
+        }
+      }
+      ValidationNonce: {
+        payload: Prisma.$ValidationNoncePayload<ExtArgs>
+        fields: Prisma.ValidationNonceFieldRefs
+        operations: {
+          findUnique: {
+            args: Prisma.ValidationNonceFindUniqueArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$ValidationNoncePayload> | null
+          }
+          findUniqueOrThrow: {
+            args: Prisma.ValidationNonceFindUniqueOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$ValidationNoncePayload>
+          }
+          findFirst: {
+            args: Prisma.ValidationNonceFindFirstArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$ValidationNoncePayload> | null
+          }
+          findFirstOrThrow: {
+            args: Prisma.ValidationNonceFindFirstOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$ValidationNoncePayload>
+          }
+          findMany: {
+            args: Prisma.ValidationNonceFindManyArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$ValidationNoncePayload>[]
+          }
+          create: {
+            args: Prisma.ValidationNonceCreateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$ValidationNoncePayload>
+          }
+          createMany: {
+            args: Prisma.ValidationNonceCreateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          createManyAndReturn: {
+            args: Prisma.ValidationNonceCreateManyAndReturnArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$ValidationNoncePayload>[]
+          }
+          delete: {
+            args: Prisma.ValidationNonceDeleteArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$ValidationNoncePayload>
+          }
+          update: {
+            args: Prisma.ValidationNonceUpdateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$ValidationNoncePayload>
+          }
+          deleteMany: {
+            args: Prisma.ValidationNonceDeleteManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          updateMany: {
+            args: Prisma.ValidationNonceUpdateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          upsert: {
+            args: Prisma.ValidationNonceUpsertArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$ValidationNoncePayload>
+          }
+          aggregate: {
+            args: Prisma.ValidationNonceAggregateArgs<ExtArgs>
+            result: $Utils.Optional<AggregateValidationNonce>
+          }
+          groupBy: {
+            args: Prisma.ValidationNonceGroupByArgs<ExtArgs>
+            result: $Utils.Optional<ValidationNonceGroupByOutputType>[]
+          }
+          count: {
+            args: Prisma.ValidationNonceCountArgs<ExtArgs>
+            result: $Utils.Optional<ValidationNonceCountAggregateOutputType> | number
+          }
+        }
+      }
+      ValidationTokenAudit: {
+        payload: Prisma.$ValidationTokenAuditPayload<ExtArgs>
+        fields: Prisma.ValidationTokenAuditFieldRefs
+        operations: {
+          findUnique: {
+            args: Prisma.ValidationTokenAuditFindUniqueArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$ValidationTokenAuditPayload> | null
+          }
+          findUniqueOrThrow: {
+            args: Prisma.ValidationTokenAuditFindUniqueOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$ValidationTokenAuditPayload>
+          }
+          findFirst: {
+            args: Prisma.ValidationTokenAuditFindFirstArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$ValidationTokenAuditPayload> | null
+          }
+          findFirstOrThrow: {
+            args: Prisma.ValidationTokenAuditFindFirstOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$ValidationTokenAuditPayload>
+          }
+          findMany: {
+            args: Prisma.ValidationTokenAuditFindManyArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$ValidationTokenAuditPayload>[]
+          }
+          create: {
+            args: Prisma.ValidationTokenAuditCreateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$ValidationTokenAuditPayload>
+          }
+          createMany: {
+            args: Prisma.ValidationTokenAuditCreateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          createManyAndReturn: {
+            args: Prisma.ValidationTokenAuditCreateManyAndReturnArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$ValidationTokenAuditPayload>[]
+          }
+          delete: {
+            args: Prisma.ValidationTokenAuditDeleteArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$ValidationTokenAuditPayload>
+          }
+          update: {
+            args: Prisma.ValidationTokenAuditUpdateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$ValidationTokenAuditPayload>
+          }
+          deleteMany: {
+            args: Prisma.ValidationTokenAuditDeleteManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          updateMany: {
+            args: Prisma.ValidationTokenAuditUpdateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          upsert: {
+            args: Prisma.ValidationTokenAuditUpsertArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$ValidationTokenAuditPayload>
+          }
+          aggregate: {
+            args: Prisma.ValidationTokenAuditAggregateArgs<ExtArgs>
+            result: $Utils.Optional<AggregateValidationTokenAudit>
+          }
+          groupBy: {
+            args: Prisma.ValidationTokenAuditGroupByArgs<ExtArgs>
+            result: $Utils.Optional<ValidationTokenAuditGroupByOutputType>[]
+          }
+          count: {
+            args: Prisma.ValidationTokenAuditCountArgs<ExtArgs>
+            result: $Utils.Optional<ValidationTokenAuditCountAggregateOutputType> | number
+          }
+        }
+      }
+      BannedUser: {
+        payload: Prisma.$BannedUserPayload<ExtArgs>
+        fields: Prisma.BannedUserFieldRefs
+        operations: {
+          findUnique: {
+            args: Prisma.BannedUserFindUniqueArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$BannedUserPayload> | null
+          }
+          findUniqueOrThrow: {
+            args: Prisma.BannedUserFindUniqueOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$BannedUserPayload>
+          }
+          findFirst: {
+            args: Prisma.BannedUserFindFirstArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$BannedUserPayload> | null
+          }
+          findFirstOrThrow: {
+            args: Prisma.BannedUserFindFirstOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$BannedUserPayload>
+          }
+          findMany: {
+            args: Prisma.BannedUserFindManyArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$BannedUserPayload>[]
+          }
+          create: {
+            args: Prisma.BannedUserCreateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$BannedUserPayload>
+          }
+          createMany: {
+            args: Prisma.BannedUserCreateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          createManyAndReturn: {
+            args: Prisma.BannedUserCreateManyAndReturnArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$BannedUserPayload>[]
+          }
+          delete: {
+            args: Prisma.BannedUserDeleteArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$BannedUserPayload>
+          }
+          update: {
+            args: Prisma.BannedUserUpdateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$BannedUserPayload>
+          }
+          deleteMany: {
+            args: Prisma.BannedUserDeleteManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          updateMany: {
+            args: Prisma.BannedUserUpdateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          upsert: {
+            args: Prisma.BannedUserUpsertArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$BannedUserPayload>
+          }
+          aggregate: {
+            args: Prisma.BannedUserAggregateArgs<ExtArgs>
+            result: $Utils.Optional<AggregateBannedUser>
+          }
+          groupBy: {
+            args: Prisma.BannedUserGroupByArgs<ExtArgs>
+            result: $Utils.Optional<BannedUserGroupByOutputType>[]
+          }
+          count: {
+            args: Prisma.BannedUserCountArgs<ExtArgs>
+            result: $Utils.Optional<BannedUserCountAggregateOutputType> | number
           }
         }
       }
@@ -2957,6 +3387,7 @@ export namespace Prisma {
     chunks?: boolean | File$chunksArgs<ExtArgs>
     integrityAlerts?: boolean | File$integrityAlertsArgs<ExtArgs>
     signatures?: boolean | File$signaturesArgs<ExtArgs>
+    validationToken?: boolean | File$validationTokenArgs<ExtArgs>
     _count?: boolean | FileCountOutputTypeDefaultArgs<ExtArgs>
   }, ExtArgs["result"]["file"]>
 
@@ -3015,6 +3446,7 @@ export namespace Prisma {
     chunks?: boolean | File$chunksArgs<ExtArgs>
     integrityAlerts?: boolean | File$integrityAlertsArgs<ExtArgs>
     signatures?: boolean | File$signaturesArgs<ExtArgs>
+    validationToken?: boolean | File$validationTokenArgs<ExtArgs>
     _count?: boolean | FileCountOutputTypeDefaultArgs<ExtArgs>
   }
   export type FileIncludeCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
@@ -3031,6 +3463,7 @@ export namespace Prisma {
       chunks: Prisma.$FileChunkPayload<ExtArgs>[]
       integrityAlerts: Prisma.$IntegrityAlertPayload<ExtArgs>[]
       signatures: Prisma.$SignaturePayload<ExtArgs>[]
+      validationToken: Prisma.$ValidationTokenPayload<ExtArgs> | null
     }
     scalars: $Extensions.GetPayloadResult<{
       id: string
@@ -3424,6 +3857,7 @@ export namespace Prisma {
     chunks<T extends File$chunksArgs<ExtArgs> = {}>(args?: Subset<T, File$chunksArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$FileChunkPayload<ExtArgs>, T, "findMany"> | Null>
     integrityAlerts<T extends File$integrityAlertsArgs<ExtArgs> = {}>(args?: Subset<T, File$integrityAlertsArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$IntegrityAlertPayload<ExtArgs>, T, "findMany"> | Null>
     signatures<T extends File$signaturesArgs<ExtArgs> = {}>(args?: Subset<T, File$signaturesArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$SignaturePayload<ExtArgs>, T, "findMany"> | Null>
+    validationToken<T extends File$validationTokenArgs<ExtArgs> = {}>(args?: Subset<T, File$validationTokenArgs<ExtArgs>>): Prisma__ValidationTokenClient<$Result.GetResult<Prisma.$ValidationTokenPayload<ExtArgs>, T, "findUniqueOrThrow"> | null, null, ExtArgs>
     /**
      * Attaches callbacks for the resolution and/or rejection of the Promise.
      * @param onfulfilled The callback to execute when the Promise is resolved.
@@ -3921,6 +4355,21 @@ export namespace Prisma {
     take?: number
     skip?: number
     distinct?: SignatureScalarFieldEnum | SignatureScalarFieldEnum[]
+  }
+
+  /**
+   * File.validationToken
+   */
+  export type File$validationTokenArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ValidationToken
+     */
+    select?: ValidationTokenSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: ValidationTokenInclude<ExtArgs> | null
+    where?: ValidationTokenWhereInput
   }
 
   /**
@@ -10993,6 +11442,4573 @@ export namespace Prisma {
 
 
   /**
+   * Model ValidationToken
+   */
+
+  export type AggregateValidationToken = {
+    _count: ValidationTokenCountAggregateOutputType | null
+    _min: ValidationTokenMinAggregateOutputType | null
+    _max: ValidationTokenMaxAggregateOutputType | null
+  }
+
+  export type ValidationTokenMinAggregateOutputType = {
+    id: string | null
+    tokenId: string | null
+    fileId: string | null
+    fileMetadataHash: string | null
+    userPublicKeyHash: string | null
+    issuedAt: Date | null
+    expiresAt: Date | null
+    signature: string | null
+    adjudicatorPublicKey: string | null
+    createdAt: Date | null
+  }
+
+  export type ValidationTokenMaxAggregateOutputType = {
+    id: string | null
+    tokenId: string | null
+    fileId: string | null
+    fileMetadataHash: string | null
+    userPublicKeyHash: string | null
+    issuedAt: Date | null
+    expiresAt: Date | null
+    signature: string | null
+    adjudicatorPublicKey: string | null
+    createdAt: Date | null
+  }
+
+  export type ValidationTokenCountAggregateOutputType = {
+    id: number
+    tokenId: number
+    fileId: number
+    fileMetadataHash: number
+    userPublicKeyHash: number
+    issuedAt: number
+    expiresAt: number
+    signature: number
+    adjudicatorPublicKey: number
+    createdAt: number
+    _all: number
+  }
+
+
+  export type ValidationTokenMinAggregateInputType = {
+    id?: true
+    tokenId?: true
+    fileId?: true
+    fileMetadataHash?: true
+    userPublicKeyHash?: true
+    issuedAt?: true
+    expiresAt?: true
+    signature?: true
+    adjudicatorPublicKey?: true
+    createdAt?: true
+  }
+
+  export type ValidationTokenMaxAggregateInputType = {
+    id?: true
+    tokenId?: true
+    fileId?: true
+    fileMetadataHash?: true
+    userPublicKeyHash?: true
+    issuedAt?: true
+    expiresAt?: true
+    signature?: true
+    adjudicatorPublicKey?: true
+    createdAt?: true
+  }
+
+  export type ValidationTokenCountAggregateInputType = {
+    id?: true
+    tokenId?: true
+    fileId?: true
+    fileMetadataHash?: true
+    userPublicKeyHash?: true
+    issuedAt?: true
+    expiresAt?: true
+    signature?: true
+    adjudicatorPublicKey?: true
+    createdAt?: true
+    _all?: true
+  }
+
+  export type ValidationTokenAggregateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which ValidationToken to aggregate.
+     */
+    where?: ValidationTokenWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of ValidationTokens to fetch.
+     */
+    orderBy?: ValidationTokenOrderByWithRelationInput | ValidationTokenOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the start position
+     */
+    cursor?: ValidationTokenWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` ValidationTokens from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` ValidationTokens.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Count returned ValidationTokens
+    **/
+    _count?: true | ValidationTokenCountAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the minimum value
+    **/
+    _min?: ValidationTokenMinAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the maximum value
+    **/
+    _max?: ValidationTokenMaxAggregateInputType
+  }
+
+  export type GetValidationTokenAggregateType<T extends ValidationTokenAggregateArgs> = {
+        [P in keyof T & keyof AggregateValidationToken]: P extends '_count' | 'count'
+      ? T[P] extends true
+        ? number
+        : GetScalarType<T[P], AggregateValidationToken[P]>
+      : GetScalarType<T[P], AggregateValidationToken[P]>
+  }
+
+
+
+
+  export type ValidationTokenGroupByArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    where?: ValidationTokenWhereInput
+    orderBy?: ValidationTokenOrderByWithAggregationInput | ValidationTokenOrderByWithAggregationInput[]
+    by: ValidationTokenScalarFieldEnum[] | ValidationTokenScalarFieldEnum
+    having?: ValidationTokenScalarWhereWithAggregatesInput
+    take?: number
+    skip?: number
+    _count?: ValidationTokenCountAggregateInputType | true
+    _min?: ValidationTokenMinAggregateInputType
+    _max?: ValidationTokenMaxAggregateInputType
+  }
+
+  export type ValidationTokenGroupByOutputType = {
+    id: string
+    tokenId: string
+    fileId: string
+    fileMetadataHash: string
+    userPublicKeyHash: string
+    issuedAt: Date
+    expiresAt: Date
+    signature: string
+    adjudicatorPublicKey: string
+    createdAt: Date
+    _count: ValidationTokenCountAggregateOutputType | null
+    _min: ValidationTokenMinAggregateOutputType | null
+    _max: ValidationTokenMaxAggregateOutputType | null
+  }
+
+  type GetValidationTokenGroupByPayload<T extends ValidationTokenGroupByArgs> = Prisma.PrismaPromise<
+    Array<
+      PickEnumerable<ValidationTokenGroupByOutputType, T['by']> &
+        {
+          [P in ((keyof T) & (keyof ValidationTokenGroupByOutputType))]: P extends '_count'
+            ? T[P] extends boolean
+              ? number
+              : GetScalarType<T[P], ValidationTokenGroupByOutputType[P]>
+            : GetScalarType<T[P], ValidationTokenGroupByOutputType[P]>
+        }
+      >
+    >
+
+
+  export type ValidationTokenSelect<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    tokenId?: boolean
+    fileId?: boolean
+    fileMetadataHash?: boolean
+    userPublicKeyHash?: boolean
+    issuedAt?: boolean
+    expiresAt?: boolean
+    signature?: boolean
+    adjudicatorPublicKey?: boolean
+    createdAt?: boolean
+    file?: boolean | FileDefaultArgs<ExtArgs>
+  }, ExtArgs["result"]["validationToken"]>
+
+  export type ValidationTokenSelectCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    tokenId?: boolean
+    fileId?: boolean
+    fileMetadataHash?: boolean
+    userPublicKeyHash?: boolean
+    issuedAt?: boolean
+    expiresAt?: boolean
+    signature?: boolean
+    adjudicatorPublicKey?: boolean
+    createdAt?: boolean
+    file?: boolean | FileDefaultArgs<ExtArgs>
+  }, ExtArgs["result"]["validationToken"]>
+
+  export type ValidationTokenSelectScalar = {
+    id?: boolean
+    tokenId?: boolean
+    fileId?: boolean
+    fileMetadataHash?: boolean
+    userPublicKeyHash?: boolean
+    issuedAt?: boolean
+    expiresAt?: boolean
+    signature?: boolean
+    adjudicatorPublicKey?: boolean
+    createdAt?: boolean
+  }
+
+  export type ValidationTokenInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    file?: boolean | FileDefaultArgs<ExtArgs>
+  }
+  export type ValidationTokenIncludeCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    file?: boolean | FileDefaultArgs<ExtArgs>
+  }
+
+  export type $ValidationTokenPayload<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    name: "ValidationToken"
+    objects: {
+      file: Prisma.$FilePayload<ExtArgs>
+    }
+    scalars: $Extensions.GetPayloadResult<{
+      id: string
+      tokenId: string
+      fileId: string
+      fileMetadataHash: string
+      userPublicKeyHash: string
+      issuedAt: Date
+      expiresAt: Date
+      signature: string
+      adjudicatorPublicKey: string
+      createdAt: Date
+    }, ExtArgs["result"]["validationToken"]>
+    composites: {}
+  }
+
+  type ValidationTokenGetPayload<S extends boolean | null | undefined | ValidationTokenDefaultArgs> = $Result.GetResult<Prisma.$ValidationTokenPayload, S>
+
+  type ValidationTokenCountArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = 
+    Omit<ValidationTokenFindManyArgs, 'select' | 'include' | 'distinct'> & {
+      select?: ValidationTokenCountAggregateInputType | true
+    }
+
+  export interface ValidationTokenDelegate<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> {
+    [K: symbol]: { types: Prisma.TypeMap<ExtArgs>['model']['ValidationToken'], meta: { name: 'ValidationToken' } }
+    /**
+     * Find zero or one ValidationToken that matches the filter.
+     * @param {ValidationTokenFindUniqueArgs} args - Arguments to find a ValidationToken
+     * @example
+     * // Get one ValidationToken
+     * const validationToken = await prisma.validationToken.findUnique({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUnique<T extends ValidationTokenFindUniqueArgs>(args: SelectSubset<T, ValidationTokenFindUniqueArgs<ExtArgs>>): Prisma__ValidationTokenClient<$Result.GetResult<Prisma.$ValidationTokenPayload<ExtArgs>, T, "findUnique"> | null, null, ExtArgs>
+
+    /**
+     * Find one ValidationToken that matches the filter or throw an error with `error.code='P2025'` 
+     * if no matches were found.
+     * @param {ValidationTokenFindUniqueOrThrowArgs} args - Arguments to find a ValidationToken
+     * @example
+     * // Get one ValidationToken
+     * const validationToken = await prisma.validationToken.findUniqueOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUniqueOrThrow<T extends ValidationTokenFindUniqueOrThrowArgs>(args: SelectSubset<T, ValidationTokenFindUniqueOrThrowArgs<ExtArgs>>): Prisma__ValidationTokenClient<$Result.GetResult<Prisma.$ValidationTokenPayload<ExtArgs>, T, "findUniqueOrThrow">, never, ExtArgs>
+
+    /**
+     * Find the first ValidationToken that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {ValidationTokenFindFirstArgs} args - Arguments to find a ValidationToken
+     * @example
+     * // Get one ValidationToken
+     * const validationToken = await prisma.validationToken.findFirst({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirst<T extends ValidationTokenFindFirstArgs>(args?: SelectSubset<T, ValidationTokenFindFirstArgs<ExtArgs>>): Prisma__ValidationTokenClient<$Result.GetResult<Prisma.$ValidationTokenPayload<ExtArgs>, T, "findFirst"> | null, null, ExtArgs>
+
+    /**
+     * Find the first ValidationToken that matches the filter or
+     * throw `PrismaKnownClientError` with `P2025` code if no matches were found.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {ValidationTokenFindFirstOrThrowArgs} args - Arguments to find a ValidationToken
+     * @example
+     * // Get one ValidationToken
+     * const validationToken = await prisma.validationToken.findFirstOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirstOrThrow<T extends ValidationTokenFindFirstOrThrowArgs>(args?: SelectSubset<T, ValidationTokenFindFirstOrThrowArgs<ExtArgs>>): Prisma__ValidationTokenClient<$Result.GetResult<Prisma.$ValidationTokenPayload<ExtArgs>, T, "findFirstOrThrow">, never, ExtArgs>
+
+    /**
+     * Find zero or more ValidationTokens that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {ValidationTokenFindManyArgs} args - Arguments to filter and select certain fields only.
+     * @example
+     * // Get all ValidationTokens
+     * const validationTokens = await prisma.validationToken.findMany()
+     * 
+     * // Get first 10 ValidationTokens
+     * const validationTokens = await prisma.validationToken.findMany({ take: 10 })
+     * 
+     * // Only select the `id`
+     * const validationTokenWithIdOnly = await prisma.validationToken.findMany({ select: { id: true } })
+     * 
+     */
+    findMany<T extends ValidationTokenFindManyArgs>(args?: SelectSubset<T, ValidationTokenFindManyArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$ValidationTokenPayload<ExtArgs>, T, "findMany">>
+
+    /**
+     * Create a ValidationToken.
+     * @param {ValidationTokenCreateArgs} args - Arguments to create a ValidationToken.
+     * @example
+     * // Create one ValidationToken
+     * const ValidationToken = await prisma.validationToken.create({
+     *   data: {
+     *     // ... data to create a ValidationToken
+     *   }
+     * })
+     * 
+     */
+    create<T extends ValidationTokenCreateArgs>(args: SelectSubset<T, ValidationTokenCreateArgs<ExtArgs>>): Prisma__ValidationTokenClient<$Result.GetResult<Prisma.$ValidationTokenPayload<ExtArgs>, T, "create">, never, ExtArgs>
+
+    /**
+     * Create many ValidationTokens.
+     * @param {ValidationTokenCreateManyArgs} args - Arguments to create many ValidationTokens.
+     * @example
+     * // Create many ValidationTokens
+     * const validationToken = await prisma.validationToken.createMany({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     *     
+     */
+    createMany<T extends ValidationTokenCreateManyArgs>(args?: SelectSubset<T, ValidationTokenCreateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create many ValidationTokens and returns the data saved in the database.
+     * @param {ValidationTokenCreateManyAndReturnArgs} args - Arguments to create many ValidationTokens.
+     * @example
+     * // Create many ValidationTokens
+     * const validationToken = await prisma.validationToken.createManyAndReturn({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * 
+     * // Create many ValidationTokens and only return the `id`
+     * const validationTokenWithIdOnly = await prisma.validationToken.createManyAndReturn({ 
+     *   select: { id: true },
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * 
+     */
+    createManyAndReturn<T extends ValidationTokenCreateManyAndReturnArgs>(args?: SelectSubset<T, ValidationTokenCreateManyAndReturnArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$ValidationTokenPayload<ExtArgs>, T, "createManyAndReturn">>
+
+    /**
+     * Delete a ValidationToken.
+     * @param {ValidationTokenDeleteArgs} args - Arguments to delete one ValidationToken.
+     * @example
+     * // Delete one ValidationToken
+     * const ValidationToken = await prisma.validationToken.delete({
+     *   where: {
+     *     // ... filter to delete one ValidationToken
+     *   }
+     * })
+     * 
+     */
+    delete<T extends ValidationTokenDeleteArgs>(args: SelectSubset<T, ValidationTokenDeleteArgs<ExtArgs>>): Prisma__ValidationTokenClient<$Result.GetResult<Prisma.$ValidationTokenPayload<ExtArgs>, T, "delete">, never, ExtArgs>
+
+    /**
+     * Update one ValidationToken.
+     * @param {ValidationTokenUpdateArgs} args - Arguments to update one ValidationToken.
+     * @example
+     * // Update one ValidationToken
+     * const validationToken = await prisma.validationToken.update({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    update<T extends ValidationTokenUpdateArgs>(args: SelectSubset<T, ValidationTokenUpdateArgs<ExtArgs>>): Prisma__ValidationTokenClient<$Result.GetResult<Prisma.$ValidationTokenPayload<ExtArgs>, T, "update">, never, ExtArgs>
+
+    /**
+     * Delete zero or more ValidationTokens.
+     * @param {ValidationTokenDeleteManyArgs} args - Arguments to filter ValidationTokens to delete.
+     * @example
+     * // Delete a few ValidationTokens
+     * const { count } = await prisma.validationToken.deleteMany({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     * 
+     */
+    deleteMany<T extends ValidationTokenDeleteManyArgs>(args?: SelectSubset<T, ValidationTokenDeleteManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Update zero or more ValidationTokens.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {ValidationTokenUpdateManyArgs} args - Arguments to update one or more rows.
+     * @example
+     * // Update many ValidationTokens
+     * const validationToken = await prisma.validationToken.updateMany({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    updateMany<T extends ValidationTokenUpdateManyArgs>(args: SelectSubset<T, ValidationTokenUpdateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create or update one ValidationToken.
+     * @param {ValidationTokenUpsertArgs} args - Arguments to update or create a ValidationToken.
+     * @example
+     * // Update or create a ValidationToken
+     * const validationToken = await prisma.validationToken.upsert({
+     *   create: {
+     *     // ... data to create a ValidationToken
+     *   },
+     *   update: {
+     *     // ... in case it already exists, update
+     *   },
+     *   where: {
+     *     // ... the filter for the ValidationToken we want to update
+     *   }
+     * })
+     */
+    upsert<T extends ValidationTokenUpsertArgs>(args: SelectSubset<T, ValidationTokenUpsertArgs<ExtArgs>>): Prisma__ValidationTokenClient<$Result.GetResult<Prisma.$ValidationTokenPayload<ExtArgs>, T, "upsert">, never, ExtArgs>
+
+
+    /**
+     * Count the number of ValidationTokens.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {ValidationTokenCountArgs} args - Arguments to filter ValidationTokens to count.
+     * @example
+     * // Count the number of ValidationTokens
+     * const count = await prisma.validationToken.count({
+     *   where: {
+     *     // ... the filter for the ValidationTokens we want to count
+     *   }
+     * })
+    **/
+    count<T extends ValidationTokenCountArgs>(
+      args?: Subset<T, ValidationTokenCountArgs>,
+    ): Prisma.PrismaPromise<
+      T extends $Utils.Record<'select', any>
+        ? T['select'] extends true
+          ? number
+          : GetScalarType<T['select'], ValidationTokenCountAggregateOutputType>
+        : number
+    >
+
+    /**
+     * Allows you to perform aggregations operations on a ValidationToken.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {ValidationTokenAggregateArgs} args - Select which aggregations you would like to apply and on what fields.
+     * @example
+     * // Ordered by age ascending
+     * // Where email contains prisma.io
+     * // Limited to the 10 users
+     * const aggregations = await prisma.user.aggregate({
+     *   _avg: {
+     *     age: true,
+     *   },
+     *   where: {
+     *     email: {
+     *       contains: "prisma.io",
+     *     },
+     *   },
+     *   orderBy: {
+     *     age: "asc",
+     *   },
+     *   take: 10,
+     * })
+    **/
+    aggregate<T extends ValidationTokenAggregateArgs>(args: Subset<T, ValidationTokenAggregateArgs>): Prisma.PrismaPromise<GetValidationTokenAggregateType<T>>
+
+    /**
+     * Group by ValidationToken.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {ValidationTokenGroupByArgs} args - Group by arguments.
+     * @example
+     * // Group by city, order by createdAt, get count
+     * const result = await prisma.user.groupBy({
+     *   by: ['city', 'createdAt'],
+     *   orderBy: {
+     *     createdAt: true
+     *   },
+     *   _count: {
+     *     _all: true
+     *   },
+     * })
+     * 
+    **/
+    groupBy<
+      T extends ValidationTokenGroupByArgs,
+      HasSelectOrTake extends Or<
+        Extends<'skip', Keys<T>>,
+        Extends<'take', Keys<T>>
+      >,
+      OrderByArg extends True extends HasSelectOrTake
+        ? { orderBy: ValidationTokenGroupByArgs['orderBy'] }
+        : { orderBy?: ValidationTokenGroupByArgs['orderBy'] },
+      OrderFields extends ExcludeUnderscoreKeys<Keys<MaybeTupleToUnion<T['orderBy']>>>,
+      ByFields extends MaybeTupleToUnion<T['by']>,
+      ByValid extends Has<ByFields, OrderFields>,
+      HavingFields extends GetHavingFields<T['having']>,
+      HavingValid extends Has<ByFields, HavingFields>,
+      ByEmpty extends T['by'] extends never[] ? True : False,
+      InputErrors extends ByEmpty extends True
+      ? `Error: "by" must not be empty.`
+      : HavingValid extends False
+      ? {
+          [P in HavingFields]: P extends ByFields
+            ? never
+            : P extends string
+            ? `Error: Field "${P}" used in "having" needs to be provided in "by".`
+            : [
+                Error,
+                'Field ',
+                P,
+                ` in "having" needs to be provided in "by"`,
+              ]
+        }[HavingFields]
+      : 'take' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "take", you also need to provide "orderBy"'
+      : 'skip' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "skip", you also need to provide "orderBy"'
+      : ByValid extends True
+      ? {}
+      : {
+          [P in OrderFields]: P extends ByFields
+            ? never
+            : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+        }[OrderFields]
+    >(args: SubsetIntersection<T, ValidationTokenGroupByArgs, OrderByArg> & InputErrors): {} extends InputErrors ? GetValidationTokenGroupByPayload<T> : Prisma.PrismaPromise<InputErrors>
+  /**
+   * Fields of the ValidationToken model
+   */
+  readonly fields: ValidationTokenFieldRefs;
+  }
+
+  /**
+   * The delegate class that acts as a "Promise-like" for ValidationToken.
+   * Why is this prefixed with `Prisma__`?
+   * Because we want to prevent naming conflicts as mentioned in
+   * https://github.com/prisma/prisma-client-js/issues/707
+   */
+  export interface Prisma__ValidationTokenClient<T, Null = never, ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> extends Prisma.PrismaPromise<T> {
+    readonly [Symbol.toStringTag]: "PrismaPromise"
+    file<T extends FileDefaultArgs<ExtArgs> = {}>(args?: Subset<T, FileDefaultArgs<ExtArgs>>): Prisma__FileClient<$Result.GetResult<Prisma.$FilePayload<ExtArgs>, T, "findUniqueOrThrow"> | Null, Null, ExtArgs>
+    /**
+     * Attaches callbacks for the resolution and/or rejection of the Promise.
+     * @param onfulfilled The callback to execute when the Promise is resolved.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of which ever callback is executed.
+     */
+    then<TResult1 = T, TResult2 = never>(onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | undefined | null, onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | undefined | null): $Utils.JsPromise<TResult1 | TResult2>
+    /**
+     * Attaches a callback for only the rejection of the Promise.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of the callback.
+     */
+    catch<TResult = never>(onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | undefined | null): $Utils.JsPromise<T | TResult>
+    /**
+     * Attaches a callback that is invoked when the Promise is settled (fulfilled or rejected). The
+     * resolved value cannot be modified from the callback.
+     * @param onfinally The callback to execute when the Promise is settled (fulfilled or rejected).
+     * @returns A Promise for the completion of the callback.
+     */
+    finally(onfinally?: (() => void) | undefined | null): $Utils.JsPromise<T>
+  }
+
+
+
+
+  /**
+   * Fields of the ValidationToken model
+   */ 
+  interface ValidationTokenFieldRefs {
+    readonly id: FieldRef<"ValidationToken", 'String'>
+    readonly tokenId: FieldRef<"ValidationToken", 'String'>
+    readonly fileId: FieldRef<"ValidationToken", 'String'>
+    readonly fileMetadataHash: FieldRef<"ValidationToken", 'String'>
+    readonly userPublicKeyHash: FieldRef<"ValidationToken", 'String'>
+    readonly issuedAt: FieldRef<"ValidationToken", 'DateTime'>
+    readonly expiresAt: FieldRef<"ValidationToken", 'DateTime'>
+    readonly signature: FieldRef<"ValidationToken", 'String'>
+    readonly adjudicatorPublicKey: FieldRef<"ValidationToken", 'String'>
+    readonly createdAt: FieldRef<"ValidationToken", 'DateTime'>
+  }
+    
+
+  // Custom InputTypes
+  /**
+   * ValidationToken findUnique
+   */
+  export type ValidationTokenFindUniqueArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ValidationToken
+     */
+    select?: ValidationTokenSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: ValidationTokenInclude<ExtArgs> | null
+    /**
+     * Filter, which ValidationToken to fetch.
+     */
+    where: ValidationTokenWhereUniqueInput
+  }
+
+  /**
+   * ValidationToken findUniqueOrThrow
+   */
+  export type ValidationTokenFindUniqueOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ValidationToken
+     */
+    select?: ValidationTokenSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: ValidationTokenInclude<ExtArgs> | null
+    /**
+     * Filter, which ValidationToken to fetch.
+     */
+    where: ValidationTokenWhereUniqueInput
+  }
+
+  /**
+   * ValidationToken findFirst
+   */
+  export type ValidationTokenFindFirstArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ValidationToken
+     */
+    select?: ValidationTokenSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: ValidationTokenInclude<ExtArgs> | null
+    /**
+     * Filter, which ValidationToken to fetch.
+     */
+    where?: ValidationTokenWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of ValidationTokens to fetch.
+     */
+    orderBy?: ValidationTokenOrderByWithRelationInput | ValidationTokenOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for ValidationTokens.
+     */
+    cursor?: ValidationTokenWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` ValidationTokens from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` ValidationTokens.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of ValidationTokens.
+     */
+    distinct?: ValidationTokenScalarFieldEnum | ValidationTokenScalarFieldEnum[]
+  }
+
+  /**
+   * ValidationToken findFirstOrThrow
+   */
+  export type ValidationTokenFindFirstOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ValidationToken
+     */
+    select?: ValidationTokenSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: ValidationTokenInclude<ExtArgs> | null
+    /**
+     * Filter, which ValidationToken to fetch.
+     */
+    where?: ValidationTokenWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of ValidationTokens to fetch.
+     */
+    orderBy?: ValidationTokenOrderByWithRelationInput | ValidationTokenOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for ValidationTokens.
+     */
+    cursor?: ValidationTokenWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` ValidationTokens from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` ValidationTokens.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of ValidationTokens.
+     */
+    distinct?: ValidationTokenScalarFieldEnum | ValidationTokenScalarFieldEnum[]
+  }
+
+  /**
+   * ValidationToken findMany
+   */
+  export type ValidationTokenFindManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ValidationToken
+     */
+    select?: ValidationTokenSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: ValidationTokenInclude<ExtArgs> | null
+    /**
+     * Filter, which ValidationTokens to fetch.
+     */
+    where?: ValidationTokenWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of ValidationTokens to fetch.
+     */
+    orderBy?: ValidationTokenOrderByWithRelationInput | ValidationTokenOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for listing ValidationTokens.
+     */
+    cursor?: ValidationTokenWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` ValidationTokens from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` ValidationTokens.
+     */
+    skip?: number
+    distinct?: ValidationTokenScalarFieldEnum | ValidationTokenScalarFieldEnum[]
+  }
+
+  /**
+   * ValidationToken create
+   */
+  export type ValidationTokenCreateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ValidationToken
+     */
+    select?: ValidationTokenSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: ValidationTokenInclude<ExtArgs> | null
+    /**
+     * The data needed to create a ValidationToken.
+     */
+    data: XOR<ValidationTokenCreateInput, ValidationTokenUncheckedCreateInput>
+  }
+
+  /**
+   * ValidationToken createMany
+   */
+  export type ValidationTokenCreateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to create many ValidationTokens.
+     */
+    data: ValidationTokenCreateManyInput | ValidationTokenCreateManyInput[]
+  }
+
+  /**
+   * ValidationToken createManyAndReturn
+   */
+  export type ValidationTokenCreateManyAndReturnArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ValidationToken
+     */
+    select?: ValidationTokenSelectCreateManyAndReturn<ExtArgs> | null
+    /**
+     * The data used to create many ValidationTokens.
+     */
+    data: ValidationTokenCreateManyInput | ValidationTokenCreateManyInput[]
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: ValidationTokenIncludeCreateManyAndReturn<ExtArgs> | null
+  }
+
+  /**
+   * ValidationToken update
+   */
+  export type ValidationTokenUpdateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ValidationToken
+     */
+    select?: ValidationTokenSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: ValidationTokenInclude<ExtArgs> | null
+    /**
+     * The data needed to update a ValidationToken.
+     */
+    data: XOR<ValidationTokenUpdateInput, ValidationTokenUncheckedUpdateInput>
+    /**
+     * Choose, which ValidationToken to update.
+     */
+    where: ValidationTokenWhereUniqueInput
+  }
+
+  /**
+   * ValidationToken updateMany
+   */
+  export type ValidationTokenUpdateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to update ValidationTokens.
+     */
+    data: XOR<ValidationTokenUpdateManyMutationInput, ValidationTokenUncheckedUpdateManyInput>
+    /**
+     * Filter which ValidationTokens to update
+     */
+    where?: ValidationTokenWhereInput
+  }
+
+  /**
+   * ValidationToken upsert
+   */
+  export type ValidationTokenUpsertArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ValidationToken
+     */
+    select?: ValidationTokenSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: ValidationTokenInclude<ExtArgs> | null
+    /**
+     * The filter to search for the ValidationToken to update in case it exists.
+     */
+    where: ValidationTokenWhereUniqueInput
+    /**
+     * In case the ValidationToken found by the `where` argument doesn't exist, create a new ValidationToken with this data.
+     */
+    create: XOR<ValidationTokenCreateInput, ValidationTokenUncheckedCreateInput>
+    /**
+     * In case the ValidationToken was found with the provided `where` argument, update it with this data.
+     */
+    update: XOR<ValidationTokenUpdateInput, ValidationTokenUncheckedUpdateInput>
+  }
+
+  /**
+   * ValidationToken delete
+   */
+  export type ValidationTokenDeleteArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ValidationToken
+     */
+    select?: ValidationTokenSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: ValidationTokenInclude<ExtArgs> | null
+    /**
+     * Filter which ValidationToken to delete.
+     */
+    where: ValidationTokenWhereUniqueInput
+  }
+
+  /**
+   * ValidationToken deleteMany
+   */
+  export type ValidationTokenDeleteManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which ValidationTokens to delete
+     */
+    where?: ValidationTokenWhereInput
+  }
+
+  /**
+   * ValidationToken without action
+   */
+  export type ValidationTokenDefaultArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ValidationToken
+     */
+    select?: ValidationTokenSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: ValidationTokenInclude<ExtArgs> | null
+  }
+
+
+  /**
+   * Model InvestigationAudit
+   */
+
+  export type AggregateInvestigationAudit = {
+    _count: InvestigationAuditCountAggregateOutputType | null
+    _min: InvestigationAuditMinAggregateOutputType | null
+    _max: InvestigationAuditMaxAggregateOutputType | null
+  }
+
+  export type InvestigationAuditMinAggregateOutputType = {
+    id: string | null
+    investigationId: string | null
+    fileId: string | null
+    reason: string | null
+    adminApproval: string | null
+    legalAuthorization: string | null
+    decryptedPublicKey: string | null
+    createdAt: Date | null
+  }
+
+  export type InvestigationAuditMaxAggregateOutputType = {
+    id: string | null
+    investigationId: string | null
+    fileId: string | null
+    reason: string | null
+    adminApproval: string | null
+    legalAuthorization: string | null
+    decryptedPublicKey: string | null
+    createdAt: Date | null
+  }
+
+  export type InvestigationAuditCountAggregateOutputType = {
+    id: number
+    investigationId: number
+    fileId: number
+    reason: number
+    adminApproval: number
+    legalAuthorization: number
+    decryptedPublicKey: number
+    createdAt: number
+    _all: number
+  }
+
+
+  export type InvestigationAuditMinAggregateInputType = {
+    id?: true
+    investigationId?: true
+    fileId?: true
+    reason?: true
+    adminApproval?: true
+    legalAuthorization?: true
+    decryptedPublicKey?: true
+    createdAt?: true
+  }
+
+  export type InvestigationAuditMaxAggregateInputType = {
+    id?: true
+    investigationId?: true
+    fileId?: true
+    reason?: true
+    adminApproval?: true
+    legalAuthorization?: true
+    decryptedPublicKey?: true
+    createdAt?: true
+  }
+
+  export type InvestigationAuditCountAggregateInputType = {
+    id?: true
+    investigationId?: true
+    fileId?: true
+    reason?: true
+    adminApproval?: true
+    legalAuthorization?: true
+    decryptedPublicKey?: true
+    createdAt?: true
+    _all?: true
+  }
+
+  export type InvestigationAuditAggregateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which InvestigationAudit to aggregate.
+     */
+    where?: InvestigationAuditWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of InvestigationAudits to fetch.
+     */
+    orderBy?: InvestigationAuditOrderByWithRelationInput | InvestigationAuditOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the start position
+     */
+    cursor?: InvestigationAuditWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` InvestigationAudits from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` InvestigationAudits.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Count returned InvestigationAudits
+    **/
+    _count?: true | InvestigationAuditCountAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the minimum value
+    **/
+    _min?: InvestigationAuditMinAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the maximum value
+    **/
+    _max?: InvestigationAuditMaxAggregateInputType
+  }
+
+  export type GetInvestigationAuditAggregateType<T extends InvestigationAuditAggregateArgs> = {
+        [P in keyof T & keyof AggregateInvestigationAudit]: P extends '_count' | 'count'
+      ? T[P] extends true
+        ? number
+        : GetScalarType<T[P], AggregateInvestigationAudit[P]>
+      : GetScalarType<T[P], AggregateInvestigationAudit[P]>
+  }
+
+
+
+
+  export type InvestigationAuditGroupByArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    where?: InvestigationAuditWhereInput
+    orderBy?: InvestigationAuditOrderByWithAggregationInput | InvestigationAuditOrderByWithAggregationInput[]
+    by: InvestigationAuditScalarFieldEnum[] | InvestigationAuditScalarFieldEnum
+    having?: InvestigationAuditScalarWhereWithAggregatesInput
+    take?: number
+    skip?: number
+    _count?: InvestigationAuditCountAggregateInputType | true
+    _min?: InvestigationAuditMinAggregateInputType
+    _max?: InvestigationAuditMaxAggregateInputType
+  }
+
+  export type InvestigationAuditGroupByOutputType = {
+    id: string
+    investigationId: string
+    fileId: string
+    reason: string
+    adminApproval: string
+    legalAuthorization: string
+    decryptedPublicKey: string | null
+    createdAt: Date
+    _count: InvestigationAuditCountAggregateOutputType | null
+    _min: InvestigationAuditMinAggregateOutputType | null
+    _max: InvestigationAuditMaxAggregateOutputType | null
+  }
+
+  type GetInvestigationAuditGroupByPayload<T extends InvestigationAuditGroupByArgs> = Prisma.PrismaPromise<
+    Array<
+      PickEnumerable<InvestigationAuditGroupByOutputType, T['by']> &
+        {
+          [P in ((keyof T) & (keyof InvestigationAuditGroupByOutputType))]: P extends '_count'
+            ? T[P] extends boolean
+              ? number
+              : GetScalarType<T[P], InvestigationAuditGroupByOutputType[P]>
+            : GetScalarType<T[P], InvestigationAuditGroupByOutputType[P]>
+        }
+      >
+    >
+
+
+  export type InvestigationAuditSelect<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    investigationId?: boolean
+    fileId?: boolean
+    reason?: boolean
+    adminApproval?: boolean
+    legalAuthorization?: boolean
+    decryptedPublicKey?: boolean
+    createdAt?: boolean
+  }, ExtArgs["result"]["investigationAudit"]>
+
+  export type InvestigationAuditSelectCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    investigationId?: boolean
+    fileId?: boolean
+    reason?: boolean
+    adminApproval?: boolean
+    legalAuthorization?: boolean
+    decryptedPublicKey?: boolean
+    createdAt?: boolean
+  }, ExtArgs["result"]["investigationAudit"]>
+
+  export type InvestigationAuditSelectScalar = {
+    id?: boolean
+    investigationId?: boolean
+    fileId?: boolean
+    reason?: boolean
+    adminApproval?: boolean
+    legalAuthorization?: boolean
+    decryptedPublicKey?: boolean
+    createdAt?: boolean
+  }
+
+
+  export type $InvestigationAuditPayload<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    name: "InvestigationAudit"
+    objects: {}
+    scalars: $Extensions.GetPayloadResult<{
+      id: string
+      investigationId: string
+      fileId: string
+      reason: string
+      adminApproval: string
+      legalAuthorization: string
+      decryptedPublicKey: string | null
+      createdAt: Date
+    }, ExtArgs["result"]["investigationAudit"]>
+    composites: {}
+  }
+
+  type InvestigationAuditGetPayload<S extends boolean | null | undefined | InvestigationAuditDefaultArgs> = $Result.GetResult<Prisma.$InvestigationAuditPayload, S>
+
+  type InvestigationAuditCountArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = 
+    Omit<InvestigationAuditFindManyArgs, 'select' | 'include' | 'distinct'> & {
+      select?: InvestigationAuditCountAggregateInputType | true
+    }
+
+  export interface InvestigationAuditDelegate<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> {
+    [K: symbol]: { types: Prisma.TypeMap<ExtArgs>['model']['InvestigationAudit'], meta: { name: 'InvestigationAudit' } }
+    /**
+     * Find zero or one InvestigationAudit that matches the filter.
+     * @param {InvestigationAuditFindUniqueArgs} args - Arguments to find a InvestigationAudit
+     * @example
+     * // Get one InvestigationAudit
+     * const investigationAudit = await prisma.investigationAudit.findUnique({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUnique<T extends InvestigationAuditFindUniqueArgs>(args: SelectSubset<T, InvestigationAuditFindUniqueArgs<ExtArgs>>): Prisma__InvestigationAuditClient<$Result.GetResult<Prisma.$InvestigationAuditPayload<ExtArgs>, T, "findUnique"> | null, null, ExtArgs>
+
+    /**
+     * Find one InvestigationAudit that matches the filter or throw an error with `error.code='P2025'` 
+     * if no matches were found.
+     * @param {InvestigationAuditFindUniqueOrThrowArgs} args - Arguments to find a InvestigationAudit
+     * @example
+     * // Get one InvestigationAudit
+     * const investigationAudit = await prisma.investigationAudit.findUniqueOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUniqueOrThrow<T extends InvestigationAuditFindUniqueOrThrowArgs>(args: SelectSubset<T, InvestigationAuditFindUniqueOrThrowArgs<ExtArgs>>): Prisma__InvestigationAuditClient<$Result.GetResult<Prisma.$InvestigationAuditPayload<ExtArgs>, T, "findUniqueOrThrow">, never, ExtArgs>
+
+    /**
+     * Find the first InvestigationAudit that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {InvestigationAuditFindFirstArgs} args - Arguments to find a InvestigationAudit
+     * @example
+     * // Get one InvestigationAudit
+     * const investigationAudit = await prisma.investigationAudit.findFirst({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirst<T extends InvestigationAuditFindFirstArgs>(args?: SelectSubset<T, InvestigationAuditFindFirstArgs<ExtArgs>>): Prisma__InvestigationAuditClient<$Result.GetResult<Prisma.$InvestigationAuditPayload<ExtArgs>, T, "findFirst"> | null, null, ExtArgs>
+
+    /**
+     * Find the first InvestigationAudit that matches the filter or
+     * throw `PrismaKnownClientError` with `P2025` code if no matches were found.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {InvestigationAuditFindFirstOrThrowArgs} args - Arguments to find a InvestigationAudit
+     * @example
+     * // Get one InvestigationAudit
+     * const investigationAudit = await prisma.investigationAudit.findFirstOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirstOrThrow<T extends InvestigationAuditFindFirstOrThrowArgs>(args?: SelectSubset<T, InvestigationAuditFindFirstOrThrowArgs<ExtArgs>>): Prisma__InvestigationAuditClient<$Result.GetResult<Prisma.$InvestigationAuditPayload<ExtArgs>, T, "findFirstOrThrow">, never, ExtArgs>
+
+    /**
+     * Find zero or more InvestigationAudits that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {InvestigationAuditFindManyArgs} args - Arguments to filter and select certain fields only.
+     * @example
+     * // Get all InvestigationAudits
+     * const investigationAudits = await prisma.investigationAudit.findMany()
+     * 
+     * // Get first 10 InvestigationAudits
+     * const investigationAudits = await prisma.investigationAudit.findMany({ take: 10 })
+     * 
+     * // Only select the `id`
+     * const investigationAuditWithIdOnly = await prisma.investigationAudit.findMany({ select: { id: true } })
+     * 
+     */
+    findMany<T extends InvestigationAuditFindManyArgs>(args?: SelectSubset<T, InvestigationAuditFindManyArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$InvestigationAuditPayload<ExtArgs>, T, "findMany">>
+
+    /**
+     * Create a InvestigationAudit.
+     * @param {InvestigationAuditCreateArgs} args - Arguments to create a InvestigationAudit.
+     * @example
+     * // Create one InvestigationAudit
+     * const InvestigationAudit = await prisma.investigationAudit.create({
+     *   data: {
+     *     // ... data to create a InvestigationAudit
+     *   }
+     * })
+     * 
+     */
+    create<T extends InvestigationAuditCreateArgs>(args: SelectSubset<T, InvestigationAuditCreateArgs<ExtArgs>>): Prisma__InvestigationAuditClient<$Result.GetResult<Prisma.$InvestigationAuditPayload<ExtArgs>, T, "create">, never, ExtArgs>
+
+    /**
+     * Create many InvestigationAudits.
+     * @param {InvestigationAuditCreateManyArgs} args - Arguments to create many InvestigationAudits.
+     * @example
+     * // Create many InvestigationAudits
+     * const investigationAudit = await prisma.investigationAudit.createMany({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     *     
+     */
+    createMany<T extends InvestigationAuditCreateManyArgs>(args?: SelectSubset<T, InvestigationAuditCreateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create many InvestigationAudits and returns the data saved in the database.
+     * @param {InvestigationAuditCreateManyAndReturnArgs} args - Arguments to create many InvestigationAudits.
+     * @example
+     * // Create many InvestigationAudits
+     * const investigationAudit = await prisma.investigationAudit.createManyAndReturn({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * 
+     * // Create many InvestigationAudits and only return the `id`
+     * const investigationAuditWithIdOnly = await prisma.investigationAudit.createManyAndReturn({ 
+     *   select: { id: true },
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * 
+     */
+    createManyAndReturn<T extends InvestigationAuditCreateManyAndReturnArgs>(args?: SelectSubset<T, InvestigationAuditCreateManyAndReturnArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$InvestigationAuditPayload<ExtArgs>, T, "createManyAndReturn">>
+
+    /**
+     * Delete a InvestigationAudit.
+     * @param {InvestigationAuditDeleteArgs} args - Arguments to delete one InvestigationAudit.
+     * @example
+     * // Delete one InvestigationAudit
+     * const InvestigationAudit = await prisma.investigationAudit.delete({
+     *   where: {
+     *     // ... filter to delete one InvestigationAudit
+     *   }
+     * })
+     * 
+     */
+    delete<T extends InvestigationAuditDeleteArgs>(args: SelectSubset<T, InvestigationAuditDeleteArgs<ExtArgs>>): Prisma__InvestigationAuditClient<$Result.GetResult<Prisma.$InvestigationAuditPayload<ExtArgs>, T, "delete">, never, ExtArgs>
+
+    /**
+     * Update one InvestigationAudit.
+     * @param {InvestigationAuditUpdateArgs} args - Arguments to update one InvestigationAudit.
+     * @example
+     * // Update one InvestigationAudit
+     * const investigationAudit = await prisma.investigationAudit.update({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    update<T extends InvestigationAuditUpdateArgs>(args: SelectSubset<T, InvestigationAuditUpdateArgs<ExtArgs>>): Prisma__InvestigationAuditClient<$Result.GetResult<Prisma.$InvestigationAuditPayload<ExtArgs>, T, "update">, never, ExtArgs>
+
+    /**
+     * Delete zero or more InvestigationAudits.
+     * @param {InvestigationAuditDeleteManyArgs} args - Arguments to filter InvestigationAudits to delete.
+     * @example
+     * // Delete a few InvestigationAudits
+     * const { count } = await prisma.investigationAudit.deleteMany({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     * 
+     */
+    deleteMany<T extends InvestigationAuditDeleteManyArgs>(args?: SelectSubset<T, InvestigationAuditDeleteManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Update zero or more InvestigationAudits.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {InvestigationAuditUpdateManyArgs} args - Arguments to update one or more rows.
+     * @example
+     * // Update many InvestigationAudits
+     * const investigationAudit = await prisma.investigationAudit.updateMany({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    updateMany<T extends InvestigationAuditUpdateManyArgs>(args: SelectSubset<T, InvestigationAuditUpdateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create or update one InvestigationAudit.
+     * @param {InvestigationAuditUpsertArgs} args - Arguments to update or create a InvestigationAudit.
+     * @example
+     * // Update or create a InvestigationAudit
+     * const investigationAudit = await prisma.investigationAudit.upsert({
+     *   create: {
+     *     // ... data to create a InvestigationAudit
+     *   },
+     *   update: {
+     *     // ... in case it already exists, update
+     *   },
+     *   where: {
+     *     // ... the filter for the InvestigationAudit we want to update
+     *   }
+     * })
+     */
+    upsert<T extends InvestigationAuditUpsertArgs>(args: SelectSubset<T, InvestigationAuditUpsertArgs<ExtArgs>>): Prisma__InvestigationAuditClient<$Result.GetResult<Prisma.$InvestigationAuditPayload<ExtArgs>, T, "upsert">, never, ExtArgs>
+
+
+    /**
+     * Count the number of InvestigationAudits.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {InvestigationAuditCountArgs} args - Arguments to filter InvestigationAudits to count.
+     * @example
+     * // Count the number of InvestigationAudits
+     * const count = await prisma.investigationAudit.count({
+     *   where: {
+     *     // ... the filter for the InvestigationAudits we want to count
+     *   }
+     * })
+    **/
+    count<T extends InvestigationAuditCountArgs>(
+      args?: Subset<T, InvestigationAuditCountArgs>,
+    ): Prisma.PrismaPromise<
+      T extends $Utils.Record<'select', any>
+        ? T['select'] extends true
+          ? number
+          : GetScalarType<T['select'], InvestigationAuditCountAggregateOutputType>
+        : number
+    >
+
+    /**
+     * Allows you to perform aggregations operations on a InvestigationAudit.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {InvestigationAuditAggregateArgs} args - Select which aggregations you would like to apply and on what fields.
+     * @example
+     * // Ordered by age ascending
+     * // Where email contains prisma.io
+     * // Limited to the 10 users
+     * const aggregations = await prisma.user.aggregate({
+     *   _avg: {
+     *     age: true,
+     *   },
+     *   where: {
+     *     email: {
+     *       contains: "prisma.io",
+     *     },
+     *   },
+     *   orderBy: {
+     *     age: "asc",
+     *   },
+     *   take: 10,
+     * })
+    **/
+    aggregate<T extends InvestigationAuditAggregateArgs>(args: Subset<T, InvestigationAuditAggregateArgs>): Prisma.PrismaPromise<GetInvestigationAuditAggregateType<T>>
+
+    /**
+     * Group by InvestigationAudit.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {InvestigationAuditGroupByArgs} args - Group by arguments.
+     * @example
+     * // Group by city, order by createdAt, get count
+     * const result = await prisma.user.groupBy({
+     *   by: ['city', 'createdAt'],
+     *   orderBy: {
+     *     createdAt: true
+     *   },
+     *   _count: {
+     *     _all: true
+     *   },
+     * })
+     * 
+    **/
+    groupBy<
+      T extends InvestigationAuditGroupByArgs,
+      HasSelectOrTake extends Or<
+        Extends<'skip', Keys<T>>,
+        Extends<'take', Keys<T>>
+      >,
+      OrderByArg extends True extends HasSelectOrTake
+        ? { orderBy: InvestigationAuditGroupByArgs['orderBy'] }
+        : { orderBy?: InvestigationAuditGroupByArgs['orderBy'] },
+      OrderFields extends ExcludeUnderscoreKeys<Keys<MaybeTupleToUnion<T['orderBy']>>>,
+      ByFields extends MaybeTupleToUnion<T['by']>,
+      ByValid extends Has<ByFields, OrderFields>,
+      HavingFields extends GetHavingFields<T['having']>,
+      HavingValid extends Has<ByFields, HavingFields>,
+      ByEmpty extends T['by'] extends never[] ? True : False,
+      InputErrors extends ByEmpty extends True
+      ? `Error: "by" must not be empty.`
+      : HavingValid extends False
+      ? {
+          [P in HavingFields]: P extends ByFields
+            ? never
+            : P extends string
+            ? `Error: Field "${P}" used in "having" needs to be provided in "by".`
+            : [
+                Error,
+                'Field ',
+                P,
+                ` in "having" needs to be provided in "by"`,
+              ]
+        }[HavingFields]
+      : 'take' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "take", you also need to provide "orderBy"'
+      : 'skip' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "skip", you also need to provide "orderBy"'
+      : ByValid extends True
+      ? {}
+      : {
+          [P in OrderFields]: P extends ByFields
+            ? never
+            : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+        }[OrderFields]
+    >(args: SubsetIntersection<T, InvestigationAuditGroupByArgs, OrderByArg> & InputErrors): {} extends InputErrors ? GetInvestigationAuditGroupByPayload<T> : Prisma.PrismaPromise<InputErrors>
+  /**
+   * Fields of the InvestigationAudit model
+   */
+  readonly fields: InvestigationAuditFieldRefs;
+  }
+
+  /**
+   * The delegate class that acts as a "Promise-like" for InvestigationAudit.
+   * Why is this prefixed with `Prisma__`?
+   * Because we want to prevent naming conflicts as mentioned in
+   * https://github.com/prisma/prisma-client-js/issues/707
+   */
+  export interface Prisma__InvestigationAuditClient<T, Null = never, ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> extends Prisma.PrismaPromise<T> {
+    readonly [Symbol.toStringTag]: "PrismaPromise"
+    /**
+     * Attaches callbacks for the resolution and/or rejection of the Promise.
+     * @param onfulfilled The callback to execute when the Promise is resolved.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of which ever callback is executed.
+     */
+    then<TResult1 = T, TResult2 = never>(onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | undefined | null, onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | undefined | null): $Utils.JsPromise<TResult1 | TResult2>
+    /**
+     * Attaches a callback for only the rejection of the Promise.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of the callback.
+     */
+    catch<TResult = never>(onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | undefined | null): $Utils.JsPromise<T | TResult>
+    /**
+     * Attaches a callback that is invoked when the Promise is settled (fulfilled or rejected). The
+     * resolved value cannot be modified from the callback.
+     * @param onfinally The callback to execute when the Promise is settled (fulfilled or rejected).
+     * @returns A Promise for the completion of the callback.
+     */
+    finally(onfinally?: (() => void) | undefined | null): $Utils.JsPromise<T>
+  }
+
+
+
+
+  /**
+   * Fields of the InvestigationAudit model
+   */ 
+  interface InvestigationAuditFieldRefs {
+    readonly id: FieldRef<"InvestigationAudit", 'String'>
+    readonly investigationId: FieldRef<"InvestigationAudit", 'String'>
+    readonly fileId: FieldRef<"InvestigationAudit", 'String'>
+    readonly reason: FieldRef<"InvestigationAudit", 'String'>
+    readonly adminApproval: FieldRef<"InvestigationAudit", 'String'>
+    readonly legalAuthorization: FieldRef<"InvestigationAudit", 'String'>
+    readonly decryptedPublicKey: FieldRef<"InvestigationAudit", 'String'>
+    readonly createdAt: FieldRef<"InvestigationAudit", 'DateTime'>
+  }
+    
+
+  // Custom InputTypes
+  /**
+   * InvestigationAudit findUnique
+   */
+  export type InvestigationAuditFindUniqueArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the InvestigationAudit
+     */
+    select?: InvestigationAuditSelect<ExtArgs> | null
+    /**
+     * Filter, which InvestigationAudit to fetch.
+     */
+    where: InvestigationAuditWhereUniqueInput
+  }
+
+  /**
+   * InvestigationAudit findUniqueOrThrow
+   */
+  export type InvestigationAuditFindUniqueOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the InvestigationAudit
+     */
+    select?: InvestigationAuditSelect<ExtArgs> | null
+    /**
+     * Filter, which InvestigationAudit to fetch.
+     */
+    where: InvestigationAuditWhereUniqueInput
+  }
+
+  /**
+   * InvestigationAudit findFirst
+   */
+  export type InvestigationAuditFindFirstArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the InvestigationAudit
+     */
+    select?: InvestigationAuditSelect<ExtArgs> | null
+    /**
+     * Filter, which InvestigationAudit to fetch.
+     */
+    where?: InvestigationAuditWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of InvestigationAudits to fetch.
+     */
+    orderBy?: InvestigationAuditOrderByWithRelationInput | InvestigationAuditOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for InvestigationAudits.
+     */
+    cursor?: InvestigationAuditWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` InvestigationAudits from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` InvestigationAudits.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of InvestigationAudits.
+     */
+    distinct?: InvestigationAuditScalarFieldEnum | InvestigationAuditScalarFieldEnum[]
+  }
+
+  /**
+   * InvestigationAudit findFirstOrThrow
+   */
+  export type InvestigationAuditFindFirstOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the InvestigationAudit
+     */
+    select?: InvestigationAuditSelect<ExtArgs> | null
+    /**
+     * Filter, which InvestigationAudit to fetch.
+     */
+    where?: InvestigationAuditWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of InvestigationAudits to fetch.
+     */
+    orderBy?: InvestigationAuditOrderByWithRelationInput | InvestigationAuditOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for InvestigationAudits.
+     */
+    cursor?: InvestigationAuditWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` InvestigationAudits from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` InvestigationAudits.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of InvestigationAudits.
+     */
+    distinct?: InvestigationAuditScalarFieldEnum | InvestigationAuditScalarFieldEnum[]
+  }
+
+  /**
+   * InvestigationAudit findMany
+   */
+  export type InvestigationAuditFindManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the InvestigationAudit
+     */
+    select?: InvestigationAuditSelect<ExtArgs> | null
+    /**
+     * Filter, which InvestigationAudits to fetch.
+     */
+    where?: InvestigationAuditWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of InvestigationAudits to fetch.
+     */
+    orderBy?: InvestigationAuditOrderByWithRelationInput | InvestigationAuditOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for listing InvestigationAudits.
+     */
+    cursor?: InvestigationAuditWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` InvestigationAudits from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` InvestigationAudits.
+     */
+    skip?: number
+    distinct?: InvestigationAuditScalarFieldEnum | InvestigationAuditScalarFieldEnum[]
+  }
+
+  /**
+   * InvestigationAudit create
+   */
+  export type InvestigationAuditCreateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the InvestigationAudit
+     */
+    select?: InvestigationAuditSelect<ExtArgs> | null
+    /**
+     * The data needed to create a InvestigationAudit.
+     */
+    data: XOR<InvestigationAuditCreateInput, InvestigationAuditUncheckedCreateInput>
+  }
+
+  /**
+   * InvestigationAudit createMany
+   */
+  export type InvestigationAuditCreateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to create many InvestigationAudits.
+     */
+    data: InvestigationAuditCreateManyInput | InvestigationAuditCreateManyInput[]
+  }
+
+  /**
+   * InvestigationAudit createManyAndReturn
+   */
+  export type InvestigationAuditCreateManyAndReturnArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the InvestigationAudit
+     */
+    select?: InvestigationAuditSelectCreateManyAndReturn<ExtArgs> | null
+    /**
+     * The data used to create many InvestigationAudits.
+     */
+    data: InvestigationAuditCreateManyInput | InvestigationAuditCreateManyInput[]
+  }
+
+  /**
+   * InvestigationAudit update
+   */
+  export type InvestigationAuditUpdateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the InvestigationAudit
+     */
+    select?: InvestigationAuditSelect<ExtArgs> | null
+    /**
+     * The data needed to update a InvestigationAudit.
+     */
+    data: XOR<InvestigationAuditUpdateInput, InvestigationAuditUncheckedUpdateInput>
+    /**
+     * Choose, which InvestigationAudit to update.
+     */
+    where: InvestigationAuditWhereUniqueInput
+  }
+
+  /**
+   * InvestigationAudit updateMany
+   */
+  export type InvestigationAuditUpdateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to update InvestigationAudits.
+     */
+    data: XOR<InvestigationAuditUpdateManyMutationInput, InvestigationAuditUncheckedUpdateManyInput>
+    /**
+     * Filter which InvestigationAudits to update
+     */
+    where?: InvestigationAuditWhereInput
+  }
+
+  /**
+   * InvestigationAudit upsert
+   */
+  export type InvestigationAuditUpsertArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the InvestigationAudit
+     */
+    select?: InvestigationAuditSelect<ExtArgs> | null
+    /**
+     * The filter to search for the InvestigationAudit to update in case it exists.
+     */
+    where: InvestigationAuditWhereUniqueInput
+    /**
+     * In case the InvestigationAudit found by the `where` argument doesn't exist, create a new InvestigationAudit with this data.
+     */
+    create: XOR<InvestigationAuditCreateInput, InvestigationAuditUncheckedCreateInput>
+    /**
+     * In case the InvestigationAudit was found with the provided `where` argument, update it with this data.
+     */
+    update: XOR<InvestigationAuditUpdateInput, InvestigationAuditUncheckedUpdateInput>
+  }
+
+  /**
+   * InvestigationAudit delete
+   */
+  export type InvestigationAuditDeleteArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the InvestigationAudit
+     */
+    select?: InvestigationAuditSelect<ExtArgs> | null
+    /**
+     * Filter which InvestigationAudit to delete.
+     */
+    where: InvestigationAuditWhereUniqueInput
+  }
+
+  /**
+   * InvestigationAudit deleteMany
+   */
+  export type InvestigationAuditDeleteManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which InvestigationAudits to delete
+     */
+    where?: InvestigationAuditWhereInput
+  }
+
+  /**
+   * InvestigationAudit without action
+   */
+  export type InvestigationAuditDefaultArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the InvestigationAudit
+     */
+    select?: InvestigationAuditSelect<ExtArgs> | null
+  }
+
+
+  /**
+   * Model ValidationNonce
+   */
+
+  export type AggregateValidationNonce = {
+    _count: ValidationNonceCountAggregateOutputType | null
+    _min: ValidationNonceMinAggregateOutputType | null
+    _max: ValidationNonceMaxAggregateOutputType | null
+  }
+
+  export type ValidationNonceMinAggregateOutputType = {
+    id: string | null
+    nonce: string | null
+    createdAt: Date | null
+  }
+
+  export type ValidationNonceMaxAggregateOutputType = {
+    id: string | null
+    nonce: string | null
+    createdAt: Date | null
+  }
+
+  export type ValidationNonceCountAggregateOutputType = {
+    id: number
+    nonce: number
+    createdAt: number
+    _all: number
+  }
+
+
+  export type ValidationNonceMinAggregateInputType = {
+    id?: true
+    nonce?: true
+    createdAt?: true
+  }
+
+  export type ValidationNonceMaxAggregateInputType = {
+    id?: true
+    nonce?: true
+    createdAt?: true
+  }
+
+  export type ValidationNonceCountAggregateInputType = {
+    id?: true
+    nonce?: true
+    createdAt?: true
+    _all?: true
+  }
+
+  export type ValidationNonceAggregateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which ValidationNonce to aggregate.
+     */
+    where?: ValidationNonceWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of ValidationNonces to fetch.
+     */
+    orderBy?: ValidationNonceOrderByWithRelationInput | ValidationNonceOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the start position
+     */
+    cursor?: ValidationNonceWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` ValidationNonces from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` ValidationNonces.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Count returned ValidationNonces
+    **/
+    _count?: true | ValidationNonceCountAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the minimum value
+    **/
+    _min?: ValidationNonceMinAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the maximum value
+    **/
+    _max?: ValidationNonceMaxAggregateInputType
+  }
+
+  export type GetValidationNonceAggregateType<T extends ValidationNonceAggregateArgs> = {
+        [P in keyof T & keyof AggregateValidationNonce]: P extends '_count' | 'count'
+      ? T[P] extends true
+        ? number
+        : GetScalarType<T[P], AggregateValidationNonce[P]>
+      : GetScalarType<T[P], AggregateValidationNonce[P]>
+  }
+
+
+
+
+  export type ValidationNonceGroupByArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    where?: ValidationNonceWhereInput
+    orderBy?: ValidationNonceOrderByWithAggregationInput | ValidationNonceOrderByWithAggregationInput[]
+    by: ValidationNonceScalarFieldEnum[] | ValidationNonceScalarFieldEnum
+    having?: ValidationNonceScalarWhereWithAggregatesInput
+    take?: number
+    skip?: number
+    _count?: ValidationNonceCountAggregateInputType | true
+    _min?: ValidationNonceMinAggregateInputType
+    _max?: ValidationNonceMaxAggregateInputType
+  }
+
+  export type ValidationNonceGroupByOutputType = {
+    id: string
+    nonce: string
+    createdAt: Date
+    _count: ValidationNonceCountAggregateOutputType | null
+    _min: ValidationNonceMinAggregateOutputType | null
+    _max: ValidationNonceMaxAggregateOutputType | null
+  }
+
+  type GetValidationNonceGroupByPayload<T extends ValidationNonceGroupByArgs> = Prisma.PrismaPromise<
+    Array<
+      PickEnumerable<ValidationNonceGroupByOutputType, T['by']> &
+        {
+          [P in ((keyof T) & (keyof ValidationNonceGroupByOutputType))]: P extends '_count'
+            ? T[P] extends boolean
+              ? number
+              : GetScalarType<T[P], ValidationNonceGroupByOutputType[P]>
+            : GetScalarType<T[P], ValidationNonceGroupByOutputType[P]>
+        }
+      >
+    >
+
+
+  export type ValidationNonceSelect<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    nonce?: boolean
+    createdAt?: boolean
+  }, ExtArgs["result"]["validationNonce"]>
+
+  export type ValidationNonceSelectCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    nonce?: boolean
+    createdAt?: boolean
+  }, ExtArgs["result"]["validationNonce"]>
+
+  export type ValidationNonceSelectScalar = {
+    id?: boolean
+    nonce?: boolean
+    createdAt?: boolean
+  }
+
+
+  export type $ValidationNoncePayload<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    name: "ValidationNonce"
+    objects: {}
+    scalars: $Extensions.GetPayloadResult<{
+      id: string
+      nonce: string
+      createdAt: Date
+    }, ExtArgs["result"]["validationNonce"]>
+    composites: {}
+  }
+
+  type ValidationNonceGetPayload<S extends boolean | null | undefined | ValidationNonceDefaultArgs> = $Result.GetResult<Prisma.$ValidationNoncePayload, S>
+
+  type ValidationNonceCountArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = 
+    Omit<ValidationNonceFindManyArgs, 'select' | 'include' | 'distinct'> & {
+      select?: ValidationNonceCountAggregateInputType | true
+    }
+
+  export interface ValidationNonceDelegate<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> {
+    [K: symbol]: { types: Prisma.TypeMap<ExtArgs>['model']['ValidationNonce'], meta: { name: 'ValidationNonce' } }
+    /**
+     * Find zero or one ValidationNonce that matches the filter.
+     * @param {ValidationNonceFindUniqueArgs} args - Arguments to find a ValidationNonce
+     * @example
+     * // Get one ValidationNonce
+     * const validationNonce = await prisma.validationNonce.findUnique({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUnique<T extends ValidationNonceFindUniqueArgs>(args: SelectSubset<T, ValidationNonceFindUniqueArgs<ExtArgs>>): Prisma__ValidationNonceClient<$Result.GetResult<Prisma.$ValidationNoncePayload<ExtArgs>, T, "findUnique"> | null, null, ExtArgs>
+
+    /**
+     * Find one ValidationNonce that matches the filter or throw an error with `error.code='P2025'` 
+     * if no matches were found.
+     * @param {ValidationNonceFindUniqueOrThrowArgs} args - Arguments to find a ValidationNonce
+     * @example
+     * // Get one ValidationNonce
+     * const validationNonce = await prisma.validationNonce.findUniqueOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUniqueOrThrow<T extends ValidationNonceFindUniqueOrThrowArgs>(args: SelectSubset<T, ValidationNonceFindUniqueOrThrowArgs<ExtArgs>>): Prisma__ValidationNonceClient<$Result.GetResult<Prisma.$ValidationNoncePayload<ExtArgs>, T, "findUniqueOrThrow">, never, ExtArgs>
+
+    /**
+     * Find the first ValidationNonce that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {ValidationNonceFindFirstArgs} args - Arguments to find a ValidationNonce
+     * @example
+     * // Get one ValidationNonce
+     * const validationNonce = await prisma.validationNonce.findFirst({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirst<T extends ValidationNonceFindFirstArgs>(args?: SelectSubset<T, ValidationNonceFindFirstArgs<ExtArgs>>): Prisma__ValidationNonceClient<$Result.GetResult<Prisma.$ValidationNoncePayload<ExtArgs>, T, "findFirst"> | null, null, ExtArgs>
+
+    /**
+     * Find the first ValidationNonce that matches the filter or
+     * throw `PrismaKnownClientError` with `P2025` code if no matches were found.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {ValidationNonceFindFirstOrThrowArgs} args - Arguments to find a ValidationNonce
+     * @example
+     * // Get one ValidationNonce
+     * const validationNonce = await prisma.validationNonce.findFirstOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirstOrThrow<T extends ValidationNonceFindFirstOrThrowArgs>(args?: SelectSubset<T, ValidationNonceFindFirstOrThrowArgs<ExtArgs>>): Prisma__ValidationNonceClient<$Result.GetResult<Prisma.$ValidationNoncePayload<ExtArgs>, T, "findFirstOrThrow">, never, ExtArgs>
+
+    /**
+     * Find zero or more ValidationNonces that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {ValidationNonceFindManyArgs} args - Arguments to filter and select certain fields only.
+     * @example
+     * // Get all ValidationNonces
+     * const validationNonces = await prisma.validationNonce.findMany()
+     * 
+     * // Get first 10 ValidationNonces
+     * const validationNonces = await prisma.validationNonce.findMany({ take: 10 })
+     * 
+     * // Only select the `id`
+     * const validationNonceWithIdOnly = await prisma.validationNonce.findMany({ select: { id: true } })
+     * 
+     */
+    findMany<T extends ValidationNonceFindManyArgs>(args?: SelectSubset<T, ValidationNonceFindManyArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$ValidationNoncePayload<ExtArgs>, T, "findMany">>
+
+    /**
+     * Create a ValidationNonce.
+     * @param {ValidationNonceCreateArgs} args - Arguments to create a ValidationNonce.
+     * @example
+     * // Create one ValidationNonce
+     * const ValidationNonce = await prisma.validationNonce.create({
+     *   data: {
+     *     // ... data to create a ValidationNonce
+     *   }
+     * })
+     * 
+     */
+    create<T extends ValidationNonceCreateArgs>(args: SelectSubset<T, ValidationNonceCreateArgs<ExtArgs>>): Prisma__ValidationNonceClient<$Result.GetResult<Prisma.$ValidationNoncePayload<ExtArgs>, T, "create">, never, ExtArgs>
+
+    /**
+     * Create many ValidationNonces.
+     * @param {ValidationNonceCreateManyArgs} args - Arguments to create many ValidationNonces.
+     * @example
+     * // Create many ValidationNonces
+     * const validationNonce = await prisma.validationNonce.createMany({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     *     
+     */
+    createMany<T extends ValidationNonceCreateManyArgs>(args?: SelectSubset<T, ValidationNonceCreateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create many ValidationNonces and returns the data saved in the database.
+     * @param {ValidationNonceCreateManyAndReturnArgs} args - Arguments to create many ValidationNonces.
+     * @example
+     * // Create many ValidationNonces
+     * const validationNonce = await prisma.validationNonce.createManyAndReturn({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * 
+     * // Create many ValidationNonces and only return the `id`
+     * const validationNonceWithIdOnly = await prisma.validationNonce.createManyAndReturn({ 
+     *   select: { id: true },
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * 
+     */
+    createManyAndReturn<T extends ValidationNonceCreateManyAndReturnArgs>(args?: SelectSubset<T, ValidationNonceCreateManyAndReturnArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$ValidationNoncePayload<ExtArgs>, T, "createManyAndReturn">>
+
+    /**
+     * Delete a ValidationNonce.
+     * @param {ValidationNonceDeleteArgs} args - Arguments to delete one ValidationNonce.
+     * @example
+     * // Delete one ValidationNonce
+     * const ValidationNonce = await prisma.validationNonce.delete({
+     *   where: {
+     *     // ... filter to delete one ValidationNonce
+     *   }
+     * })
+     * 
+     */
+    delete<T extends ValidationNonceDeleteArgs>(args: SelectSubset<T, ValidationNonceDeleteArgs<ExtArgs>>): Prisma__ValidationNonceClient<$Result.GetResult<Prisma.$ValidationNoncePayload<ExtArgs>, T, "delete">, never, ExtArgs>
+
+    /**
+     * Update one ValidationNonce.
+     * @param {ValidationNonceUpdateArgs} args - Arguments to update one ValidationNonce.
+     * @example
+     * // Update one ValidationNonce
+     * const validationNonce = await prisma.validationNonce.update({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    update<T extends ValidationNonceUpdateArgs>(args: SelectSubset<T, ValidationNonceUpdateArgs<ExtArgs>>): Prisma__ValidationNonceClient<$Result.GetResult<Prisma.$ValidationNoncePayload<ExtArgs>, T, "update">, never, ExtArgs>
+
+    /**
+     * Delete zero or more ValidationNonces.
+     * @param {ValidationNonceDeleteManyArgs} args - Arguments to filter ValidationNonces to delete.
+     * @example
+     * // Delete a few ValidationNonces
+     * const { count } = await prisma.validationNonce.deleteMany({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     * 
+     */
+    deleteMany<T extends ValidationNonceDeleteManyArgs>(args?: SelectSubset<T, ValidationNonceDeleteManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Update zero or more ValidationNonces.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {ValidationNonceUpdateManyArgs} args - Arguments to update one or more rows.
+     * @example
+     * // Update many ValidationNonces
+     * const validationNonce = await prisma.validationNonce.updateMany({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    updateMany<T extends ValidationNonceUpdateManyArgs>(args: SelectSubset<T, ValidationNonceUpdateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create or update one ValidationNonce.
+     * @param {ValidationNonceUpsertArgs} args - Arguments to update or create a ValidationNonce.
+     * @example
+     * // Update or create a ValidationNonce
+     * const validationNonce = await prisma.validationNonce.upsert({
+     *   create: {
+     *     // ... data to create a ValidationNonce
+     *   },
+     *   update: {
+     *     // ... in case it already exists, update
+     *   },
+     *   where: {
+     *     // ... the filter for the ValidationNonce we want to update
+     *   }
+     * })
+     */
+    upsert<T extends ValidationNonceUpsertArgs>(args: SelectSubset<T, ValidationNonceUpsertArgs<ExtArgs>>): Prisma__ValidationNonceClient<$Result.GetResult<Prisma.$ValidationNoncePayload<ExtArgs>, T, "upsert">, never, ExtArgs>
+
+
+    /**
+     * Count the number of ValidationNonces.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {ValidationNonceCountArgs} args - Arguments to filter ValidationNonces to count.
+     * @example
+     * // Count the number of ValidationNonces
+     * const count = await prisma.validationNonce.count({
+     *   where: {
+     *     // ... the filter for the ValidationNonces we want to count
+     *   }
+     * })
+    **/
+    count<T extends ValidationNonceCountArgs>(
+      args?: Subset<T, ValidationNonceCountArgs>,
+    ): Prisma.PrismaPromise<
+      T extends $Utils.Record<'select', any>
+        ? T['select'] extends true
+          ? number
+          : GetScalarType<T['select'], ValidationNonceCountAggregateOutputType>
+        : number
+    >
+
+    /**
+     * Allows you to perform aggregations operations on a ValidationNonce.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {ValidationNonceAggregateArgs} args - Select which aggregations you would like to apply and on what fields.
+     * @example
+     * // Ordered by age ascending
+     * // Where email contains prisma.io
+     * // Limited to the 10 users
+     * const aggregations = await prisma.user.aggregate({
+     *   _avg: {
+     *     age: true,
+     *   },
+     *   where: {
+     *     email: {
+     *       contains: "prisma.io",
+     *     },
+     *   },
+     *   orderBy: {
+     *     age: "asc",
+     *   },
+     *   take: 10,
+     * })
+    **/
+    aggregate<T extends ValidationNonceAggregateArgs>(args: Subset<T, ValidationNonceAggregateArgs>): Prisma.PrismaPromise<GetValidationNonceAggregateType<T>>
+
+    /**
+     * Group by ValidationNonce.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {ValidationNonceGroupByArgs} args - Group by arguments.
+     * @example
+     * // Group by city, order by createdAt, get count
+     * const result = await prisma.user.groupBy({
+     *   by: ['city', 'createdAt'],
+     *   orderBy: {
+     *     createdAt: true
+     *   },
+     *   _count: {
+     *     _all: true
+     *   },
+     * })
+     * 
+    **/
+    groupBy<
+      T extends ValidationNonceGroupByArgs,
+      HasSelectOrTake extends Or<
+        Extends<'skip', Keys<T>>,
+        Extends<'take', Keys<T>>
+      >,
+      OrderByArg extends True extends HasSelectOrTake
+        ? { orderBy: ValidationNonceGroupByArgs['orderBy'] }
+        : { orderBy?: ValidationNonceGroupByArgs['orderBy'] },
+      OrderFields extends ExcludeUnderscoreKeys<Keys<MaybeTupleToUnion<T['orderBy']>>>,
+      ByFields extends MaybeTupleToUnion<T['by']>,
+      ByValid extends Has<ByFields, OrderFields>,
+      HavingFields extends GetHavingFields<T['having']>,
+      HavingValid extends Has<ByFields, HavingFields>,
+      ByEmpty extends T['by'] extends never[] ? True : False,
+      InputErrors extends ByEmpty extends True
+      ? `Error: "by" must not be empty.`
+      : HavingValid extends False
+      ? {
+          [P in HavingFields]: P extends ByFields
+            ? never
+            : P extends string
+            ? `Error: Field "${P}" used in "having" needs to be provided in "by".`
+            : [
+                Error,
+                'Field ',
+                P,
+                ` in "having" needs to be provided in "by"`,
+              ]
+        }[HavingFields]
+      : 'take' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "take", you also need to provide "orderBy"'
+      : 'skip' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "skip", you also need to provide "orderBy"'
+      : ByValid extends True
+      ? {}
+      : {
+          [P in OrderFields]: P extends ByFields
+            ? never
+            : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+        }[OrderFields]
+    >(args: SubsetIntersection<T, ValidationNonceGroupByArgs, OrderByArg> & InputErrors): {} extends InputErrors ? GetValidationNonceGroupByPayload<T> : Prisma.PrismaPromise<InputErrors>
+  /**
+   * Fields of the ValidationNonce model
+   */
+  readonly fields: ValidationNonceFieldRefs;
+  }
+
+  /**
+   * The delegate class that acts as a "Promise-like" for ValidationNonce.
+   * Why is this prefixed with `Prisma__`?
+   * Because we want to prevent naming conflicts as mentioned in
+   * https://github.com/prisma/prisma-client-js/issues/707
+   */
+  export interface Prisma__ValidationNonceClient<T, Null = never, ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> extends Prisma.PrismaPromise<T> {
+    readonly [Symbol.toStringTag]: "PrismaPromise"
+    /**
+     * Attaches callbacks for the resolution and/or rejection of the Promise.
+     * @param onfulfilled The callback to execute when the Promise is resolved.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of which ever callback is executed.
+     */
+    then<TResult1 = T, TResult2 = never>(onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | undefined | null, onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | undefined | null): $Utils.JsPromise<TResult1 | TResult2>
+    /**
+     * Attaches a callback for only the rejection of the Promise.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of the callback.
+     */
+    catch<TResult = never>(onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | undefined | null): $Utils.JsPromise<T | TResult>
+    /**
+     * Attaches a callback that is invoked when the Promise is settled (fulfilled or rejected). The
+     * resolved value cannot be modified from the callback.
+     * @param onfinally The callback to execute when the Promise is settled (fulfilled or rejected).
+     * @returns A Promise for the completion of the callback.
+     */
+    finally(onfinally?: (() => void) | undefined | null): $Utils.JsPromise<T>
+  }
+
+
+
+
+  /**
+   * Fields of the ValidationNonce model
+   */ 
+  interface ValidationNonceFieldRefs {
+    readonly id: FieldRef<"ValidationNonce", 'String'>
+    readonly nonce: FieldRef<"ValidationNonce", 'String'>
+    readonly createdAt: FieldRef<"ValidationNonce", 'DateTime'>
+  }
+    
+
+  // Custom InputTypes
+  /**
+   * ValidationNonce findUnique
+   */
+  export type ValidationNonceFindUniqueArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ValidationNonce
+     */
+    select?: ValidationNonceSelect<ExtArgs> | null
+    /**
+     * Filter, which ValidationNonce to fetch.
+     */
+    where: ValidationNonceWhereUniqueInput
+  }
+
+  /**
+   * ValidationNonce findUniqueOrThrow
+   */
+  export type ValidationNonceFindUniqueOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ValidationNonce
+     */
+    select?: ValidationNonceSelect<ExtArgs> | null
+    /**
+     * Filter, which ValidationNonce to fetch.
+     */
+    where: ValidationNonceWhereUniqueInput
+  }
+
+  /**
+   * ValidationNonce findFirst
+   */
+  export type ValidationNonceFindFirstArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ValidationNonce
+     */
+    select?: ValidationNonceSelect<ExtArgs> | null
+    /**
+     * Filter, which ValidationNonce to fetch.
+     */
+    where?: ValidationNonceWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of ValidationNonces to fetch.
+     */
+    orderBy?: ValidationNonceOrderByWithRelationInput | ValidationNonceOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for ValidationNonces.
+     */
+    cursor?: ValidationNonceWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` ValidationNonces from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` ValidationNonces.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of ValidationNonces.
+     */
+    distinct?: ValidationNonceScalarFieldEnum | ValidationNonceScalarFieldEnum[]
+  }
+
+  /**
+   * ValidationNonce findFirstOrThrow
+   */
+  export type ValidationNonceFindFirstOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ValidationNonce
+     */
+    select?: ValidationNonceSelect<ExtArgs> | null
+    /**
+     * Filter, which ValidationNonce to fetch.
+     */
+    where?: ValidationNonceWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of ValidationNonces to fetch.
+     */
+    orderBy?: ValidationNonceOrderByWithRelationInput | ValidationNonceOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for ValidationNonces.
+     */
+    cursor?: ValidationNonceWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` ValidationNonces from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` ValidationNonces.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of ValidationNonces.
+     */
+    distinct?: ValidationNonceScalarFieldEnum | ValidationNonceScalarFieldEnum[]
+  }
+
+  /**
+   * ValidationNonce findMany
+   */
+  export type ValidationNonceFindManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ValidationNonce
+     */
+    select?: ValidationNonceSelect<ExtArgs> | null
+    /**
+     * Filter, which ValidationNonces to fetch.
+     */
+    where?: ValidationNonceWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of ValidationNonces to fetch.
+     */
+    orderBy?: ValidationNonceOrderByWithRelationInput | ValidationNonceOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for listing ValidationNonces.
+     */
+    cursor?: ValidationNonceWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` ValidationNonces from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` ValidationNonces.
+     */
+    skip?: number
+    distinct?: ValidationNonceScalarFieldEnum | ValidationNonceScalarFieldEnum[]
+  }
+
+  /**
+   * ValidationNonce create
+   */
+  export type ValidationNonceCreateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ValidationNonce
+     */
+    select?: ValidationNonceSelect<ExtArgs> | null
+    /**
+     * The data needed to create a ValidationNonce.
+     */
+    data: XOR<ValidationNonceCreateInput, ValidationNonceUncheckedCreateInput>
+  }
+
+  /**
+   * ValidationNonce createMany
+   */
+  export type ValidationNonceCreateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to create many ValidationNonces.
+     */
+    data: ValidationNonceCreateManyInput | ValidationNonceCreateManyInput[]
+  }
+
+  /**
+   * ValidationNonce createManyAndReturn
+   */
+  export type ValidationNonceCreateManyAndReturnArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ValidationNonce
+     */
+    select?: ValidationNonceSelectCreateManyAndReturn<ExtArgs> | null
+    /**
+     * The data used to create many ValidationNonces.
+     */
+    data: ValidationNonceCreateManyInput | ValidationNonceCreateManyInput[]
+  }
+
+  /**
+   * ValidationNonce update
+   */
+  export type ValidationNonceUpdateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ValidationNonce
+     */
+    select?: ValidationNonceSelect<ExtArgs> | null
+    /**
+     * The data needed to update a ValidationNonce.
+     */
+    data: XOR<ValidationNonceUpdateInput, ValidationNonceUncheckedUpdateInput>
+    /**
+     * Choose, which ValidationNonce to update.
+     */
+    where: ValidationNonceWhereUniqueInput
+  }
+
+  /**
+   * ValidationNonce updateMany
+   */
+  export type ValidationNonceUpdateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to update ValidationNonces.
+     */
+    data: XOR<ValidationNonceUpdateManyMutationInput, ValidationNonceUncheckedUpdateManyInput>
+    /**
+     * Filter which ValidationNonces to update
+     */
+    where?: ValidationNonceWhereInput
+  }
+
+  /**
+   * ValidationNonce upsert
+   */
+  export type ValidationNonceUpsertArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ValidationNonce
+     */
+    select?: ValidationNonceSelect<ExtArgs> | null
+    /**
+     * The filter to search for the ValidationNonce to update in case it exists.
+     */
+    where: ValidationNonceWhereUniqueInput
+    /**
+     * In case the ValidationNonce found by the `where` argument doesn't exist, create a new ValidationNonce with this data.
+     */
+    create: XOR<ValidationNonceCreateInput, ValidationNonceUncheckedCreateInput>
+    /**
+     * In case the ValidationNonce was found with the provided `where` argument, update it with this data.
+     */
+    update: XOR<ValidationNonceUpdateInput, ValidationNonceUncheckedUpdateInput>
+  }
+
+  /**
+   * ValidationNonce delete
+   */
+  export type ValidationNonceDeleteArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ValidationNonce
+     */
+    select?: ValidationNonceSelect<ExtArgs> | null
+    /**
+     * Filter which ValidationNonce to delete.
+     */
+    where: ValidationNonceWhereUniqueInput
+  }
+
+  /**
+   * ValidationNonce deleteMany
+   */
+  export type ValidationNonceDeleteManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which ValidationNonces to delete
+     */
+    where?: ValidationNonceWhereInput
+  }
+
+  /**
+   * ValidationNonce without action
+   */
+  export type ValidationNonceDefaultArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ValidationNonce
+     */
+    select?: ValidationNonceSelect<ExtArgs> | null
+  }
+
+
+  /**
+   * Model ValidationTokenAudit
+   */
+
+  export type AggregateValidationTokenAudit = {
+    _count: ValidationTokenAuditCountAggregateOutputType | null
+    _min: ValidationTokenAuditMinAggregateOutputType | null
+    _max: ValidationTokenAuditMaxAggregateOutputType | null
+  }
+
+  export type ValidationTokenAuditMinAggregateOutputType = {
+    id: string | null
+    tokenId: string | null
+    userPublicKey: string | null
+    userPublicKeyHash: string | null
+    fileMetadataHash: string | null
+    requestNonce: string | null
+    issuedAt: Date | null
+    expiresAt: Date | null
+    signature: string | null
+    createdAt: Date | null
+  }
+
+  export type ValidationTokenAuditMaxAggregateOutputType = {
+    id: string | null
+    tokenId: string | null
+    userPublicKey: string | null
+    userPublicKeyHash: string | null
+    fileMetadataHash: string | null
+    requestNonce: string | null
+    issuedAt: Date | null
+    expiresAt: Date | null
+    signature: string | null
+    createdAt: Date | null
+  }
+
+  export type ValidationTokenAuditCountAggregateOutputType = {
+    id: number
+    tokenId: number
+    userPublicKey: number
+    userPublicKeyHash: number
+    fileMetadataHash: number
+    requestNonce: number
+    issuedAt: number
+    expiresAt: number
+    signature: number
+    createdAt: number
+    _all: number
+  }
+
+
+  export type ValidationTokenAuditMinAggregateInputType = {
+    id?: true
+    tokenId?: true
+    userPublicKey?: true
+    userPublicKeyHash?: true
+    fileMetadataHash?: true
+    requestNonce?: true
+    issuedAt?: true
+    expiresAt?: true
+    signature?: true
+    createdAt?: true
+  }
+
+  export type ValidationTokenAuditMaxAggregateInputType = {
+    id?: true
+    tokenId?: true
+    userPublicKey?: true
+    userPublicKeyHash?: true
+    fileMetadataHash?: true
+    requestNonce?: true
+    issuedAt?: true
+    expiresAt?: true
+    signature?: true
+    createdAt?: true
+  }
+
+  export type ValidationTokenAuditCountAggregateInputType = {
+    id?: true
+    tokenId?: true
+    userPublicKey?: true
+    userPublicKeyHash?: true
+    fileMetadataHash?: true
+    requestNonce?: true
+    issuedAt?: true
+    expiresAt?: true
+    signature?: true
+    createdAt?: true
+    _all?: true
+  }
+
+  export type ValidationTokenAuditAggregateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which ValidationTokenAudit to aggregate.
+     */
+    where?: ValidationTokenAuditWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of ValidationTokenAudits to fetch.
+     */
+    orderBy?: ValidationTokenAuditOrderByWithRelationInput | ValidationTokenAuditOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the start position
+     */
+    cursor?: ValidationTokenAuditWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` ValidationTokenAudits from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` ValidationTokenAudits.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Count returned ValidationTokenAudits
+    **/
+    _count?: true | ValidationTokenAuditCountAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the minimum value
+    **/
+    _min?: ValidationTokenAuditMinAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the maximum value
+    **/
+    _max?: ValidationTokenAuditMaxAggregateInputType
+  }
+
+  export type GetValidationTokenAuditAggregateType<T extends ValidationTokenAuditAggregateArgs> = {
+        [P in keyof T & keyof AggregateValidationTokenAudit]: P extends '_count' | 'count'
+      ? T[P] extends true
+        ? number
+        : GetScalarType<T[P], AggregateValidationTokenAudit[P]>
+      : GetScalarType<T[P], AggregateValidationTokenAudit[P]>
+  }
+
+
+
+
+  export type ValidationTokenAuditGroupByArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    where?: ValidationTokenAuditWhereInput
+    orderBy?: ValidationTokenAuditOrderByWithAggregationInput | ValidationTokenAuditOrderByWithAggregationInput[]
+    by: ValidationTokenAuditScalarFieldEnum[] | ValidationTokenAuditScalarFieldEnum
+    having?: ValidationTokenAuditScalarWhereWithAggregatesInput
+    take?: number
+    skip?: number
+    _count?: ValidationTokenAuditCountAggregateInputType | true
+    _min?: ValidationTokenAuditMinAggregateInputType
+    _max?: ValidationTokenAuditMaxAggregateInputType
+  }
+
+  export type ValidationTokenAuditGroupByOutputType = {
+    id: string
+    tokenId: string
+    userPublicKey: string
+    userPublicKeyHash: string
+    fileMetadataHash: string
+    requestNonce: string
+    issuedAt: Date
+    expiresAt: Date
+    signature: string
+    createdAt: Date
+    _count: ValidationTokenAuditCountAggregateOutputType | null
+    _min: ValidationTokenAuditMinAggregateOutputType | null
+    _max: ValidationTokenAuditMaxAggregateOutputType | null
+  }
+
+  type GetValidationTokenAuditGroupByPayload<T extends ValidationTokenAuditGroupByArgs> = Prisma.PrismaPromise<
+    Array<
+      PickEnumerable<ValidationTokenAuditGroupByOutputType, T['by']> &
+        {
+          [P in ((keyof T) & (keyof ValidationTokenAuditGroupByOutputType))]: P extends '_count'
+            ? T[P] extends boolean
+              ? number
+              : GetScalarType<T[P], ValidationTokenAuditGroupByOutputType[P]>
+            : GetScalarType<T[P], ValidationTokenAuditGroupByOutputType[P]>
+        }
+      >
+    >
+
+
+  export type ValidationTokenAuditSelect<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    tokenId?: boolean
+    userPublicKey?: boolean
+    userPublicKeyHash?: boolean
+    fileMetadataHash?: boolean
+    requestNonce?: boolean
+    issuedAt?: boolean
+    expiresAt?: boolean
+    signature?: boolean
+    createdAt?: boolean
+  }, ExtArgs["result"]["validationTokenAudit"]>
+
+  export type ValidationTokenAuditSelectCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    tokenId?: boolean
+    userPublicKey?: boolean
+    userPublicKeyHash?: boolean
+    fileMetadataHash?: boolean
+    requestNonce?: boolean
+    issuedAt?: boolean
+    expiresAt?: boolean
+    signature?: boolean
+    createdAt?: boolean
+  }, ExtArgs["result"]["validationTokenAudit"]>
+
+  export type ValidationTokenAuditSelectScalar = {
+    id?: boolean
+    tokenId?: boolean
+    userPublicKey?: boolean
+    userPublicKeyHash?: boolean
+    fileMetadataHash?: boolean
+    requestNonce?: boolean
+    issuedAt?: boolean
+    expiresAt?: boolean
+    signature?: boolean
+    createdAt?: boolean
+  }
+
+
+  export type $ValidationTokenAuditPayload<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    name: "ValidationTokenAudit"
+    objects: {}
+    scalars: $Extensions.GetPayloadResult<{
+      id: string
+      tokenId: string
+      userPublicKey: string
+      userPublicKeyHash: string
+      fileMetadataHash: string
+      requestNonce: string
+      issuedAt: Date
+      expiresAt: Date
+      signature: string
+      createdAt: Date
+    }, ExtArgs["result"]["validationTokenAudit"]>
+    composites: {}
+  }
+
+  type ValidationTokenAuditGetPayload<S extends boolean | null | undefined | ValidationTokenAuditDefaultArgs> = $Result.GetResult<Prisma.$ValidationTokenAuditPayload, S>
+
+  type ValidationTokenAuditCountArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = 
+    Omit<ValidationTokenAuditFindManyArgs, 'select' | 'include' | 'distinct'> & {
+      select?: ValidationTokenAuditCountAggregateInputType | true
+    }
+
+  export interface ValidationTokenAuditDelegate<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> {
+    [K: symbol]: { types: Prisma.TypeMap<ExtArgs>['model']['ValidationTokenAudit'], meta: { name: 'ValidationTokenAudit' } }
+    /**
+     * Find zero or one ValidationTokenAudit that matches the filter.
+     * @param {ValidationTokenAuditFindUniqueArgs} args - Arguments to find a ValidationTokenAudit
+     * @example
+     * // Get one ValidationTokenAudit
+     * const validationTokenAudit = await prisma.validationTokenAudit.findUnique({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUnique<T extends ValidationTokenAuditFindUniqueArgs>(args: SelectSubset<T, ValidationTokenAuditFindUniqueArgs<ExtArgs>>): Prisma__ValidationTokenAuditClient<$Result.GetResult<Prisma.$ValidationTokenAuditPayload<ExtArgs>, T, "findUnique"> | null, null, ExtArgs>
+
+    /**
+     * Find one ValidationTokenAudit that matches the filter or throw an error with `error.code='P2025'` 
+     * if no matches were found.
+     * @param {ValidationTokenAuditFindUniqueOrThrowArgs} args - Arguments to find a ValidationTokenAudit
+     * @example
+     * // Get one ValidationTokenAudit
+     * const validationTokenAudit = await prisma.validationTokenAudit.findUniqueOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUniqueOrThrow<T extends ValidationTokenAuditFindUniqueOrThrowArgs>(args: SelectSubset<T, ValidationTokenAuditFindUniqueOrThrowArgs<ExtArgs>>): Prisma__ValidationTokenAuditClient<$Result.GetResult<Prisma.$ValidationTokenAuditPayload<ExtArgs>, T, "findUniqueOrThrow">, never, ExtArgs>
+
+    /**
+     * Find the first ValidationTokenAudit that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {ValidationTokenAuditFindFirstArgs} args - Arguments to find a ValidationTokenAudit
+     * @example
+     * // Get one ValidationTokenAudit
+     * const validationTokenAudit = await prisma.validationTokenAudit.findFirst({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirst<T extends ValidationTokenAuditFindFirstArgs>(args?: SelectSubset<T, ValidationTokenAuditFindFirstArgs<ExtArgs>>): Prisma__ValidationTokenAuditClient<$Result.GetResult<Prisma.$ValidationTokenAuditPayload<ExtArgs>, T, "findFirst"> | null, null, ExtArgs>
+
+    /**
+     * Find the first ValidationTokenAudit that matches the filter or
+     * throw `PrismaKnownClientError` with `P2025` code if no matches were found.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {ValidationTokenAuditFindFirstOrThrowArgs} args - Arguments to find a ValidationTokenAudit
+     * @example
+     * // Get one ValidationTokenAudit
+     * const validationTokenAudit = await prisma.validationTokenAudit.findFirstOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirstOrThrow<T extends ValidationTokenAuditFindFirstOrThrowArgs>(args?: SelectSubset<T, ValidationTokenAuditFindFirstOrThrowArgs<ExtArgs>>): Prisma__ValidationTokenAuditClient<$Result.GetResult<Prisma.$ValidationTokenAuditPayload<ExtArgs>, T, "findFirstOrThrow">, never, ExtArgs>
+
+    /**
+     * Find zero or more ValidationTokenAudits that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {ValidationTokenAuditFindManyArgs} args - Arguments to filter and select certain fields only.
+     * @example
+     * // Get all ValidationTokenAudits
+     * const validationTokenAudits = await prisma.validationTokenAudit.findMany()
+     * 
+     * // Get first 10 ValidationTokenAudits
+     * const validationTokenAudits = await prisma.validationTokenAudit.findMany({ take: 10 })
+     * 
+     * // Only select the `id`
+     * const validationTokenAuditWithIdOnly = await prisma.validationTokenAudit.findMany({ select: { id: true } })
+     * 
+     */
+    findMany<T extends ValidationTokenAuditFindManyArgs>(args?: SelectSubset<T, ValidationTokenAuditFindManyArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$ValidationTokenAuditPayload<ExtArgs>, T, "findMany">>
+
+    /**
+     * Create a ValidationTokenAudit.
+     * @param {ValidationTokenAuditCreateArgs} args - Arguments to create a ValidationTokenAudit.
+     * @example
+     * // Create one ValidationTokenAudit
+     * const ValidationTokenAudit = await prisma.validationTokenAudit.create({
+     *   data: {
+     *     // ... data to create a ValidationTokenAudit
+     *   }
+     * })
+     * 
+     */
+    create<T extends ValidationTokenAuditCreateArgs>(args: SelectSubset<T, ValidationTokenAuditCreateArgs<ExtArgs>>): Prisma__ValidationTokenAuditClient<$Result.GetResult<Prisma.$ValidationTokenAuditPayload<ExtArgs>, T, "create">, never, ExtArgs>
+
+    /**
+     * Create many ValidationTokenAudits.
+     * @param {ValidationTokenAuditCreateManyArgs} args - Arguments to create many ValidationTokenAudits.
+     * @example
+     * // Create many ValidationTokenAudits
+     * const validationTokenAudit = await prisma.validationTokenAudit.createMany({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     *     
+     */
+    createMany<T extends ValidationTokenAuditCreateManyArgs>(args?: SelectSubset<T, ValidationTokenAuditCreateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create many ValidationTokenAudits and returns the data saved in the database.
+     * @param {ValidationTokenAuditCreateManyAndReturnArgs} args - Arguments to create many ValidationTokenAudits.
+     * @example
+     * // Create many ValidationTokenAudits
+     * const validationTokenAudit = await prisma.validationTokenAudit.createManyAndReturn({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * 
+     * // Create many ValidationTokenAudits and only return the `id`
+     * const validationTokenAuditWithIdOnly = await prisma.validationTokenAudit.createManyAndReturn({ 
+     *   select: { id: true },
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * 
+     */
+    createManyAndReturn<T extends ValidationTokenAuditCreateManyAndReturnArgs>(args?: SelectSubset<T, ValidationTokenAuditCreateManyAndReturnArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$ValidationTokenAuditPayload<ExtArgs>, T, "createManyAndReturn">>
+
+    /**
+     * Delete a ValidationTokenAudit.
+     * @param {ValidationTokenAuditDeleteArgs} args - Arguments to delete one ValidationTokenAudit.
+     * @example
+     * // Delete one ValidationTokenAudit
+     * const ValidationTokenAudit = await prisma.validationTokenAudit.delete({
+     *   where: {
+     *     // ... filter to delete one ValidationTokenAudit
+     *   }
+     * })
+     * 
+     */
+    delete<T extends ValidationTokenAuditDeleteArgs>(args: SelectSubset<T, ValidationTokenAuditDeleteArgs<ExtArgs>>): Prisma__ValidationTokenAuditClient<$Result.GetResult<Prisma.$ValidationTokenAuditPayload<ExtArgs>, T, "delete">, never, ExtArgs>
+
+    /**
+     * Update one ValidationTokenAudit.
+     * @param {ValidationTokenAuditUpdateArgs} args - Arguments to update one ValidationTokenAudit.
+     * @example
+     * // Update one ValidationTokenAudit
+     * const validationTokenAudit = await prisma.validationTokenAudit.update({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    update<T extends ValidationTokenAuditUpdateArgs>(args: SelectSubset<T, ValidationTokenAuditUpdateArgs<ExtArgs>>): Prisma__ValidationTokenAuditClient<$Result.GetResult<Prisma.$ValidationTokenAuditPayload<ExtArgs>, T, "update">, never, ExtArgs>
+
+    /**
+     * Delete zero or more ValidationTokenAudits.
+     * @param {ValidationTokenAuditDeleteManyArgs} args - Arguments to filter ValidationTokenAudits to delete.
+     * @example
+     * // Delete a few ValidationTokenAudits
+     * const { count } = await prisma.validationTokenAudit.deleteMany({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     * 
+     */
+    deleteMany<T extends ValidationTokenAuditDeleteManyArgs>(args?: SelectSubset<T, ValidationTokenAuditDeleteManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Update zero or more ValidationTokenAudits.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {ValidationTokenAuditUpdateManyArgs} args - Arguments to update one or more rows.
+     * @example
+     * // Update many ValidationTokenAudits
+     * const validationTokenAudit = await prisma.validationTokenAudit.updateMany({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    updateMany<T extends ValidationTokenAuditUpdateManyArgs>(args: SelectSubset<T, ValidationTokenAuditUpdateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create or update one ValidationTokenAudit.
+     * @param {ValidationTokenAuditUpsertArgs} args - Arguments to update or create a ValidationTokenAudit.
+     * @example
+     * // Update or create a ValidationTokenAudit
+     * const validationTokenAudit = await prisma.validationTokenAudit.upsert({
+     *   create: {
+     *     // ... data to create a ValidationTokenAudit
+     *   },
+     *   update: {
+     *     // ... in case it already exists, update
+     *   },
+     *   where: {
+     *     // ... the filter for the ValidationTokenAudit we want to update
+     *   }
+     * })
+     */
+    upsert<T extends ValidationTokenAuditUpsertArgs>(args: SelectSubset<T, ValidationTokenAuditUpsertArgs<ExtArgs>>): Prisma__ValidationTokenAuditClient<$Result.GetResult<Prisma.$ValidationTokenAuditPayload<ExtArgs>, T, "upsert">, never, ExtArgs>
+
+
+    /**
+     * Count the number of ValidationTokenAudits.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {ValidationTokenAuditCountArgs} args - Arguments to filter ValidationTokenAudits to count.
+     * @example
+     * // Count the number of ValidationTokenAudits
+     * const count = await prisma.validationTokenAudit.count({
+     *   where: {
+     *     // ... the filter for the ValidationTokenAudits we want to count
+     *   }
+     * })
+    **/
+    count<T extends ValidationTokenAuditCountArgs>(
+      args?: Subset<T, ValidationTokenAuditCountArgs>,
+    ): Prisma.PrismaPromise<
+      T extends $Utils.Record<'select', any>
+        ? T['select'] extends true
+          ? number
+          : GetScalarType<T['select'], ValidationTokenAuditCountAggregateOutputType>
+        : number
+    >
+
+    /**
+     * Allows you to perform aggregations operations on a ValidationTokenAudit.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {ValidationTokenAuditAggregateArgs} args - Select which aggregations you would like to apply and on what fields.
+     * @example
+     * // Ordered by age ascending
+     * // Where email contains prisma.io
+     * // Limited to the 10 users
+     * const aggregations = await prisma.user.aggregate({
+     *   _avg: {
+     *     age: true,
+     *   },
+     *   where: {
+     *     email: {
+     *       contains: "prisma.io",
+     *     },
+     *   },
+     *   orderBy: {
+     *     age: "asc",
+     *   },
+     *   take: 10,
+     * })
+    **/
+    aggregate<T extends ValidationTokenAuditAggregateArgs>(args: Subset<T, ValidationTokenAuditAggregateArgs>): Prisma.PrismaPromise<GetValidationTokenAuditAggregateType<T>>
+
+    /**
+     * Group by ValidationTokenAudit.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {ValidationTokenAuditGroupByArgs} args - Group by arguments.
+     * @example
+     * // Group by city, order by createdAt, get count
+     * const result = await prisma.user.groupBy({
+     *   by: ['city', 'createdAt'],
+     *   orderBy: {
+     *     createdAt: true
+     *   },
+     *   _count: {
+     *     _all: true
+     *   },
+     * })
+     * 
+    **/
+    groupBy<
+      T extends ValidationTokenAuditGroupByArgs,
+      HasSelectOrTake extends Or<
+        Extends<'skip', Keys<T>>,
+        Extends<'take', Keys<T>>
+      >,
+      OrderByArg extends True extends HasSelectOrTake
+        ? { orderBy: ValidationTokenAuditGroupByArgs['orderBy'] }
+        : { orderBy?: ValidationTokenAuditGroupByArgs['orderBy'] },
+      OrderFields extends ExcludeUnderscoreKeys<Keys<MaybeTupleToUnion<T['orderBy']>>>,
+      ByFields extends MaybeTupleToUnion<T['by']>,
+      ByValid extends Has<ByFields, OrderFields>,
+      HavingFields extends GetHavingFields<T['having']>,
+      HavingValid extends Has<ByFields, HavingFields>,
+      ByEmpty extends T['by'] extends never[] ? True : False,
+      InputErrors extends ByEmpty extends True
+      ? `Error: "by" must not be empty.`
+      : HavingValid extends False
+      ? {
+          [P in HavingFields]: P extends ByFields
+            ? never
+            : P extends string
+            ? `Error: Field "${P}" used in "having" needs to be provided in "by".`
+            : [
+                Error,
+                'Field ',
+                P,
+                ` in "having" needs to be provided in "by"`,
+              ]
+        }[HavingFields]
+      : 'take' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "take", you also need to provide "orderBy"'
+      : 'skip' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "skip", you also need to provide "orderBy"'
+      : ByValid extends True
+      ? {}
+      : {
+          [P in OrderFields]: P extends ByFields
+            ? never
+            : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+        }[OrderFields]
+    >(args: SubsetIntersection<T, ValidationTokenAuditGroupByArgs, OrderByArg> & InputErrors): {} extends InputErrors ? GetValidationTokenAuditGroupByPayload<T> : Prisma.PrismaPromise<InputErrors>
+  /**
+   * Fields of the ValidationTokenAudit model
+   */
+  readonly fields: ValidationTokenAuditFieldRefs;
+  }
+
+  /**
+   * The delegate class that acts as a "Promise-like" for ValidationTokenAudit.
+   * Why is this prefixed with `Prisma__`?
+   * Because we want to prevent naming conflicts as mentioned in
+   * https://github.com/prisma/prisma-client-js/issues/707
+   */
+  export interface Prisma__ValidationTokenAuditClient<T, Null = never, ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> extends Prisma.PrismaPromise<T> {
+    readonly [Symbol.toStringTag]: "PrismaPromise"
+    /**
+     * Attaches callbacks for the resolution and/or rejection of the Promise.
+     * @param onfulfilled The callback to execute when the Promise is resolved.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of which ever callback is executed.
+     */
+    then<TResult1 = T, TResult2 = never>(onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | undefined | null, onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | undefined | null): $Utils.JsPromise<TResult1 | TResult2>
+    /**
+     * Attaches a callback for only the rejection of the Promise.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of the callback.
+     */
+    catch<TResult = never>(onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | undefined | null): $Utils.JsPromise<T | TResult>
+    /**
+     * Attaches a callback that is invoked when the Promise is settled (fulfilled or rejected). The
+     * resolved value cannot be modified from the callback.
+     * @param onfinally The callback to execute when the Promise is settled (fulfilled or rejected).
+     * @returns A Promise for the completion of the callback.
+     */
+    finally(onfinally?: (() => void) | undefined | null): $Utils.JsPromise<T>
+  }
+
+
+
+
+  /**
+   * Fields of the ValidationTokenAudit model
+   */ 
+  interface ValidationTokenAuditFieldRefs {
+    readonly id: FieldRef<"ValidationTokenAudit", 'String'>
+    readonly tokenId: FieldRef<"ValidationTokenAudit", 'String'>
+    readonly userPublicKey: FieldRef<"ValidationTokenAudit", 'String'>
+    readonly userPublicKeyHash: FieldRef<"ValidationTokenAudit", 'String'>
+    readonly fileMetadataHash: FieldRef<"ValidationTokenAudit", 'String'>
+    readonly requestNonce: FieldRef<"ValidationTokenAudit", 'String'>
+    readonly issuedAt: FieldRef<"ValidationTokenAudit", 'DateTime'>
+    readonly expiresAt: FieldRef<"ValidationTokenAudit", 'DateTime'>
+    readonly signature: FieldRef<"ValidationTokenAudit", 'String'>
+    readonly createdAt: FieldRef<"ValidationTokenAudit", 'DateTime'>
+  }
+    
+
+  // Custom InputTypes
+  /**
+   * ValidationTokenAudit findUnique
+   */
+  export type ValidationTokenAuditFindUniqueArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ValidationTokenAudit
+     */
+    select?: ValidationTokenAuditSelect<ExtArgs> | null
+    /**
+     * Filter, which ValidationTokenAudit to fetch.
+     */
+    where: ValidationTokenAuditWhereUniqueInput
+  }
+
+  /**
+   * ValidationTokenAudit findUniqueOrThrow
+   */
+  export type ValidationTokenAuditFindUniqueOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ValidationTokenAudit
+     */
+    select?: ValidationTokenAuditSelect<ExtArgs> | null
+    /**
+     * Filter, which ValidationTokenAudit to fetch.
+     */
+    where: ValidationTokenAuditWhereUniqueInput
+  }
+
+  /**
+   * ValidationTokenAudit findFirst
+   */
+  export type ValidationTokenAuditFindFirstArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ValidationTokenAudit
+     */
+    select?: ValidationTokenAuditSelect<ExtArgs> | null
+    /**
+     * Filter, which ValidationTokenAudit to fetch.
+     */
+    where?: ValidationTokenAuditWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of ValidationTokenAudits to fetch.
+     */
+    orderBy?: ValidationTokenAuditOrderByWithRelationInput | ValidationTokenAuditOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for ValidationTokenAudits.
+     */
+    cursor?: ValidationTokenAuditWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` ValidationTokenAudits from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` ValidationTokenAudits.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of ValidationTokenAudits.
+     */
+    distinct?: ValidationTokenAuditScalarFieldEnum | ValidationTokenAuditScalarFieldEnum[]
+  }
+
+  /**
+   * ValidationTokenAudit findFirstOrThrow
+   */
+  export type ValidationTokenAuditFindFirstOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ValidationTokenAudit
+     */
+    select?: ValidationTokenAuditSelect<ExtArgs> | null
+    /**
+     * Filter, which ValidationTokenAudit to fetch.
+     */
+    where?: ValidationTokenAuditWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of ValidationTokenAudits to fetch.
+     */
+    orderBy?: ValidationTokenAuditOrderByWithRelationInput | ValidationTokenAuditOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for ValidationTokenAudits.
+     */
+    cursor?: ValidationTokenAuditWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` ValidationTokenAudits from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` ValidationTokenAudits.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of ValidationTokenAudits.
+     */
+    distinct?: ValidationTokenAuditScalarFieldEnum | ValidationTokenAuditScalarFieldEnum[]
+  }
+
+  /**
+   * ValidationTokenAudit findMany
+   */
+  export type ValidationTokenAuditFindManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ValidationTokenAudit
+     */
+    select?: ValidationTokenAuditSelect<ExtArgs> | null
+    /**
+     * Filter, which ValidationTokenAudits to fetch.
+     */
+    where?: ValidationTokenAuditWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of ValidationTokenAudits to fetch.
+     */
+    orderBy?: ValidationTokenAuditOrderByWithRelationInput | ValidationTokenAuditOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for listing ValidationTokenAudits.
+     */
+    cursor?: ValidationTokenAuditWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` ValidationTokenAudits from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` ValidationTokenAudits.
+     */
+    skip?: number
+    distinct?: ValidationTokenAuditScalarFieldEnum | ValidationTokenAuditScalarFieldEnum[]
+  }
+
+  /**
+   * ValidationTokenAudit create
+   */
+  export type ValidationTokenAuditCreateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ValidationTokenAudit
+     */
+    select?: ValidationTokenAuditSelect<ExtArgs> | null
+    /**
+     * The data needed to create a ValidationTokenAudit.
+     */
+    data: XOR<ValidationTokenAuditCreateInput, ValidationTokenAuditUncheckedCreateInput>
+  }
+
+  /**
+   * ValidationTokenAudit createMany
+   */
+  export type ValidationTokenAuditCreateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to create many ValidationTokenAudits.
+     */
+    data: ValidationTokenAuditCreateManyInput | ValidationTokenAuditCreateManyInput[]
+  }
+
+  /**
+   * ValidationTokenAudit createManyAndReturn
+   */
+  export type ValidationTokenAuditCreateManyAndReturnArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ValidationTokenAudit
+     */
+    select?: ValidationTokenAuditSelectCreateManyAndReturn<ExtArgs> | null
+    /**
+     * The data used to create many ValidationTokenAudits.
+     */
+    data: ValidationTokenAuditCreateManyInput | ValidationTokenAuditCreateManyInput[]
+  }
+
+  /**
+   * ValidationTokenAudit update
+   */
+  export type ValidationTokenAuditUpdateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ValidationTokenAudit
+     */
+    select?: ValidationTokenAuditSelect<ExtArgs> | null
+    /**
+     * The data needed to update a ValidationTokenAudit.
+     */
+    data: XOR<ValidationTokenAuditUpdateInput, ValidationTokenAuditUncheckedUpdateInput>
+    /**
+     * Choose, which ValidationTokenAudit to update.
+     */
+    where: ValidationTokenAuditWhereUniqueInput
+  }
+
+  /**
+   * ValidationTokenAudit updateMany
+   */
+  export type ValidationTokenAuditUpdateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to update ValidationTokenAudits.
+     */
+    data: XOR<ValidationTokenAuditUpdateManyMutationInput, ValidationTokenAuditUncheckedUpdateManyInput>
+    /**
+     * Filter which ValidationTokenAudits to update
+     */
+    where?: ValidationTokenAuditWhereInput
+  }
+
+  /**
+   * ValidationTokenAudit upsert
+   */
+  export type ValidationTokenAuditUpsertArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ValidationTokenAudit
+     */
+    select?: ValidationTokenAuditSelect<ExtArgs> | null
+    /**
+     * The filter to search for the ValidationTokenAudit to update in case it exists.
+     */
+    where: ValidationTokenAuditWhereUniqueInput
+    /**
+     * In case the ValidationTokenAudit found by the `where` argument doesn't exist, create a new ValidationTokenAudit with this data.
+     */
+    create: XOR<ValidationTokenAuditCreateInput, ValidationTokenAuditUncheckedCreateInput>
+    /**
+     * In case the ValidationTokenAudit was found with the provided `where` argument, update it with this data.
+     */
+    update: XOR<ValidationTokenAuditUpdateInput, ValidationTokenAuditUncheckedUpdateInput>
+  }
+
+  /**
+   * ValidationTokenAudit delete
+   */
+  export type ValidationTokenAuditDeleteArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ValidationTokenAudit
+     */
+    select?: ValidationTokenAuditSelect<ExtArgs> | null
+    /**
+     * Filter which ValidationTokenAudit to delete.
+     */
+    where: ValidationTokenAuditWhereUniqueInput
+  }
+
+  /**
+   * ValidationTokenAudit deleteMany
+   */
+  export type ValidationTokenAuditDeleteManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which ValidationTokenAudits to delete
+     */
+    where?: ValidationTokenAuditWhereInput
+  }
+
+  /**
+   * ValidationTokenAudit without action
+   */
+  export type ValidationTokenAuditDefaultArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the ValidationTokenAudit
+     */
+    select?: ValidationTokenAuditSelect<ExtArgs> | null
+  }
+
+
+  /**
+   * Model BannedUser
+   */
+
+  export type AggregateBannedUser = {
+    _count: BannedUserCountAggregateOutputType | null
+    _min: BannedUserMinAggregateOutputType | null
+    _max: BannedUserMaxAggregateOutputType | null
+  }
+
+  export type BannedUserMinAggregateOutputType = {
+    id: string | null
+    publicKey: string | null
+    reason: string | null
+    bannedByAdmin: string | null
+    bannedAt: Date | null
+  }
+
+  export type BannedUserMaxAggregateOutputType = {
+    id: string | null
+    publicKey: string | null
+    reason: string | null
+    bannedByAdmin: string | null
+    bannedAt: Date | null
+  }
+
+  export type BannedUserCountAggregateOutputType = {
+    id: number
+    publicKey: number
+    reason: number
+    bannedByAdmin: number
+    bannedAt: number
+    _all: number
+  }
+
+
+  export type BannedUserMinAggregateInputType = {
+    id?: true
+    publicKey?: true
+    reason?: true
+    bannedByAdmin?: true
+    bannedAt?: true
+  }
+
+  export type BannedUserMaxAggregateInputType = {
+    id?: true
+    publicKey?: true
+    reason?: true
+    bannedByAdmin?: true
+    bannedAt?: true
+  }
+
+  export type BannedUserCountAggregateInputType = {
+    id?: true
+    publicKey?: true
+    reason?: true
+    bannedByAdmin?: true
+    bannedAt?: true
+    _all?: true
+  }
+
+  export type BannedUserAggregateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which BannedUser to aggregate.
+     */
+    where?: BannedUserWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of BannedUsers to fetch.
+     */
+    orderBy?: BannedUserOrderByWithRelationInput | BannedUserOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the start position
+     */
+    cursor?: BannedUserWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` BannedUsers from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` BannedUsers.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Count returned BannedUsers
+    **/
+    _count?: true | BannedUserCountAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the minimum value
+    **/
+    _min?: BannedUserMinAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the maximum value
+    **/
+    _max?: BannedUserMaxAggregateInputType
+  }
+
+  export type GetBannedUserAggregateType<T extends BannedUserAggregateArgs> = {
+        [P in keyof T & keyof AggregateBannedUser]: P extends '_count' | 'count'
+      ? T[P] extends true
+        ? number
+        : GetScalarType<T[P], AggregateBannedUser[P]>
+      : GetScalarType<T[P], AggregateBannedUser[P]>
+  }
+
+
+
+
+  export type BannedUserGroupByArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    where?: BannedUserWhereInput
+    orderBy?: BannedUserOrderByWithAggregationInput | BannedUserOrderByWithAggregationInput[]
+    by: BannedUserScalarFieldEnum[] | BannedUserScalarFieldEnum
+    having?: BannedUserScalarWhereWithAggregatesInput
+    take?: number
+    skip?: number
+    _count?: BannedUserCountAggregateInputType | true
+    _min?: BannedUserMinAggregateInputType
+    _max?: BannedUserMaxAggregateInputType
+  }
+
+  export type BannedUserGroupByOutputType = {
+    id: string
+    publicKey: string
+    reason: string
+    bannedByAdmin: string
+    bannedAt: Date
+    _count: BannedUserCountAggregateOutputType | null
+    _min: BannedUserMinAggregateOutputType | null
+    _max: BannedUserMaxAggregateOutputType | null
+  }
+
+  type GetBannedUserGroupByPayload<T extends BannedUserGroupByArgs> = Prisma.PrismaPromise<
+    Array<
+      PickEnumerable<BannedUserGroupByOutputType, T['by']> &
+        {
+          [P in ((keyof T) & (keyof BannedUserGroupByOutputType))]: P extends '_count'
+            ? T[P] extends boolean
+              ? number
+              : GetScalarType<T[P], BannedUserGroupByOutputType[P]>
+            : GetScalarType<T[P], BannedUserGroupByOutputType[P]>
+        }
+      >
+    >
+
+
+  export type BannedUserSelect<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    publicKey?: boolean
+    reason?: boolean
+    bannedByAdmin?: boolean
+    bannedAt?: boolean
+  }, ExtArgs["result"]["bannedUser"]>
+
+  export type BannedUserSelectCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    publicKey?: boolean
+    reason?: boolean
+    bannedByAdmin?: boolean
+    bannedAt?: boolean
+  }, ExtArgs["result"]["bannedUser"]>
+
+  export type BannedUserSelectScalar = {
+    id?: boolean
+    publicKey?: boolean
+    reason?: boolean
+    bannedByAdmin?: boolean
+    bannedAt?: boolean
+  }
+
+
+  export type $BannedUserPayload<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    name: "BannedUser"
+    objects: {}
+    scalars: $Extensions.GetPayloadResult<{
+      id: string
+      publicKey: string
+      reason: string
+      bannedByAdmin: string
+      bannedAt: Date
+    }, ExtArgs["result"]["bannedUser"]>
+    composites: {}
+  }
+
+  type BannedUserGetPayload<S extends boolean | null | undefined | BannedUserDefaultArgs> = $Result.GetResult<Prisma.$BannedUserPayload, S>
+
+  type BannedUserCountArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = 
+    Omit<BannedUserFindManyArgs, 'select' | 'include' | 'distinct'> & {
+      select?: BannedUserCountAggregateInputType | true
+    }
+
+  export interface BannedUserDelegate<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> {
+    [K: symbol]: { types: Prisma.TypeMap<ExtArgs>['model']['BannedUser'], meta: { name: 'BannedUser' } }
+    /**
+     * Find zero or one BannedUser that matches the filter.
+     * @param {BannedUserFindUniqueArgs} args - Arguments to find a BannedUser
+     * @example
+     * // Get one BannedUser
+     * const bannedUser = await prisma.bannedUser.findUnique({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUnique<T extends BannedUserFindUniqueArgs>(args: SelectSubset<T, BannedUserFindUniqueArgs<ExtArgs>>): Prisma__BannedUserClient<$Result.GetResult<Prisma.$BannedUserPayload<ExtArgs>, T, "findUnique"> | null, null, ExtArgs>
+
+    /**
+     * Find one BannedUser that matches the filter or throw an error with `error.code='P2025'` 
+     * if no matches were found.
+     * @param {BannedUserFindUniqueOrThrowArgs} args - Arguments to find a BannedUser
+     * @example
+     * // Get one BannedUser
+     * const bannedUser = await prisma.bannedUser.findUniqueOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUniqueOrThrow<T extends BannedUserFindUniqueOrThrowArgs>(args: SelectSubset<T, BannedUserFindUniqueOrThrowArgs<ExtArgs>>): Prisma__BannedUserClient<$Result.GetResult<Prisma.$BannedUserPayload<ExtArgs>, T, "findUniqueOrThrow">, never, ExtArgs>
+
+    /**
+     * Find the first BannedUser that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {BannedUserFindFirstArgs} args - Arguments to find a BannedUser
+     * @example
+     * // Get one BannedUser
+     * const bannedUser = await prisma.bannedUser.findFirst({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirst<T extends BannedUserFindFirstArgs>(args?: SelectSubset<T, BannedUserFindFirstArgs<ExtArgs>>): Prisma__BannedUserClient<$Result.GetResult<Prisma.$BannedUserPayload<ExtArgs>, T, "findFirst"> | null, null, ExtArgs>
+
+    /**
+     * Find the first BannedUser that matches the filter or
+     * throw `PrismaKnownClientError` with `P2025` code if no matches were found.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {BannedUserFindFirstOrThrowArgs} args - Arguments to find a BannedUser
+     * @example
+     * // Get one BannedUser
+     * const bannedUser = await prisma.bannedUser.findFirstOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirstOrThrow<T extends BannedUserFindFirstOrThrowArgs>(args?: SelectSubset<T, BannedUserFindFirstOrThrowArgs<ExtArgs>>): Prisma__BannedUserClient<$Result.GetResult<Prisma.$BannedUserPayload<ExtArgs>, T, "findFirstOrThrow">, never, ExtArgs>
+
+    /**
+     * Find zero or more BannedUsers that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {BannedUserFindManyArgs} args - Arguments to filter and select certain fields only.
+     * @example
+     * // Get all BannedUsers
+     * const bannedUsers = await prisma.bannedUser.findMany()
+     * 
+     * // Get first 10 BannedUsers
+     * const bannedUsers = await prisma.bannedUser.findMany({ take: 10 })
+     * 
+     * // Only select the `id`
+     * const bannedUserWithIdOnly = await prisma.bannedUser.findMany({ select: { id: true } })
+     * 
+     */
+    findMany<T extends BannedUserFindManyArgs>(args?: SelectSubset<T, BannedUserFindManyArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$BannedUserPayload<ExtArgs>, T, "findMany">>
+
+    /**
+     * Create a BannedUser.
+     * @param {BannedUserCreateArgs} args - Arguments to create a BannedUser.
+     * @example
+     * // Create one BannedUser
+     * const BannedUser = await prisma.bannedUser.create({
+     *   data: {
+     *     // ... data to create a BannedUser
+     *   }
+     * })
+     * 
+     */
+    create<T extends BannedUserCreateArgs>(args: SelectSubset<T, BannedUserCreateArgs<ExtArgs>>): Prisma__BannedUserClient<$Result.GetResult<Prisma.$BannedUserPayload<ExtArgs>, T, "create">, never, ExtArgs>
+
+    /**
+     * Create many BannedUsers.
+     * @param {BannedUserCreateManyArgs} args - Arguments to create many BannedUsers.
+     * @example
+     * // Create many BannedUsers
+     * const bannedUser = await prisma.bannedUser.createMany({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     *     
+     */
+    createMany<T extends BannedUserCreateManyArgs>(args?: SelectSubset<T, BannedUserCreateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create many BannedUsers and returns the data saved in the database.
+     * @param {BannedUserCreateManyAndReturnArgs} args - Arguments to create many BannedUsers.
+     * @example
+     * // Create many BannedUsers
+     * const bannedUser = await prisma.bannedUser.createManyAndReturn({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * 
+     * // Create many BannedUsers and only return the `id`
+     * const bannedUserWithIdOnly = await prisma.bannedUser.createManyAndReturn({ 
+     *   select: { id: true },
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * 
+     */
+    createManyAndReturn<T extends BannedUserCreateManyAndReturnArgs>(args?: SelectSubset<T, BannedUserCreateManyAndReturnArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$BannedUserPayload<ExtArgs>, T, "createManyAndReturn">>
+
+    /**
+     * Delete a BannedUser.
+     * @param {BannedUserDeleteArgs} args - Arguments to delete one BannedUser.
+     * @example
+     * // Delete one BannedUser
+     * const BannedUser = await prisma.bannedUser.delete({
+     *   where: {
+     *     // ... filter to delete one BannedUser
+     *   }
+     * })
+     * 
+     */
+    delete<T extends BannedUserDeleteArgs>(args: SelectSubset<T, BannedUserDeleteArgs<ExtArgs>>): Prisma__BannedUserClient<$Result.GetResult<Prisma.$BannedUserPayload<ExtArgs>, T, "delete">, never, ExtArgs>
+
+    /**
+     * Update one BannedUser.
+     * @param {BannedUserUpdateArgs} args - Arguments to update one BannedUser.
+     * @example
+     * // Update one BannedUser
+     * const bannedUser = await prisma.bannedUser.update({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    update<T extends BannedUserUpdateArgs>(args: SelectSubset<T, BannedUserUpdateArgs<ExtArgs>>): Prisma__BannedUserClient<$Result.GetResult<Prisma.$BannedUserPayload<ExtArgs>, T, "update">, never, ExtArgs>
+
+    /**
+     * Delete zero or more BannedUsers.
+     * @param {BannedUserDeleteManyArgs} args - Arguments to filter BannedUsers to delete.
+     * @example
+     * // Delete a few BannedUsers
+     * const { count } = await prisma.bannedUser.deleteMany({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     * 
+     */
+    deleteMany<T extends BannedUserDeleteManyArgs>(args?: SelectSubset<T, BannedUserDeleteManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Update zero or more BannedUsers.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {BannedUserUpdateManyArgs} args - Arguments to update one or more rows.
+     * @example
+     * // Update many BannedUsers
+     * const bannedUser = await prisma.bannedUser.updateMany({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    updateMany<T extends BannedUserUpdateManyArgs>(args: SelectSubset<T, BannedUserUpdateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create or update one BannedUser.
+     * @param {BannedUserUpsertArgs} args - Arguments to update or create a BannedUser.
+     * @example
+     * // Update or create a BannedUser
+     * const bannedUser = await prisma.bannedUser.upsert({
+     *   create: {
+     *     // ... data to create a BannedUser
+     *   },
+     *   update: {
+     *     // ... in case it already exists, update
+     *   },
+     *   where: {
+     *     // ... the filter for the BannedUser we want to update
+     *   }
+     * })
+     */
+    upsert<T extends BannedUserUpsertArgs>(args: SelectSubset<T, BannedUserUpsertArgs<ExtArgs>>): Prisma__BannedUserClient<$Result.GetResult<Prisma.$BannedUserPayload<ExtArgs>, T, "upsert">, never, ExtArgs>
+
+
+    /**
+     * Count the number of BannedUsers.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {BannedUserCountArgs} args - Arguments to filter BannedUsers to count.
+     * @example
+     * // Count the number of BannedUsers
+     * const count = await prisma.bannedUser.count({
+     *   where: {
+     *     // ... the filter for the BannedUsers we want to count
+     *   }
+     * })
+    **/
+    count<T extends BannedUserCountArgs>(
+      args?: Subset<T, BannedUserCountArgs>,
+    ): Prisma.PrismaPromise<
+      T extends $Utils.Record<'select', any>
+        ? T['select'] extends true
+          ? number
+          : GetScalarType<T['select'], BannedUserCountAggregateOutputType>
+        : number
+    >
+
+    /**
+     * Allows you to perform aggregations operations on a BannedUser.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {BannedUserAggregateArgs} args - Select which aggregations you would like to apply and on what fields.
+     * @example
+     * // Ordered by age ascending
+     * // Where email contains prisma.io
+     * // Limited to the 10 users
+     * const aggregations = await prisma.user.aggregate({
+     *   _avg: {
+     *     age: true,
+     *   },
+     *   where: {
+     *     email: {
+     *       contains: "prisma.io",
+     *     },
+     *   },
+     *   orderBy: {
+     *     age: "asc",
+     *   },
+     *   take: 10,
+     * })
+    **/
+    aggregate<T extends BannedUserAggregateArgs>(args: Subset<T, BannedUserAggregateArgs>): Prisma.PrismaPromise<GetBannedUserAggregateType<T>>
+
+    /**
+     * Group by BannedUser.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {BannedUserGroupByArgs} args - Group by arguments.
+     * @example
+     * // Group by city, order by createdAt, get count
+     * const result = await prisma.user.groupBy({
+     *   by: ['city', 'createdAt'],
+     *   orderBy: {
+     *     createdAt: true
+     *   },
+     *   _count: {
+     *     _all: true
+     *   },
+     * })
+     * 
+    **/
+    groupBy<
+      T extends BannedUserGroupByArgs,
+      HasSelectOrTake extends Or<
+        Extends<'skip', Keys<T>>,
+        Extends<'take', Keys<T>>
+      >,
+      OrderByArg extends True extends HasSelectOrTake
+        ? { orderBy: BannedUserGroupByArgs['orderBy'] }
+        : { orderBy?: BannedUserGroupByArgs['orderBy'] },
+      OrderFields extends ExcludeUnderscoreKeys<Keys<MaybeTupleToUnion<T['orderBy']>>>,
+      ByFields extends MaybeTupleToUnion<T['by']>,
+      ByValid extends Has<ByFields, OrderFields>,
+      HavingFields extends GetHavingFields<T['having']>,
+      HavingValid extends Has<ByFields, HavingFields>,
+      ByEmpty extends T['by'] extends never[] ? True : False,
+      InputErrors extends ByEmpty extends True
+      ? `Error: "by" must not be empty.`
+      : HavingValid extends False
+      ? {
+          [P in HavingFields]: P extends ByFields
+            ? never
+            : P extends string
+            ? `Error: Field "${P}" used in "having" needs to be provided in "by".`
+            : [
+                Error,
+                'Field ',
+                P,
+                ` in "having" needs to be provided in "by"`,
+              ]
+        }[HavingFields]
+      : 'take' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "take", you also need to provide "orderBy"'
+      : 'skip' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "skip", you also need to provide "orderBy"'
+      : ByValid extends True
+      ? {}
+      : {
+          [P in OrderFields]: P extends ByFields
+            ? never
+            : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+        }[OrderFields]
+    >(args: SubsetIntersection<T, BannedUserGroupByArgs, OrderByArg> & InputErrors): {} extends InputErrors ? GetBannedUserGroupByPayload<T> : Prisma.PrismaPromise<InputErrors>
+  /**
+   * Fields of the BannedUser model
+   */
+  readonly fields: BannedUserFieldRefs;
+  }
+
+  /**
+   * The delegate class that acts as a "Promise-like" for BannedUser.
+   * Why is this prefixed with `Prisma__`?
+   * Because we want to prevent naming conflicts as mentioned in
+   * https://github.com/prisma/prisma-client-js/issues/707
+   */
+  export interface Prisma__BannedUserClient<T, Null = never, ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> extends Prisma.PrismaPromise<T> {
+    readonly [Symbol.toStringTag]: "PrismaPromise"
+    /**
+     * Attaches callbacks for the resolution and/or rejection of the Promise.
+     * @param onfulfilled The callback to execute when the Promise is resolved.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of which ever callback is executed.
+     */
+    then<TResult1 = T, TResult2 = never>(onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | undefined | null, onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | undefined | null): $Utils.JsPromise<TResult1 | TResult2>
+    /**
+     * Attaches a callback for only the rejection of the Promise.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of the callback.
+     */
+    catch<TResult = never>(onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | undefined | null): $Utils.JsPromise<T | TResult>
+    /**
+     * Attaches a callback that is invoked when the Promise is settled (fulfilled or rejected). The
+     * resolved value cannot be modified from the callback.
+     * @param onfinally The callback to execute when the Promise is settled (fulfilled or rejected).
+     * @returns A Promise for the completion of the callback.
+     */
+    finally(onfinally?: (() => void) | undefined | null): $Utils.JsPromise<T>
+  }
+
+
+
+
+  /**
+   * Fields of the BannedUser model
+   */ 
+  interface BannedUserFieldRefs {
+    readonly id: FieldRef<"BannedUser", 'String'>
+    readonly publicKey: FieldRef<"BannedUser", 'String'>
+    readonly reason: FieldRef<"BannedUser", 'String'>
+    readonly bannedByAdmin: FieldRef<"BannedUser", 'String'>
+    readonly bannedAt: FieldRef<"BannedUser", 'DateTime'>
+  }
+    
+
+  // Custom InputTypes
+  /**
+   * BannedUser findUnique
+   */
+  export type BannedUserFindUniqueArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the BannedUser
+     */
+    select?: BannedUserSelect<ExtArgs> | null
+    /**
+     * Filter, which BannedUser to fetch.
+     */
+    where: BannedUserWhereUniqueInput
+  }
+
+  /**
+   * BannedUser findUniqueOrThrow
+   */
+  export type BannedUserFindUniqueOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the BannedUser
+     */
+    select?: BannedUserSelect<ExtArgs> | null
+    /**
+     * Filter, which BannedUser to fetch.
+     */
+    where: BannedUserWhereUniqueInput
+  }
+
+  /**
+   * BannedUser findFirst
+   */
+  export type BannedUserFindFirstArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the BannedUser
+     */
+    select?: BannedUserSelect<ExtArgs> | null
+    /**
+     * Filter, which BannedUser to fetch.
+     */
+    where?: BannedUserWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of BannedUsers to fetch.
+     */
+    orderBy?: BannedUserOrderByWithRelationInput | BannedUserOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for BannedUsers.
+     */
+    cursor?: BannedUserWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` BannedUsers from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` BannedUsers.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of BannedUsers.
+     */
+    distinct?: BannedUserScalarFieldEnum | BannedUserScalarFieldEnum[]
+  }
+
+  /**
+   * BannedUser findFirstOrThrow
+   */
+  export type BannedUserFindFirstOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the BannedUser
+     */
+    select?: BannedUserSelect<ExtArgs> | null
+    /**
+     * Filter, which BannedUser to fetch.
+     */
+    where?: BannedUserWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of BannedUsers to fetch.
+     */
+    orderBy?: BannedUserOrderByWithRelationInput | BannedUserOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for BannedUsers.
+     */
+    cursor?: BannedUserWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` BannedUsers from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` BannedUsers.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of BannedUsers.
+     */
+    distinct?: BannedUserScalarFieldEnum | BannedUserScalarFieldEnum[]
+  }
+
+  /**
+   * BannedUser findMany
+   */
+  export type BannedUserFindManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the BannedUser
+     */
+    select?: BannedUserSelect<ExtArgs> | null
+    /**
+     * Filter, which BannedUsers to fetch.
+     */
+    where?: BannedUserWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of BannedUsers to fetch.
+     */
+    orderBy?: BannedUserOrderByWithRelationInput | BannedUserOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for listing BannedUsers.
+     */
+    cursor?: BannedUserWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` BannedUsers from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` BannedUsers.
+     */
+    skip?: number
+    distinct?: BannedUserScalarFieldEnum | BannedUserScalarFieldEnum[]
+  }
+
+  /**
+   * BannedUser create
+   */
+  export type BannedUserCreateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the BannedUser
+     */
+    select?: BannedUserSelect<ExtArgs> | null
+    /**
+     * The data needed to create a BannedUser.
+     */
+    data: XOR<BannedUserCreateInput, BannedUserUncheckedCreateInput>
+  }
+
+  /**
+   * BannedUser createMany
+   */
+  export type BannedUserCreateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to create many BannedUsers.
+     */
+    data: BannedUserCreateManyInput | BannedUserCreateManyInput[]
+  }
+
+  /**
+   * BannedUser createManyAndReturn
+   */
+  export type BannedUserCreateManyAndReturnArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the BannedUser
+     */
+    select?: BannedUserSelectCreateManyAndReturn<ExtArgs> | null
+    /**
+     * The data used to create many BannedUsers.
+     */
+    data: BannedUserCreateManyInput | BannedUserCreateManyInput[]
+  }
+
+  /**
+   * BannedUser update
+   */
+  export type BannedUserUpdateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the BannedUser
+     */
+    select?: BannedUserSelect<ExtArgs> | null
+    /**
+     * The data needed to update a BannedUser.
+     */
+    data: XOR<BannedUserUpdateInput, BannedUserUncheckedUpdateInput>
+    /**
+     * Choose, which BannedUser to update.
+     */
+    where: BannedUserWhereUniqueInput
+  }
+
+  /**
+   * BannedUser updateMany
+   */
+  export type BannedUserUpdateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to update BannedUsers.
+     */
+    data: XOR<BannedUserUpdateManyMutationInput, BannedUserUncheckedUpdateManyInput>
+    /**
+     * Filter which BannedUsers to update
+     */
+    where?: BannedUserWhereInput
+  }
+
+  /**
+   * BannedUser upsert
+   */
+  export type BannedUserUpsertArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the BannedUser
+     */
+    select?: BannedUserSelect<ExtArgs> | null
+    /**
+     * The filter to search for the BannedUser to update in case it exists.
+     */
+    where: BannedUserWhereUniqueInput
+    /**
+     * In case the BannedUser found by the `where` argument doesn't exist, create a new BannedUser with this data.
+     */
+    create: XOR<BannedUserCreateInput, BannedUserUncheckedCreateInput>
+    /**
+     * In case the BannedUser was found with the provided `where` argument, update it with this data.
+     */
+    update: XOR<BannedUserUpdateInput, BannedUserUncheckedUpdateInput>
+  }
+
+  /**
+   * BannedUser delete
+   */
+  export type BannedUserDeleteArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the BannedUser
+     */
+    select?: BannedUserSelect<ExtArgs> | null
+    /**
+     * Filter which BannedUser to delete.
+     */
+    where: BannedUserWhereUniqueInput
+  }
+
+  /**
+   * BannedUser deleteMany
+   */
+  export type BannedUserDeleteManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which BannedUsers to delete
+     */
+    where?: BannedUserWhereInput
+  }
+
+  /**
+   * BannedUser without action
+   */
+  export type BannedUserDefaultArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the BannedUser
+     */
+    select?: BannedUserSelect<ExtArgs> | null
+  }
+
+
+  /**
    * Enums
    */
 
@@ -11158,6 +16174,72 @@ export namespace Prisma {
   export type SignatureScalarFieldEnum = (typeof SignatureScalarFieldEnum)[keyof typeof SignatureScalarFieldEnum]
 
 
+  export const ValidationTokenScalarFieldEnum: {
+    id: 'id',
+    tokenId: 'tokenId',
+    fileId: 'fileId',
+    fileMetadataHash: 'fileMetadataHash',
+    userPublicKeyHash: 'userPublicKeyHash',
+    issuedAt: 'issuedAt',
+    expiresAt: 'expiresAt',
+    signature: 'signature',
+    adjudicatorPublicKey: 'adjudicatorPublicKey',
+    createdAt: 'createdAt'
+  };
+
+  export type ValidationTokenScalarFieldEnum = (typeof ValidationTokenScalarFieldEnum)[keyof typeof ValidationTokenScalarFieldEnum]
+
+
+  export const InvestigationAuditScalarFieldEnum: {
+    id: 'id',
+    investigationId: 'investigationId',
+    fileId: 'fileId',
+    reason: 'reason',
+    adminApproval: 'adminApproval',
+    legalAuthorization: 'legalAuthorization',
+    decryptedPublicKey: 'decryptedPublicKey',
+    createdAt: 'createdAt'
+  };
+
+  export type InvestigationAuditScalarFieldEnum = (typeof InvestigationAuditScalarFieldEnum)[keyof typeof InvestigationAuditScalarFieldEnum]
+
+
+  export const ValidationNonceScalarFieldEnum: {
+    id: 'id',
+    nonce: 'nonce',
+    createdAt: 'createdAt'
+  };
+
+  export type ValidationNonceScalarFieldEnum = (typeof ValidationNonceScalarFieldEnum)[keyof typeof ValidationNonceScalarFieldEnum]
+
+
+  export const ValidationTokenAuditScalarFieldEnum: {
+    id: 'id',
+    tokenId: 'tokenId',
+    userPublicKey: 'userPublicKey',
+    userPublicKeyHash: 'userPublicKeyHash',
+    fileMetadataHash: 'fileMetadataHash',
+    requestNonce: 'requestNonce',
+    issuedAt: 'issuedAt',
+    expiresAt: 'expiresAt',
+    signature: 'signature',
+    createdAt: 'createdAt'
+  };
+
+  export type ValidationTokenAuditScalarFieldEnum = (typeof ValidationTokenAuditScalarFieldEnum)[keyof typeof ValidationTokenAuditScalarFieldEnum]
+
+
+  export const BannedUserScalarFieldEnum: {
+    id: 'id',
+    publicKey: 'publicKey',
+    reason: 'reason',
+    bannedByAdmin: 'bannedByAdmin',
+    bannedAt: 'bannedAt'
+  };
+
+  export type BannedUserScalarFieldEnum = (typeof BannedUserScalarFieldEnum)[keyof typeof BannedUserScalarFieldEnum]
+
+
   export const SortOrder: {
     asc: 'asc',
     desc: 'desc'
@@ -11311,6 +16393,7 @@ export namespace Prisma {
     chunks?: FileChunkListRelationFilter
     integrityAlerts?: IntegrityAlertListRelationFilter
     signatures?: SignatureListRelationFilter
+    validationToken?: XOR<ValidationTokenNullableRelationFilter, ValidationTokenWhereInput> | null
   }
 
   export type FileOrderByWithRelationInput = {
@@ -11341,6 +16424,7 @@ export namespace Prisma {
     chunks?: FileChunkOrderByRelationAggregateInput
     integrityAlerts?: IntegrityAlertOrderByRelationAggregateInput
     signatures?: SignatureOrderByRelationAggregateInput
+    validationToken?: ValidationTokenOrderByWithRelationInput
   }
 
   export type FileWhereUniqueInput = Prisma.AtLeast<{
@@ -11374,6 +16458,7 @@ export namespace Prisma {
     chunks?: FileChunkListRelationFilter
     integrityAlerts?: IntegrityAlertListRelationFilter
     signatures?: SignatureListRelationFilter
+    validationToken?: XOR<ValidationTokenNullableRelationFilter, ValidationTokenWhereInput> | null
   }, "id">
 
   export type FileOrderByWithAggregationInput = {
@@ -12023,6 +17108,324 @@ export namespace Prisma {
     updatedAt?: DateTimeWithAggregatesFilter<"Signature"> | Date | string
   }
 
+  export type ValidationTokenWhereInput = {
+    AND?: ValidationTokenWhereInput | ValidationTokenWhereInput[]
+    OR?: ValidationTokenWhereInput[]
+    NOT?: ValidationTokenWhereInput | ValidationTokenWhereInput[]
+    id?: StringFilter<"ValidationToken"> | string
+    tokenId?: StringFilter<"ValidationToken"> | string
+    fileId?: StringFilter<"ValidationToken"> | string
+    fileMetadataHash?: StringFilter<"ValidationToken"> | string
+    userPublicKeyHash?: StringFilter<"ValidationToken"> | string
+    issuedAt?: DateTimeFilter<"ValidationToken"> | Date | string
+    expiresAt?: DateTimeFilter<"ValidationToken"> | Date | string
+    signature?: StringFilter<"ValidationToken"> | string
+    adjudicatorPublicKey?: StringFilter<"ValidationToken"> | string
+    createdAt?: DateTimeFilter<"ValidationToken"> | Date | string
+    file?: XOR<FileRelationFilter, FileWhereInput>
+  }
+
+  export type ValidationTokenOrderByWithRelationInput = {
+    id?: SortOrder
+    tokenId?: SortOrder
+    fileId?: SortOrder
+    fileMetadataHash?: SortOrder
+    userPublicKeyHash?: SortOrder
+    issuedAt?: SortOrder
+    expiresAt?: SortOrder
+    signature?: SortOrder
+    adjudicatorPublicKey?: SortOrder
+    createdAt?: SortOrder
+    file?: FileOrderByWithRelationInput
+  }
+
+  export type ValidationTokenWhereUniqueInput = Prisma.AtLeast<{
+    id?: string
+    tokenId?: string
+    fileId?: string
+    signature?: string
+    AND?: ValidationTokenWhereInput | ValidationTokenWhereInput[]
+    OR?: ValidationTokenWhereInput[]
+    NOT?: ValidationTokenWhereInput | ValidationTokenWhereInput[]
+    fileMetadataHash?: StringFilter<"ValidationToken"> | string
+    userPublicKeyHash?: StringFilter<"ValidationToken"> | string
+    issuedAt?: DateTimeFilter<"ValidationToken"> | Date | string
+    expiresAt?: DateTimeFilter<"ValidationToken"> | Date | string
+    adjudicatorPublicKey?: StringFilter<"ValidationToken"> | string
+    createdAt?: DateTimeFilter<"ValidationToken"> | Date | string
+    file?: XOR<FileRelationFilter, FileWhereInput>
+  }, "id" | "tokenId" | "fileId" | "signature">
+
+  export type ValidationTokenOrderByWithAggregationInput = {
+    id?: SortOrder
+    tokenId?: SortOrder
+    fileId?: SortOrder
+    fileMetadataHash?: SortOrder
+    userPublicKeyHash?: SortOrder
+    issuedAt?: SortOrder
+    expiresAt?: SortOrder
+    signature?: SortOrder
+    adjudicatorPublicKey?: SortOrder
+    createdAt?: SortOrder
+    _count?: ValidationTokenCountOrderByAggregateInput
+    _max?: ValidationTokenMaxOrderByAggregateInput
+    _min?: ValidationTokenMinOrderByAggregateInput
+  }
+
+  export type ValidationTokenScalarWhereWithAggregatesInput = {
+    AND?: ValidationTokenScalarWhereWithAggregatesInput | ValidationTokenScalarWhereWithAggregatesInput[]
+    OR?: ValidationTokenScalarWhereWithAggregatesInput[]
+    NOT?: ValidationTokenScalarWhereWithAggregatesInput | ValidationTokenScalarWhereWithAggregatesInput[]
+    id?: StringWithAggregatesFilter<"ValidationToken"> | string
+    tokenId?: StringWithAggregatesFilter<"ValidationToken"> | string
+    fileId?: StringWithAggregatesFilter<"ValidationToken"> | string
+    fileMetadataHash?: StringWithAggregatesFilter<"ValidationToken"> | string
+    userPublicKeyHash?: StringWithAggregatesFilter<"ValidationToken"> | string
+    issuedAt?: DateTimeWithAggregatesFilter<"ValidationToken"> | Date | string
+    expiresAt?: DateTimeWithAggregatesFilter<"ValidationToken"> | Date | string
+    signature?: StringWithAggregatesFilter<"ValidationToken"> | string
+    adjudicatorPublicKey?: StringWithAggregatesFilter<"ValidationToken"> | string
+    createdAt?: DateTimeWithAggregatesFilter<"ValidationToken"> | Date | string
+  }
+
+  export type InvestigationAuditWhereInput = {
+    AND?: InvestigationAuditWhereInput | InvestigationAuditWhereInput[]
+    OR?: InvestigationAuditWhereInput[]
+    NOT?: InvestigationAuditWhereInput | InvestigationAuditWhereInput[]
+    id?: StringFilter<"InvestigationAudit"> | string
+    investigationId?: StringFilter<"InvestigationAudit"> | string
+    fileId?: StringFilter<"InvestigationAudit"> | string
+    reason?: StringFilter<"InvestigationAudit"> | string
+    adminApproval?: StringFilter<"InvestigationAudit"> | string
+    legalAuthorization?: StringFilter<"InvestigationAudit"> | string
+    decryptedPublicKey?: StringNullableFilter<"InvestigationAudit"> | string | null
+    createdAt?: DateTimeFilter<"InvestigationAudit"> | Date | string
+  }
+
+  export type InvestigationAuditOrderByWithRelationInput = {
+    id?: SortOrder
+    investigationId?: SortOrder
+    fileId?: SortOrder
+    reason?: SortOrder
+    adminApproval?: SortOrder
+    legalAuthorization?: SortOrder
+    decryptedPublicKey?: SortOrderInput | SortOrder
+    createdAt?: SortOrder
+  }
+
+  export type InvestigationAuditWhereUniqueInput = Prisma.AtLeast<{
+    id?: string
+    investigationId?: string
+    AND?: InvestigationAuditWhereInput | InvestigationAuditWhereInput[]
+    OR?: InvestigationAuditWhereInput[]
+    NOT?: InvestigationAuditWhereInput | InvestigationAuditWhereInput[]
+    fileId?: StringFilter<"InvestigationAudit"> | string
+    reason?: StringFilter<"InvestigationAudit"> | string
+    adminApproval?: StringFilter<"InvestigationAudit"> | string
+    legalAuthorization?: StringFilter<"InvestigationAudit"> | string
+    decryptedPublicKey?: StringNullableFilter<"InvestigationAudit"> | string | null
+    createdAt?: DateTimeFilter<"InvestigationAudit"> | Date | string
+  }, "id" | "investigationId">
+
+  export type InvestigationAuditOrderByWithAggregationInput = {
+    id?: SortOrder
+    investigationId?: SortOrder
+    fileId?: SortOrder
+    reason?: SortOrder
+    adminApproval?: SortOrder
+    legalAuthorization?: SortOrder
+    decryptedPublicKey?: SortOrderInput | SortOrder
+    createdAt?: SortOrder
+    _count?: InvestigationAuditCountOrderByAggregateInput
+    _max?: InvestigationAuditMaxOrderByAggregateInput
+    _min?: InvestigationAuditMinOrderByAggregateInput
+  }
+
+  export type InvestigationAuditScalarWhereWithAggregatesInput = {
+    AND?: InvestigationAuditScalarWhereWithAggregatesInput | InvestigationAuditScalarWhereWithAggregatesInput[]
+    OR?: InvestigationAuditScalarWhereWithAggregatesInput[]
+    NOT?: InvestigationAuditScalarWhereWithAggregatesInput | InvestigationAuditScalarWhereWithAggregatesInput[]
+    id?: StringWithAggregatesFilter<"InvestigationAudit"> | string
+    investigationId?: StringWithAggregatesFilter<"InvestigationAudit"> | string
+    fileId?: StringWithAggregatesFilter<"InvestigationAudit"> | string
+    reason?: StringWithAggregatesFilter<"InvestigationAudit"> | string
+    adminApproval?: StringWithAggregatesFilter<"InvestigationAudit"> | string
+    legalAuthorization?: StringWithAggregatesFilter<"InvestigationAudit"> | string
+    decryptedPublicKey?: StringNullableWithAggregatesFilter<"InvestigationAudit"> | string | null
+    createdAt?: DateTimeWithAggregatesFilter<"InvestigationAudit"> | Date | string
+  }
+
+  export type ValidationNonceWhereInput = {
+    AND?: ValidationNonceWhereInput | ValidationNonceWhereInput[]
+    OR?: ValidationNonceWhereInput[]
+    NOT?: ValidationNonceWhereInput | ValidationNonceWhereInput[]
+    id?: StringFilter<"ValidationNonce"> | string
+    nonce?: StringFilter<"ValidationNonce"> | string
+    createdAt?: DateTimeFilter<"ValidationNonce"> | Date | string
+  }
+
+  export type ValidationNonceOrderByWithRelationInput = {
+    id?: SortOrder
+    nonce?: SortOrder
+    createdAt?: SortOrder
+  }
+
+  export type ValidationNonceWhereUniqueInput = Prisma.AtLeast<{
+    id?: string
+    nonce?: string
+    AND?: ValidationNonceWhereInput | ValidationNonceWhereInput[]
+    OR?: ValidationNonceWhereInput[]
+    NOT?: ValidationNonceWhereInput | ValidationNonceWhereInput[]
+    createdAt?: DateTimeFilter<"ValidationNonce"> | Date | string
+  }, "id" | "nonce">
+
+  export type ValidationNonceOrderByWithAggregationInput = {
+    id?: SortOrder
+    nonce?: SortOrder
+    createdAt?: SortOrder
+    _count?: ValidationNonceCountOrderByAggregateInput
+    _max?: ValidationNonceMaxOrderByAggregateInput
+    _min?: ValidationNonceMinOrderByAggregateInput
+  }
+
+  export type ValidationNonceScalarWhereWithAggregatesInput = {
+    AND?: ValidationNonceScalarWhereWithAggregatesInput | ValidationNonceScalarWhereWithAggregatesInput[]
+    OR?: ValidationNonceScalarWhereWithAggregatesInput[]
+    NOT?: ValidationNonceScalarWhereWithAggregatesInput | ValidationNonceScalarWhereWithAggregatesInput[]
+    id?: StringWithAggregatesFilter<"ValidationNonce"> | string
+    nonce?: StringWithAggregatesFilter<"ValidationNonce"> | string
+    createdAt?: DateTimeWithAggregatesFilter<"ValidationNonce"> | Date | string
+  }
+
+  export type ValidationTokenAuditWhereInput = {
+    AND?: ValidationTokenAuditWhereInput | ValidationTokenAuditWhereInput[]
+    OR?: ValidationTokenAuditWhereInput[]
+    NOT?: ValidationTokenAuditWhereInput | ValidationTokenAuditWhereInput[]
+    id?: StringFilter<"ValidationTokenAudit"> | string
+    tokenId?: StringFilter<"ValidationTokenAudit"> | string
+    userPublicKey?: StringFilter<"ValidationTokenAudit"> | string
+    userPublicKeyHash?: StringFilter<"ValidationTokenAudit"> | string
+    fileMetadataHash?: StringFilter<"ValidationTokenAudit"> | string
+    requestNonce?: StringFilter<"ValidationTokenAudit"> | string
+    issuedAt?: DateTimeFilter<"ValidationTokenAudit"> | Date | string
+    expiresAt?: DateTimeFilter<"ValidationTokenAudit"> | Date | string
+    signature?: StringFilter<"ValidationTokenAudit"> | string
+    createdAt?: DateTimeFilter<"ValidationTokenAudit"> | Date | string
+  }
+
+  export type ValidationTokenAuditOrderByWithRelationInput = {
+    id?: SortOrder
+    tokenId?: SortOrder
+    userPublicKey?: SortOrder
+    userPublicKeyHash?: SortOrder
+    fileMetadataHash?: SortOrder
+    requestNonce?: SortOrder
+    issuedAt?: SortOrder
+    expiresAt?: SortOrder
+    signature?: SortOrder
+    createdAt?: SortOrder
+  }
+
+  export type ValidationTokenAuditWhereUniqueInput = Prisma.AtLeast<{
+    id?: string
+    tokenId?: string
+    AND?: ValidationTokenAuditWhereInput | ValidationTokenAuditWhereInput[]
+    OR?: ValidationTokenAuditWhereInput[]
+    NOT?: ValidationTokenAuditWhereInput | ValidationTokenAuditWhereInput[]
+    userPublicKey?: StringFilter<"ValidationTokenAudit"> | string
+    userPublicKeyHash?: StringFilter<"ValidationTokenAudit"> | string
+    fileMetadataHash?: StringFilter<"ValidationTokenAudit"> | string
+    requestNonce?: StringFilter<"ValidationTokenAudit"> | string
+    issuedAt?: DateTimeFilter<"ValidationTokenAudit"> | Date | string
+    expiresAt?: DateTimeFilter<"ValidationTokenAudit"> | Date | string
+    signature?: StringFilter<"ValidationTokenAudit"> | string
+    createdAt?: DateTimeFilter<"ValidationTokenAudit"> | Date | string
+  }, "id" | "tokenId">
+
+  export type ValidationTokenAuditOrderByWithAggregationInput = {
+    id?: SortOrder
+    tokenId?: SortOrder
+    userPublicKey?: SortOrder
+    userPublicKeyHash?: SortOrder
+    fileMetadataHash?: SortOrder
+    requestNonce?: SortOrder
+    issuedAt?: SortOrder
+    expiresAt?: SortOrder
+    signature?: SortOrder
+    createdAt?: SortOrder
+    _count?: ValidationTokenAuditCountOrderByAggregateInput
+    _max?: ValidationTokenAuditMaxOrderByAggregateInput
+    _min?: ValidationTokenAuditMinOrderByAggregateInput
+  }
+
+  export type ValidationTokenAuditScalarWhereWithAggregatesInput = {
+    AND?: ValidationTokenAuditScalarWhereWithAggregatesInput | ValidationTokenAuditScalarWhereWithAggregatesInput[]
+    OR?: ValidationTokenAuditScalarWhereWithAggregatesInput[]
+    NOT?: ValidationTokenAuditScalarWhereWithAggregatesInput | ValidationTokenAuditScalarWhereWithAggregatesInput[]
+    id?: StringWithAggregatesFilter<"ValidationTokenAudit"> | string
+    tokenId?: StringWithAggregatesFilter<"ValidationTokenAudit"> | string
+    userPublicKey?: StringWithAggregatesFilter<"ValidationTokenAudit"> | string
+    userPublicKeyHash?: StringWithAggregatesFilter<"ValidationTokenAudit"> | string
+    fileMetadataHash?: StringWithAggregatesFilter<"ValidationTokenAudit"> | string
+    requestNonce?: StringWithAggregatesFilter<"ValidationTokenAudit"> | string
+    issuedAt?: DateTimeWithAggregatesFilter<"ValidationTokenAudit"> | Date | string
+    expiresAt?: DateTimeWithAggregatesFilter<"ValidationTokenAudit"> | Date | string
+    signature?: StringWithAggregatesFilter<"ValidationTokenAudit"> | string
+    createdAt?: DateTimeWithAggregatesFilter<"ValidationTokenAudit"> | Date | string
+  }
+
+  export type BannedUserWhereInput = {
+    AND?: BannedUserWhereInput | BannedUserWhereInput[]
+    OR?: BannedUserWhereInput[]
+    NOT?: BannedUserWhereInput | BannedUserWhereInput[]
+    id?: StringFilter<"BannedUser"> | string
+    publicKey?: StringFilter<"BannedUser"> | string
+    reason?: StringFilter<"BannedUser"> | string
+    bannedByAdmin?: StringFilter<"BannedUser"> | string
+    bannedAt?: DateTimeFilter<"BannedUser"> | Date | string
+  }
+
+  export type BannedUserOrderByWithRelationInput = {
+    id?: SortOrder
+    publicKey?: SortOrder
+    reason?: SortOrder
+    bannedByAdmin?: SortOrder
+    bannedAt?: SortOrder
+  }
+
+  export type BannedUserWhereUniqueInput = Prisma.AtLeast<{
+    id?: string
+    publicKey?: string
+    AND?: BannedUserWhereInput | BannedUserWhereInput[]
+    OR?: BannedUserWhereInput[]
+    NOT?: BannedUserWhereInput | BannedUserWhereInput[]
+    reason?: StringFilter<"BannedUser"> | string
+    bannedByAdmin?: StringFilter<"BannedUser"> | string
+    bannedAt?: DateTimeFilter<"BannedUser"> | Date | string
+  }, "id" | "publicKey">
+
+  export type BannedUserOrderByWithAggregationInput = {
+    id?: SortOrder
+    publicKey?: SortOrder
+    reason?: SortOrder
+    bannedByAdmin?: SortOrder
+    bannedAt?: SortOrder
+    _count?: BannedUserCountOrderByAggregateInput
+    _max?: BannedUserMaxOrderByAggregateInput
+    _min?: BannedUserMinOrderByAggregateInput
+  }
+
+  export type BannedUserScalarWhereWithAggregatesInput = {
+    AND?: BannedUserScalarWhereWithAggregatesInput | BannedUserScalarWhereWithAggregatesInput[]
+    OR?: BannedUserScalarWhereWithAggregatesInput[]
+    NOT?: BannedUserScalarWhereWithAggregatesInput | BannedUserScalarWhereWithAggregatesInput[]
+    id?: StringWithAggregatesFilter<"BannedUser"> | string
+    publicKey?: StringWithAggregatesFilter<"BannedUser"> | string
+    reason?: StringWithAggregatesFilter<"BannedUser"> | string
+    bannedByAdmin?: StringWithAggregatesFilter<"BannedUser"> | string
+    bannedAt?: DateTimeWithAggregatesFilter<"BannedUser"> | Date | string
+  }
+
   export type UserCreateInput = {
     id?: string
     publicKey: string
@@ -12121,6 +17524,7 @@ export namespace Prisma {
     chunks?: FileChunkCreateNestedManyWithoutFileInput
     integrityAlerts?: IntegrityAlertCreateNestedManyWithoutFileInput
     signatures?: SignatureCreateNestedManyWithoutFileInput
+    validationToken?: ValidationTokenCreateNestedOneWithoutFileInput
   }
 
   export type FileUncheckedCreateInput = {
@@ -12150,6 +17554,7 @@ export namespace Prisma {
     chunks?: FileChunkUncheckedCreateNestedManyWithoutFileInput
     integrityAlerts?: IntegrityAlertUncheckedCreateNestedManyWithoutFileInput
     signatures?: SignatureUncheckedCreateNestedManyWithoutFileInput
+    validationToken?: ValidationTokenUncheckedCreateNestedOneWithoutFileInput
   }
 
   export type FileUpdateInput = {
@@ -12179,6 +17584,7 @@ export namespace Prisma {
     chunks?: FileChunkUpdateManyWithoutFileNestedInput
     integrityAlerts?: IntegrityAlertUpdateManyWithoutFileNestedInput
     signatures?: SignatureUpdateManyWithoutFileNestedInput
+    validationToken?: ValidationTokenUpdateOneWithoutFileNestedInput
   }
 
   export type FileUncheckedUpdateInput = {
@@ -12208,6 +17614,7 @@ export namespace Prisma {
     chunks?: FileChunkUncheckedUpdateManyWithoutFileNestedInput
     integrityAlerts?: IntegrityAlertUncheckedUpdateManyWithoutFileNestedInput
     signatures?: SignatureUncheckedUpdateManyWithoutFileNestedInput
+    validationToken?: ValidationTokenUncheckedUpdateOneWithoutFileNestedInput
   }
 
   export type FileCreateManyInput = {
@@ -12943,6 +18350,362 @@ export namespace Prisma {
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
 
+  export type ValidationTokenCreateInput = {
+    id?: string
+    tokenId: string
+    fileMetadataHash: string
+    userPublicKeyHash: string
+    issuedAt: Date | string
+    expiresAt: Date | string
+    signature: string
+    adjudicatorPublicKey: string
+    createdAt?: Date | string
+    file: FileCreateNestedOneWithoutValidationTokenInput
+  }
+
+  export type ValidationTokenUncheckedCreateInput = {
+    id?: string
+    tokenId: string
+    fileId: string
+    fileMetadataHash: string
+    userPublicKeyHash: string
+    issuedAt: Date | string
+    expiresAt: Date | string
+    signature: string
+    adjudicatorPublicKey: string
+    createdAt?: Date | string
+  }
+
+  export type ValidationTokenUpdateInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    tokenId?: StringFieldUpdateOperationsInput | string
+    fileMetadataHash?: StringFieldUpdateOperationsInput | string
+    userPublicKeyHash?: StringFieldUpdateOperationsInput | string
+    issuedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    expiresAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    signature?: StringFieldUpdateOperationsInput | string
+    adjudicatorPublicKey?: StringFieldUpdateOperationsInput | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    file?: FileUpdateOneRequiredWithoutValidationTokenNestedInput
+  }
+
+  export type ValidationTokenUncheckedUpdateInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    tokenId?: StringFieldUpdateOperationsInput | string
+    fileId?: StringFieldUpdateOperationsInput | string
+    fileMetadataHash?: StringFieldUpdateOperationsInput | string
+    userPublicKeyHash?: StringFieldUpdateOperationsInput | string
+    issuedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    expiresAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    signature?: StringFieldUpdateOperationsInput | string
+    adjudicatorPublicKey?: StringFieldUpdateOperationsInput | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type ValidationTokenCreateManyInput = {
+    id?: string
+    tokenId: string
+    fileId: string
+    fileMetadataHash: string
+    userPublicKeyHash: string
+    issuedAt: Date | string
+    expiresAt: Date | string
+    signature: string
+    adjudicatorPublicKey: string
+    createdAt?: Date | string
+  }
+
+  export type ValidationTokenUpdateManyMutationInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    tokenId?: StringFieldUpdateOperationsInput | string
+    fileMetadataHash?: StringFieldUpdateOperationsInput | string
+    userPublicKeyHash?: StringFieldUpdateOperationsInput | string
+    issuedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    expiresAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    signature?: StringFieldUpdateOperationsInput | string
+    adjudicatorPublicKey?: StringFieldUpdateOperationsInput | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type ValidationTokenUncheckedUpdateManyInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    tokenId?: StringFieldUpdateOperationsInput | string
+    fileId?: StringFieldUpdateOperationsInput | string
+    fileMetadataHash?: StringFieldUpdateOperationsInput | string
+    userPublicKeyHash?: StringFieldUpdateOperationsInput | string
+    issuedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    expiresAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    signature?: StringFieldUpdateOperationsInput | string
+    adjudicatorPublicKey?: StringFieldUpdateOperationsInput | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type InvestigationAuditCreateInput = {
+    id?: string
+    investigationId: string
+    fileId: string
+    reason: string
+    adminApproval: string
+    legalAuthorization: string
+    decryptedPublicKey?: string | null
+    createdAt?: Date | string
+  }
+
+  export type InvestigationAuditUncheckedCreateInput = {
+    id?: string
+    investigationId: string
+    fileId: string
+    reason: string
+    adminApproval: string
+    legalAuthorization: string
+    decryptedPublicKey?: string | null
+    createdAt?: Date | string
+  }
+
+  export type InvestigationAuditUpdateInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    investigationId?: StringFieldUpdateOperationsInput | string
+    fileId?: StringFieldUpdateOperationsInput | string
+    reason?: StringFieldUpdateOperationsInput | string
+    adminApproval?: StringFieldUpdateOperationsInput | string
+    legalAuthorization?: StringFieldUpdateOperationsInput | string
+    decryptedPublicKey?: NullableStringFieldUpdateOperationsInput | string | null
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type InvestigationAuditUncheckedUpdateInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    investigationId?: StringFieldUpdateOperationsInput | string
+    fileId?: StringFieldUpdateOperationsInput | string
+    reason?: StringFieldUpdateOperationsInput | string
+    adminApproval?: StringFieldUpdateOperationsInput | string
+    legalAuthorization?: StringFieldUpdateOperationsInput | string
+    decryptedPublicKey?: NullableStringFieldUpdateOperationsInput | string | null
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type InvestigationAuditCreateManyInput = {
+    id?: string
+    investigationId: string
+    fileId: string
+    reason: string
+    adminApproval: string
+    legalAuthorization: string
+    decryptedPublicKey?: string | null
+    createdAt?: Date | string
+  }
+
+  export type InvestigationAuditUpdateManyMutationInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    investigationId?: StringFieldUpdateOperationsInput | string
+    fileId?: StringFieldUpdateOperationsInput | string
+    reason?: StringFieldUpdateOperationsInput | string
+    adminApproval?: StringFieldUpdateOperationsInput | string
+    legalAuthorization?: StringFieldUpdateOperationsInput | string
+    decryptedPublicKey?: NullableStringFieldUpdateOperationsInput | string | null
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type InvestigationAuditUncheckedUpdateManyInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    investigationId?: StringFieldUpdateOperationsInput | string
+    fileId?: StringFieldUpdateOperationsInput | string
+    reason?: StringFieldUpdateOperationsInput | string
+    adminApproval?: StringFieldUpdateOperationsInput | string
+    legalAuthorization?: StringFieldUpdateOperationsInput | string
+    decryptedPublicKey?: NullableStringFieldUpdateOperationsInput | string | null
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type ValidationNonceCreateInput = {
+    id?: string
+    nonce: string
+    createdAt?: Date | string
+  }
+
+  export type ValidationNonceUncheckedCreateInput = {
+    id?: string
+    nonce: string
+    createdAt?: Date | string
+  }
+
+  export type ValidationNonceUpdateInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    nonce?: StringFieldUpdateOperationsInput | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type ValidationNonceUncheckedUpdateInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    nonce?: StringFieldUpdateOperationsInput | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type ValidationNonceCreateManyInput = {
+    id?: string
+    nonce: string
+    createdAt?: Date | string
+  }
+
+  export type ValidationNonceUpdateManyMutationInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    nonce?: StringFieldUpdateOperationsInput | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type ValidationNonceUncheckedUpdateManyInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    nonce?: StringFieldUpdateOperationsInput | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type ValidationTokenAuditCreateInput = {
+    id?: string
+    tokenId: string
+    userPublicKey: string
+    userPublicKeyHash: string
+    fileMetadataHash: string
+    requestNonce: string
+    issuedAt: Date | string
+    expiresAt: Date | string
+    signature: string
+    createdAt?: Date | string
+  }
+
+  export type ValidationTokenAuditUncheckedCreateInput = {
+    id?: string
+    tokenId: string
+    userPublicKey: string
+    userPublicKeyHash: string
+    fileMetadataHash: string
+    requestNonce: string
+    issuedAt: Date | string
+    expiresAt: Date | string
+    signature: string
+    createdAt?: Date | string
+  }
+
+  export type ValidationTokenAuditUpdateInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    tokenId?: StringFieldUpdateOperationsInput | string
+    userPublicKey?: StringFieldUpdateOperationsInput | string
+    userPublicKeyHash?: StringFieldUpdateOperationsInput | string
+    fileMetadataHash?: StringFieldUpdateOperationsInput | string
+    requestNonce?: StringFieldUpdateOperationsInput | string
+    issuedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    expiresAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    signature?: StringFieldUpdateOperationsInput | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type ValidationTokenAuditUncheckedUpdateInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    tokenId?: StringFieldUpdateOperationsInput | string
+    userPublicKey?: StringFieldUpdateOperationsInput | string
+    userPublicKeyHash?: StringFieldUpdateOperationsInput | string
+    fileMetadataHash?: StringFieldUpdateOperationsInput | string
+    requestNonce?: StringFieldUpdateOperationsInput | string
+    issuedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    expiresAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    signature?: StringFieldUpdateOperationsInput | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type ValidationTokenAuditCreateManyInput = {
+    id?: string
+    tokenId: string
+    userPublicKey: string
+    userPublicKeyHash: string
+    fileMetadataHash: string
+    requestNonce: string
+    issuedAt: Date | string
+    expiresAt: Date | string
+    signature: string
+    createdAt?: Date | string
+  }
+
+  export type ValidationTokenAuditUpdateManyMutationInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    tokenId?: StringFieldUpdateOperationsInput | string
+    userPublicKey?: StringFieldUpdateOperationsInput | string
+    userPublicKeyHash?: StringFieldUpdateOperationsInput | string
+    fileMetadataHash?: StringFieldUpdateOperationsInput | string
+    requestNonce?: StringFieldUpdateOperationsInput | string
+    issuedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    expiresAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    signature?: StringFieldUpdateOperationsInput | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type ValidationTokenAuditUncheckedUpdateManyInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    tokenId?: StringFieldUpdateOperationsInput | string
+    userPublicKey?: StringFieldUpdateOperationsInput | string
+    userPublicKeyHash?: StringFieldUpdateOperationsInput | string
+    fileMetadataHash?: StringFieldUpdateOperationsInput | string
+    requestNonce?: StringFieldUpdateOperationsInput | string
+    issuedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    expiresAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    signature?: StringFieldUpdateOperationsInput | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type BannedUserCreateInput = {
+    id?: string
+    publicKey: string
+    reason: string
+    bannedByAdmin: string
+    bannedAt?: Date | string
+  }
+
+  export type BannedUserUncheckedCreateInput = {
+    id?: string
+    publicKey: string
+    reason: string
+    bannedByAdmin: string
+    bannedAt?: Date | string
+  }
+
+  export type BannedUserUpdateInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    publicKey?: StringFieldUpdateOperationsInput | string
+    reason?: StringFieldUpdateOperationsInput | string
+    bannedByAdmin?: StringFieldUpdateOperationsInput | string
+    bannedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type BannedUserUncheckedUpdateInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    publicKey?: StringFieldUpdateOperationsInput | string
+    reason?: StringFieldUpdateOperationsInput | string
+    bannedByAdmin?: StringFieldUpdateOperationsInput | string
+    bannedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type BannedUserCreateManyInput = {
+    id?: string
+    publicKey: string
+    reason: string
+    bannedByAdmin: string
+    bannedAt?: Date | string
+  }
+
+  export type BannedUserUpdateManyMutationInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    publicKey?: StringFieldUpdateOperationsInput | string
+    reason?: StringFieldUpdateOperationsInput | string
+    bannedByAdmin?: StringFieldUpdateOperationsInput | string
+    bannedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type BannedUserUncheckedUpdateManyInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    publicKey?: StringFieldUpdateOperationsInput | string
+    reason?: StringFieldUpdateOperationsInput | string
+    bannedByAdmin?: StringFieldUpdateOperationsInput | string
+    bannedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
   export type StringFilter<$PrismaModel = never> = {
     equals?: string | StringFieldRefInput<$PrismaModel>
     in?: string[]
@@ -13137,6 +18900,11 @@ export namespace Prisma {
     every?: IntegrityAlertWhereInput
     some?: IntegrityAlertWhereInput
     none?: IntegrityAlertWhereInput
+  }
+
+  export type ValidationTokenNullableRelationFilter = {
+    is?: ValidationTokenWhereInput | null
+    isNot?: ValidationTokenWhereInput | null
   }
 
   export type AnonymousFileAccessOrderByRelationAggregateInput = {
@@ -13615,6 +19383,159 @@ export namespace Prisma {
     updatedAt?: SortOrder
   }
 
+  export type ValidationTokenCountOrderByAggregateInput = {
+    id?: SortOrder
+    tokenId?: SortOrder
+    fileId?: SortOrder
+    fileMetadataHash?: SortOrder
+    userPublicKeyHash?: SortOrder
+    issuedAt?: SortOrder
+    expiresAt?: SortOrder
+    signature?: SortOrder
+    adjudicatorPublicKey?: SortOrder
+    createdAt?: SortOrder
+  }
+
+  export type ValidationTokenMaxOrderByAggregateInput = {
+    id?: SortOrder
+    tokenId?: SortOrder
+    fileId?: SortOrder
+    fileMetadataHash?: SortOrder
+    userPublicKeyHash?: SortOrder
+    issuedAt?: SortOrder
+    expiresAt?: SortOrder
+    signature?: SortOrder
+    adjudicatorPublicKey?: SortOrder
+    createdAt?: SortOrder
+  }
+
+  export type ValidationTokenMinOrderByAggregateInput = {
+    id?: SortOrder
+    tokenId?: SortOrder
+    fileId?: SortOrder
+    fileMetadataHash?: SortOrder
+    userPublicKeyHash?: SortOrder
+    issuedAt?: SortOrder
+    expiresAt?: SortOrder
+    signature?: SortOrder
+    adjudicatorPublicKey?: SortOrder
+    createdAt?: SortOrder
+  }
+
+  export type InvestigationAuditCountOrderByAggregateInput = {
+    id?: SortOrder
+    investigationId?: SortOrder
+    fileId?: SortOrder
+    reason?: SortOrder
+    adminApproval?: SortOrder
+    legalAuthorization?: SortOrder
+    decryptedPublicKey?: SortOrder
+    createdAt?: SortOrder
+  }
+
+  export type InvestigationAuditMaxOrderByAggregateInput = {
+    id?: SortOrder
+    investigationId?: SortOrder
+    fileId?: SortOrder
+    reason?: SortOrder
+    adminApproval?: SortOrder
+    legalAuthorization?: SortOrder
+    decryptedPublicKey?: SortOrder
+    createdAt?: SortOrder
+  }
+
+  export type InvestigationAuditMinOrderByAggregateInput = {
+    id?: SortOrder
+    investigationId?: SortOrder
+    fileId?: SortOrder
+    reason?: SortOrder
+    adminApproval?: SortOrder
+    legalAuthorization?: SortOrder
+    decryptedPublicKey?: SortOrder
+    createdAt?: SortOrder
+  }
+
+  export type ValidationNonceCountOrderByAggregateInput = {
+    id?: SortOrder
+    nonce?: SortOrder
+    createdAt?: SortOrder
+  }
+
+  export type ValidationNonceMaxOrderByAggregateInput = {
+    id?: SortOrder
+    nonce?: SortOrder
+    createdAt?: SortOrder
+  }
+
+  export type ValidationNonceMinOrderByAggregateInput = {
+    id?: SortOrder
+    nonce?: SortOrder
+    createdAt?: SortOrder
+  }
+
+  export type ValidationTokenAuditCountOrderByAggregateInput = {
+    id?: SortOrder
+    tokenId?: SortOrder
+    userPublicKey?: SortOrder
+    userPublicKeyHash?: SortOrder
+    fileMetadataHash?: SortOrder
+    requestNonce?: SortOrder
+    issuedAt?: SortOrder
+    expiresAt?: SortOrder
+    signature?: SortOrder
+    createdAt?: SortOrder
+  }
+
+  export type ValidationTokenAuditMaxOrderByAggregateInput = {
+    id?: SortOrder
+    tokenId?: SortOrder
+    userPublicKey?: SortOrder
+    userPublicKeyHash?: SortOrder
+    fileMetadataHash?: SortOrder
+    requestNonce?: SortOrder
+    issuedAt?: SortOrder
+    expiresAt?: SortOrder
+    signature?: SortOrder
+    createdAt?: SortOrder
+  }
+
+  export type ValidationTokenAuditMinOrderByAggregateInput = {
+    id?: SortOrder
+    tokenId?: SortOrder
+    userPublicKey?: SortOrder
+    userPublicKeyHash?: SortOrder
+    fileMetadataHash?: SortOrder
+    requestNonce?: SortOrder
+    issuedAt?: SortOrder
+    expiresAt?: SortOrder
+    signature?: SortOrder
+    createdAt?: SortOrder
+  }
+
+  export type BannedUserCountOrderByAggregateInput = {
+    id?: SortOrder
+    publicKey?: SortOrder
+    reason?: SortOrder
+    bannedByAdmin?: SortOrder
+    bannedAt?: SortOrder
+  }
+
+  export type BannedUserMaxOrderByAggregateInput = {
+    id?: SortOrder
+    publicKey?: SortOrder
+    reason?: SortOrder
+    bannedByAdmin?: SortOrder
+    bannedAt?: SortOrder
+  }
+
+  export type BannedUserMinOrderByAggregateInput = {
+    id?: SortOrder
+    publicKey?: SortOrder
+    reason?: SortOrder
+    bannedByAdmin?: SortOrder
+    bannedAt?: SortOrder
+  }
+
   export type FileCreateNestedManyWithoutUploaderInput = {
     create?: XOR<FileCreateWithoutUploaderInput, FileUncheckedCreateWithoutUploaderInput> | FileCreateWithoutUploaderInput[] | FileUncheckedCreateWithoutUploaderInput[]
     connectOrCreate?: FileCreateOrConnectWithoutUploaderInput | FileCreateOrConnectWithoutUploaderInput[]
@@ -13759,6 +19680,12 @@ export namespace Prisma {
     connect?: SignatureWhereUniqueInput | SignatureWhereUniqueInput[]
   }
 
+  export type ValidationTokenCreateNestedOneWithoutFileInput = {
+    create?: XOR<ValidationTokenCreateWithoutFileInput, ValidationTokenUncheckedCreateWithoutFileInput>
+    connectOrCreate?: ValidationTokenCreateOrConnectWithoutFileInput
+    connect?: ValidationTokenWhereUniqueInput
+  }
+
   export type AnonymousFileAccessUncheckedCreateNestedManyWithoutFileInput = {
     create?: XOR<AnonymousFileAccessCreateWithoutFileInput, AnonymousFileAccessUncheckedCreateWithoutFileInput> | AnonymousFileAccessCreateWithoutFileInput[] | AnonymousFileAccessUncheckedCreateWithoutFileInput[]
     connectOrCreate?: AnonymousFileAccessCreateOrConnectWithoutFileInput | AnonymousFileAccessCreateOrConnectWithoutFileInput[]
@@ -13799,6 +19726,12 @@ export namespace Prisma {
     connectOrCreate?: SignatureCreateOrConnectWithoutFileInput | SignatureCreateOrConnectWithoutFileInput[]
     createMany?: SignatureCreateManyFileInputEnvelope
     connect?: SignatureWhereUniqueInput | SignatureWhereUniqueInput[]
+  }
+
+  export type ValidationTokenUncheckedCreateNestedOneWithoutFileInput = {
+    create?: XOR<ValidationTokenCreateWithoutFileInput, ValidationTokenUncheckedCreateWithoutFileInput>
+    connectOrCreate?: ValidationTokenCreateOrConnectWithoutFileInput
+    connect?: ValidationTokenWhereUniqueInput
   }
 
   export type IntFieldUpdateOperationsInput = {
@@ -13907,6 +19840,16 @@ export namespace Prisma {
     deleteMany?: SignatureScalarWhereInput | SignatureScalarWhereInput[]
   }
 
+  export type ValidationTokenUpdateOneWithoutFileNestedInput = {
+    create?: XOR<ValidationTokenCreateWithoutFileInput, ValidationTokenUncheckedCreateWithoutFileInput>
+    connectOrCreate?: ValidationTokenCreateOrConnectWithoutFileInput
+    upsert?: ValidationTokenUpsertWithoutFileInput
+    disconnect?: ValidationTokenWhereInput | boolean
+    delete?: ValidationTokenWhereInput | boolean
+    connect?: ValidationTokenWhereUniqueInput
+    update?: XOR<XOR<ValidationTokenUpdateToOneWithWhereWithoutFileInput, ValidationTokenUpdateWithoutFileInput>, ValidationTokenUncheckedUpdateWithoutFileInput>
+  }
+
   export type AnonymousFileAccessUncheckedUpdateManyWithoutFileNestedInput = {
     create?: XOR<AnonymousFileAccessCreateWithoutFileInput, AnonymousFileAccessUncheckedCreateWithoutFileInput> | AnonymousFileAccessCreateWithoutFileInput[] | AnonymousFileAccessUncheckedCreateWithoutFileInput[]
     connectOrCreate?: AnonymousFileAccessCreateOrConnectWithoutFileInput | AnonymousFileAccessCreateOrConnectWithoutFileInput[]
@@ -13989,6 +19932,16 @@ export namespace Prisma {
     update?: SignatureUpdateWithWhereUniqueWithoutFileInput | SignatureUpdateWithWhereUniqueWithoutFileInput[]
     updateMany?: SignatureUpdateManyWithWhereWithoutFileInput | SignatureUpdateManyWithWhereWithoutFileInput[]
     deleteMany?: SignatureScalarWhereInput | SignatureScalarWhereInput[]
+  }
+
+  export type ValidationTokenUncheckedUpdateOneWithoutFileNestedInput = {
+    create?: XOR<ValidationTokenCreateWithoutFileInput, ValidationTokenUncheckedCreateWithoutFileInput>
+    connectOrCreate?: ValidationTokenCreateOrConnectWithoutFileInput
+    upsert?: ValidationTokenUpsertWithoutFileInput
+    disconnect?: ValidationTokenWhereInput | boolean
+    delete?: ValidationTokenWhereInput | boolean
+    connect?: ValidationTokenWhereUniqueInput
+    update?: XOR<XOR<ValidationTokenUpdateToOneWithWhereWithoutFileInput, ValidationTokenUpdateWithoutFileInput>, ValidationTokenUncheckedUpdateWithoutFileInput>
   }
 
   export type FileCreateNestedOneWithoutChunksInput = {
@@ -14091,6 +20044,20 @@ export namespace Prisma {
     upsert?: FileUpsertWithoutSignaturesInput
     connect?: FileWhereUniqueInput
     update?: XOR<XOR<FileUpdateToOneWithWhereWithoutSignaturesInput, FileUpdateWithoutSignaturesInput>, FileUncheckedUpdateWithoutSignaturesInput>
+  }
+
+  export type FileCreateNestedOneWithoutValidationTokenInput = {
+    create?: XOR<FileCreateWithoutValidationTokenInput, FileUncheckedCreateWithoutValidationTokenInput>
+    connectOrCreate?: FileCreateOrConnectWithoutValidationTokenInput
+    connect?: FileWhereUniqueInput
+  }
+
+  export type FileUpdateOneRequiredWithoutValidationTokenNestedInput = {
+    create?: XOR<FileCreateWithoutValidationTokenInput, FileUncheckedCreateWithoutValidationTokenInput>
+    connectOrCreate?: FileCreateOrConnectWithoutValidationTokenInput
+    upsert?: FileUpsertWithoutValidationTokenInput
+    connect?: FileWhereUniqueInput
+    update?: XOR<XOR<FileUpdateToOneWithWhereWithoutValidationTokenInput, FileUpdateWithoutValidationTokenInput>, FileUncheckedUpdateWithoutValidationTokenInput>
   }
 
   export type NestedStringFilter<$PrismaModel = never> = {
@@ -14293,6 +20260,7 @@ export namespace Prisma {
     chunks?: FileChunkCreateNestedManyWithoutFileInput
     integrityAlerts?: IntegrityAlertCreateNestedManyWithoutFileInput
     signatures?: SignatureCreateNestedManyWithoutFileInput
+    validationToken?: ValidationTokenCreateNestedOneWithoutFileInput
   }
 
   export type FileUncheckedCreateWithoutUploaderInput = {
@@ -14321,6 +20289,7 @@ export namespace Prisma {
     chunks?: FileChunkUncheckedCreateNestedManyWithoutFileInput
     integrityAlerts?: IntegrityAlertUncheckedCreateNestedManyWithoutFileInput
     signatures?: SignatureUncheckedCreateNestedManyWithoutFileInput
+    validationToken?: ValidationTokenUncheckedCreateNestedOneWithoutFileInput
   }
 
   export type FileCreateOrConnectWithoutUploaderInput = {
@@ -14665,6 +20634,35 @@ export namespace Prisma {
     data: SignatureCreateManyFileInput | SignatureCreateManyFileInput[]
   }
 
+  export type ValidationTokenCreateWithoutFileInput = {
+    id?: string
+    tokenId: string
+    fileMetadataHash: string
+    userPublicKeyHash: string
+    issuedAt: Date | string
+    expiresAt: Date | string
+    signature: string
+    adjudicatorPublicKey: string
+    createdAt?: Date | string
+  }
+
+  export type ValidationTokenUncheckedCreateWithoutFileInput = {
+    id?: string
+    tokenId: string
+    fileMetadataHash: string
+    userPublicKeyHash: string
+    issuedAt: Date | string
+    expiresAt: Date | string
+    signature: string
+    adjudicatorPublicKey: string
+    createdAt?: Date | string
+  }
+
+  export type ValidationTokenCreateOrConnectWithoutFileInput = {
+    where: ValidationTokenWhereUniqueInput
+    create: XOR<ValidationTokenCreateWithoutFileInput, ValidationTokenUncheckedCreateWithoutFileInput>
+  }
+
   export type AnonymousFileAccessUpsertWithWhereUniqueWithoutFileInput = {
     where: AnonymousFileAccessWhereUniqueInput
     update: XOR<AnonymousFileAccessUpdateWithoutFileInput, AnonymousFileAccessUncheckedUpdateWithoutFileInput>
@@ -14876,6 +20874,41 @@ export namespace Prisma {
     data: XOR<SignatureUpdateManyMutationInput, SignatureUncheckedUpdateManyWithoutFileInput>
   }
 
+  export type ValidationTokenUpsertWithoutFileInput = {
+    update: XOR<ValidationTokenUpdateWithoutFileInput, ValidationTokenUncheckedUpdateWithoutFileInput>
+    create: XOR<ValidationTokenCreateWithoutFileInput, ValidationTokenUncheckedCreateWithoutFileInput>
+    where?: ValidationTokenWhereInput
+  }
+
+  export type ValidationTokenUpdateToOneWithWhereWithoutFileInput = {
+    where?: ValidationTokenWhereInput
+    data: XOR<ValidationTokenUpdateWithoutFileInput, ValidationTokenUncheckedUpdateWithoutFileInput>
+  }
+
+  export type ValidationTokenUpdateWithoutFileInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    tokenId?: StringFieldUpdateOperationsInput | string
+    fileMetadataHash?: StringFieldUpdateOperationsInput | string
+    userPublicKeyHash?: StringFieldUpdateOperationsInput | string
+    issuedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    expiresAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    signature?: StringFieldUpdateOperationsInput | string
+    adjudicatorPublicKey?: StringFieldUpdateOperationsInput | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type ValidationTokenUncheckedUpdateWithoutFileInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    tokenId?: StringFieldUpdateOperationsInput | string
+    fileMetadataHash?: StringFieldUpdateOperationsInput | string
+    userPublicKeyHash?: StringFieldUpdateOperationsInput | string
+    issuedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    expiresAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    signature?: StringFieldUpdateOperationsInput | string
+    adjudicatorPublicKey?: StringFieldUpdateOperationsInput | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
   export type FileCreateWithoutChunksInput = {
     id?: string
     fileName: string
@@ -14902,6 +20935,7 @@ export namespace Prisma {
     uploader?: UserCreateNestedOneWithoutUploadedFilesInput
     integrityAlerts?: IntegrityAlertCreateNestedManyWithoutFileInput
     signatures?: SignatureCreateNestedManyWithoutFileInput
+    validationToken?: ValidationTokenCreateNestedOneWithoutFileInput
   }
 
   export type FileUncheckedCreateWithoutChunksInput = {
@@ -14930,6 +20964,7 @@ export namespace Prisma {
     sharingRequests?: AnonymousSharingRequestUncheckedCreateNestedManyWithoutFileInput
     integrityAlerts?: IntegrityAlertUncheckedCreateNestedManyWithoutFileInput
     signatures?: SignatureUncheckedCreateNestedManyWithoutFileInput
+    validationToken?: ValidationTokenUncheckedCreateNestedOneWithoutFileInput
   }
 
   export type FileCreateOrConnectWithoutChunksInput = {
@@ -14974,6 +21009,7 @@ export namespace Prisma {
     uploader?: UserUpdateOneWithoutUploadedFilesNestedInput
     integrityAlerts?: IntegrityAlertUpdateManyWithoutFileNestedInput
     signatures?: SignatureUpdateManyWithoutFileNestedInput
+    validationToken?: ValidationTokenUpdateOneWithoutFileNestedInput
   }
 
   export type FileUncheckedUpdateWithoutChunksInput = {
@@ -15002,6 +21038,7 @@ export namespace Prisma {
     sharingRequests?: AnonymousSharingRequestUncheckedUpdateManyWithoutFileNestedInput
     integrityAlerts?: IntegrityAlertUncheckedUpdateManyWithoutFileNestedInput
     signatures?: SignatureUncheckedUpdateManyWithoutFileNestedInput
+    validationToken?: ValidationTokenUncheckedUpdateOneWithoutFileNestedInput
   }
 
   export type FileCreateWithoutRevocationsInput = {
@@ -15030,6 +21067,7 @@ export namespace Prisma {
     chunks?: FileChunkCreateNestedManyWithoutFileInput
     integrityAlerts?: IntegrityAlertCreateNestedManyWithoutFileInput
     signatures?: SignatureCreateNestedManyWithoutFileInput
+    validationToken?: ValidationTokenCreateNestedOneWithoutFileInput
   }
 
   export type FileUncheckedCreateWithoutRevocationsInput = {
@@ -15058,6 +21096,7 @@ export namespace Prisma {
     chunks?: FileChunkUncheckedCreateNestedManyWithoutFileInput
     integrityAlerts?: IntegrityAlertUncheckedCreateNestedManyWithoutFileInput
     signatures?: SignatureUncheckedCreateNestedManyWithoutFileInput
+    validationToken?: ValidationTokenUncheckedCreateNestedOneWithoutFileInput
   }
 
   export type FileCreateOrConnectWithoutRevocationsInput = {
@@ -15102,6 +21141,7 @@ export namespace Prisma {
     chunks?: FileChunkUpdateManyWithoutFileNestedInput
     integrityAlerts?: IntegrityAlertUpdateManyWithoutFileNestedInput
     signatures?: SignatureUpdateManyWithoutFileNestedInput
+    validationToken?: ValidationTokenUpdateOneWithoutFileNestedInput
   }
 
   export type FileUncheckedUpdateWithoutRevocationsInput = {
@@ -15130,6 +21170,7 @@ export namespace Prisma {
     chunks?: FileChunkUncheckedUpdateManyWithoutFileNestedInput
     integrityAlerts?: IntegrityAlertUncheckedUpdateManyWithoutFileNestedInput
     signatures?: SignatureUncheckedUpdateManyWithoutFileNestedInput
+    validationToken?: ValidationTokenUncheckedUpdateOneWithoutFileNestedInput
   }
 
   export type FileCreateWithoutIntegrityAlertsInput = {
@@ -15158,6 +21199,7 @@ export namespace Prisma {
     uploader?: UserCreateNestedOneWithoutUploadedFilesInput
     chunks?: FileChunkCreateNestedManyWithoutFileInput
     signatures?: SignatureCreateNestedManyWithoutFileInput
+    validationToken?: ValidationTokenCreateNestedOneWithoutFileInput
   }
 
   export type FileUncheckedCreateWithoutIntegrityAlertsInput = {
@@ -15186,6 +21228,7 @@ export namespace Prisma {
     sharingRequests?: AnonymousSharingRequestUncheckedCreateNestedManyWithoutFileInput
     chunks?: FileChunkUncheckedCreateNestedManyWithoutFileInput
     signatures?: SignatureUncheckedCreateNestedManyWithoutFileInput
+    validationToken?: ValidationTokenUncheckedCreateNestedOneWithoutFileInput
   }
 
   export type FileCreateOrConnectWithoutIntegrityAlertsInput = {
@@ -15230,6 +21273,7 @@ export namespace Prisma {
     uploader?: UserUpdateOneWithoutUploadedFilesNestedInput
     chunks?: FileChunkUpdateManyWithoutFileNestedInput
     signatures?: SignatureUpdateManyWithoutFileNestedInput
+    validationToken?: ValidationTokenUpdateOneWithoutFileNestedInput
   }
 
   export type FileUncheckedUpdateWithoutIntegrityAlertsInput = {
@@ -15258,6 +21302,7 @@ export namespace Prisma {
     sharingRequests?: AnonymousSharingRequestUncheckedUpdateManyWithoutFileNestedInput
     chunks?: FileChunkUncheckedUpdateManyWithoutFileNestedInput
     signatures?: SignatureUncheckedUpdateManyWithoutFileNestedInput
+    validationToken?: ValidationTokenUncheckedUpdateOneWithoutFileNestedInput
   }
 
   export type FileCreateWithoutAnonymousAccessInput = {
@@ -15286,6 +21331,7 @@ export namespace Prisma {
     chunks?: FileChunkCreateNestedManyWithoutFileInput
     integrityAlerts?: IntegrityAlertCreateNestedManyWithoutFileInput
     signatures?: SignatureCreateNestedManyWithoutFileInput
+    validationToken?: ValidationTokenCreateNestedOneWithoutFileInput
   }
 
   export type FileUncheckedCreateWithoutAnonymousAccessInput = {
@@ -15314,6 +21360,7 @@ export namespace Prisma {
     chunks?: FileChunkUncheckedCreateNestedManyWithoutFileInput
     integrityAlerts?: IntegrityAlertUncheckedCreateNestedManyWithoutFileInput
     signatures?: SignatureUncheckedCreateNestedManyWithoutFileInput
+    validationToken?: ValidationTokenUncheckedCreateNestedOneWithoutFileInput
   }
 
   export type FileCreateOrConnectWithoutAnonymousAccessInput = {
@@ -15358,6 +21405,7 @@ export namespace Prisma {
     chunks?: FileChunkUpdateManyWithoutFileNestedInput
     integrityAlerts?: IntegrityAlertUpdateManyWithoutFileNestedInput
     signatures?: SignatureUpdateManyWithoutFileNestedInput
+    validationToken?: ValidationTokenUpdateOneWithoutFileNestedInput
   }
 
   export type FileUncheckedUpdateWithoutAnonymousAccessInput = {
@@ -15386,6 +21434,7 @@ export namespace Prisma {
     chunks?: FileChunkUncheckedUpdateManyWithoutFileNestedInput
     integrityAlerts?: IntegrityAlertUncheckedUpdateManyWithoutFileNestedInput
     signatures?: SignatureUncheckedUpdateManyWithoutFileNestedInput
+    validationToken?: ValidationTokenUncheckedUpdateOneWithoutFileNestedInput
   }
 
   export type FileCreateWithoutSharingRequestsInput = {
@@ -15414,6 +21463,7 @@ export namespace Prisma {
     chunks?: FileChunkCreateNestedManyWithoutFileInput
     integrityAlerts?: IntegrityAlertCreateNestedManyWithoutFileInput
     signatures?: SignatureCreateNestedManyWithoutFileInput
+    validationToken?: ValidationTokenCreateNestedOneWithoutFileInput
   }
 
   export type FileUncheckedCreateWithoutSharingRequestsInput = {
@@ -15442,6 +21492,7 @@ export namespace Prisma {
     chunks?: FileChunkUncheckedCreateNestedManyWithoutFileInput
     integrityAlerts?: IntegrityAlertUncheckedCreateNestedManyWithoutFileInput
     signatures?: SignatureUncheckedCreateNestedManyWithoutFileInput
+    validationToken?: ValidationTokenUncheckedCreateNestedOneWithoutFileInput
   }
 
   export type FileCreateOrConnectWithoutSharingRequestsInput = {
@@ -15486,6 +21537,7 @@ export namespace Prisma {
     chunks?: FileChunkUpdateManyWithoutFileNestedInput
     integrityAlerts?: IntegrityAlertUpdateManyWithoutFileNestedInput
     signatures?: SignatureUpdateManyWithoutFileNestedInput
+    validationToken?: ValidationTokenUpdateOneWithoutFileNestedInput
   }
 
   export type FileUncheckedUpdateWithoutSharingRequestsInput = {
@@ -15514,6 +21566,7 @@ export namespace Prisma {
     chunks?: FileChunkUncheckedUpdateManyWithoutFileNestedInput
     integrityAlerts?: IntegrityAlertUncheckedUpdateManyWithoutFileNestedInput
     signatures?: SignatureUncheckedUpdateManyWithoutFileNestedInput
+    validationToken?: ValidationTokenUncheckedUpdateOneWithoutFileNestedInput
   }
 
   export type UserCreateWithoutSignaturesInput = {
@@ -15567,6 +21620,7 @@ export namespace Prisma {
     uploader?: UserCreateNestedOneWithoutUploadedFilesInput
     chunks?: FileChunkCreateNestedManyWithoutFileInput
     integrityAlerts?: IntegrityAlertCreateNestedManyWithoutFileInput
+    validationToken?: ValidationTokenCreateNestedOneWithoutFileInput
   }
 
   export type FileUncheckedCreateWithoutSignaturesInput = {
@@ -15595,6 +21649,7 @@ export namespace Prisma {
     sharingRequests?: AnonymousSharingRequestUncheckedCreateNestedManyWithoutFileInput
     chunks?: FileChunkUncheckedCreateNestedManyWithoutFileInput
     integrityAlerts?: IntegrityAlertUncheckedCreateNestedManyWithoutFileInput
+    validationToken?: ValidationTokenUncheckedCreateNestedOneWithoutFileInput
   }
 
   export type FileCreateOrConnectWithoutSignaturesInput = {
@@ -15670,6 +21725,7 @@ export namespace Prisma {
     uploader?: UserUpdateOneWithoutUploadedFilesNestedInput
     chunks?: FileChunkUpdateManyWithoutFileNestedInput
     integrityAlerts?: IntegrityAlertUpdateManyWithoutFileNestedInput
+    validationToken?: ValidationTokenUpdateOneWithoutFileNestedInput
   }
 
   export type FileUncheckedUpdateWithoutSignaturesInput = {
@@ -15698,6 +21754,139 @@ export namespace Prisma {
     sharingRequests?: AnonymousSharingRequestUncheckedUpdateManyWithoutFileNestedInput
     chunks?: FileChunkUncheckedUpdateManyWithoutFileNestedInput
     integrityAlerts?: IntegrityAlertUncheckedUpdateManyWithoutFileNestedInput
+    validationToken?: ValidationTokenUncheckedUpdateOneWithoutFileNestedInput
+  }
+
+  export type FileCreateWithoutValidationTokenInput = {
+    id?: string
+    fileName: string
+    totalSize: number
+    mimeType?: string | null
+    chunkCount?: number
+    metadata?: string | null
+    metadataHash: string
+    encryptedChunkKeys: string
+    ringSignature?: string | null
+    ringPublicKeys?: string | null
+    escrowedIdentity?: string | null
+    ownershipPublicKey: string
+    ownershipCreatedAt?: Date | string
+    uploaderPublicKeyHash?: string | null
+    status?: string
+    createdAt?: Date | string
+    updatedAt?: Date | string
+    lastRevocationId?: string | null
+    lastRevocationAt?: Date | string | null
+    anonymousAccess?: AnonymousFileAccessCreateNestedManyWithoutFileInput
+    revocations?: AnonymousRevocationCreateNestedManyWithoutFileInput
+    sharingRequests?: AnonymousSharingRequestCreateNestedManyWithoutFileInput
+    uploader?: UserCreateNestedOneWithoutUploadedFilesInput
+    chunks?: FileChunkCreateNestedManyWithoutFileInput
+    integrityAlerts?: IntegrityAlertCreateNestedManyWithoutFileInput
+    signatures?: SignatureCreateNestedManyWithoutFileInput
+  }
+
+  export type FileUncheckedCreateWithoutValidationTokenInput = {
+    id?: string
+    fileName: string
+    totalSize: number
+    mimeType?: string | null
+    chunkCount?: number
+    metadata?: string | null
+    metadataHash: string
+    encryptedChunkKeys: string
+    ringSignature?: string | null
+    ringPublicKeys?: string | null
+    escrowedIdentity?: string | null
+    ownershipPublicKey: string
+    ownershipCreatedAt?: Date | string
+    uploaderId?: string | null
+    uploaderPublicKeyHash?: string | null
+    status?: string
+    createdAt?: Date | string
+    updatedAt?: Date | string
+    lastRevocationId?: string | null
+    lastRevocationAt?: Date | string | null
+    anonymousAccess?: AnonymousFileAccessUncheckedCreateNestedManyWithoutFileInput
+    revocations?: AnonymousRevocationUncheckedCreateNestedManyWithoutFileInput
+    sharingRequests?: AnonymousSharingRequestUncheckedCreateNestedManyWithoutFileInput
+    chunks?: FileChunkUncheckedCreateNestedManyWithoutFileInput
+    integrityAlerts?: IntegrityAlertUncheckedCreateNestedManyWithoutFileInput
+    signatures?: SignatureUncheckedCreateNestedManyWithoutFileInput
+  }
+
+  export type FileCreateOrConnectWithoutValidationTokenInput = {
+    where: FileWhereUniqueInput
+    create: XOR<FileCreateWithoutValidationTokenInput, FileUncheckedCreateWithoutValidationTokenInput>
+  }
+
+  export type FileUpsertWithoutValidationTokenInput = {
+    update: XOR<FileUpdateWithoutValidationTokenInput, FileUncheckedUpdateWithoutValidationTokenInput>
+    create: XOR<FileCreateWithoutValidationTokenInput, FileUncheckedCreateWithoutValidationTokenInput>
+    where?: FileWhereInput
+  }
+
+  export type FileUpdateToOneWithWhereWithoutValidationTokenInput = {
+    where?: FileWhereInput
+    data: XOR<FileUpdateWithoutValidationTokenInput, FileUncheckedUpdateWithoutValidationTokenInput>
+  }
+
+  export type FileUpdateWithoutValidationTokenInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    fileName?: StringFieldUpdateOperationsInput | string
+    totalSize?: IntFieldUpdateOperationsInput | number
+    mimeType?: NullableStringFieldUpdateOperationsInput | string | null
+    chunkCount?: IntFieldUpdateOperationsInput | number
+    metadata?: NullableStringFieldUpdateOperationsInput | string | null
+    metadataHash?: StringFieldUpdateOperationsInput | string
+    encryptedChunkKeys?: StringFieldUpdateOperationsInput | string
+    ringSignature?: NullableStringFieldUpdateOperationsInput | string | null
+    ringPublicKeys?: NullableStringFieldUpdateOperationsInput | string | null
+    escrowedIdentity?: NullableStringFieldUpdateOperationsInput | string | null
+    ownershipPublicKey?: StringFieldUpdateOperationsInput | string
+    ownershipCreatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    uploaderPublicKeyHash?: NullableStringFieldUpdateOperationsInput | string | null
+    status?: StringFieldUpdateOperationsInput | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    lastRevocationId?: NullableStringFieldUpdateOperationsInput | string | null
+    lastRevocationAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    anonymousAccess?: AnonymousFileAccessUpdateManyWithoutFileNestedInput
+    revocations?: AnonymousRevocationUpdateManyWithoutFileNestedInput
+    sharingRequests?: AnonymousSharingRequestUpdateManyWithoutFileNestedInput
+    uploader?: UserUpdateOneWithoutUploadedFilesNestedInput
+    chunks?: FileChunkUpdateManyWithoutFileNestedInput
+    integrityAlerts?: IntegrityAlertUpdateManyWithoutFileNestedInput
+    signatures?: SignatureUpdateManyWithoutFileNestedInput
+  }
+
+  export type FileUncheckedUpdateWithoutValidationTokenInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    fileName?: StringFieldUpdateOperationsInput | string
+    totalSize?: IntFieldUpdateOperationsInput | number
+    mimeType?: NullableStringFieldUpdateOperationsInput | string | null
+    chunkCount?: IntFieldUpdateOperationsInput | number
+    metadata?: NullableStringFieldUpdateOperationsInput | string | null
+    metadataHash?: StringFieldUpdateOperationsInput | string
+    encryptedChunkKeys?: StringFieldUpdateOperationsInput | string
+    ringSignature?: NullableStringFieldUpdateOperationsInput | string | null
+    ringPublicKeys?: NullableStringFieldUpdateOperationsInput | string | null
+    escrowedIdentity?: NullableStringFieldUpdateOperationsInput | string | null
+    ownershipPublicKey?: StringFieldUpdateOperationsInput | string
+    ownershipCreatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    uploaderId?: NullableStringFieldUpdateOperationsInput | string | null
+    uploaderPublicKeyHash?: NullableStringFieldUpdateOperationsInput | string | null
+    status?: StringFieldUpdateOperationsInput | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    lastRevocationId?: NullableStringFieldUpdateOperationsInput | string | null
+    lastRevocationAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    anonymousAccess?: AnonymousFileAccessUncheckedUpdateManyWithoutFileNestedInput
+    revocations?: AnonymousRevocationUncheckedUpdateManyWithoutFileNestedInput
+    sharingRequests?: AnonymousSharingRequestUncheckedUpdateManyWithoutFileNestedInput
+    chunks?: FileChunkUncheckedUpdateManyWithoutFileNestedInput
+    integrityAlerts?: IntegrityAlertUncheckedUpdateManyWithoutFileNestedInput
+    signatures?: SignatureUncheckedUpdateManyWithoutFileNestedInput
   }
 
   export type FileCreateManyUploaderInput = {
@@ -15759,6 +21948,7 @@ export namespace Prisma {
     chunks?: FileChunkUpdateManyWithoutFileNestedInput
     integrityAlerts?: IntegrityAlertUpdateManyWithoutFileNestedInput
     signatures?: SignatureUpdateManyWithoutFileNestedInput
+    validationToken?: ValidationTokenUpdateOneWithoutFileNestedInput
   }
 
   export type FileUncheckedUpdateWithoutUploaderInput = {
@@ -15787,6 +21977,7 @@ export namespace Prisma {
     chunks?: FileChunkUncheckedUpdateManyWithoutFileNestedInput
     integrityAlerts?: IntegrityAlertUncheckedUpdateManyWithoutFileNestedInput
     signatures?: SignatureUncheckedUpdateManyWithoutFileNestedInput
+    validationToken?: ValidationTokenUncheckedUpdateOneWithoutFileNestedInput
   }
 
   export type FileUncheckedUpdateManyWithoutUploaderInput = {
@@ -16193,6 +22384,26 @@ export namespace Prisma {
      * @deprecated Use SignatureDefaultArgs instead
      */
     export type SignatureArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = SignatureDefaultArgs<ExtArgs>
+    /**
+     * @deprecated Use ValidationTokenDefaultArgs instead
+     */
+    export type ValidationTokenArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = ValidationTokenDefaultArgs<ExtArgs>
+    /**
+     * @deprecated Use InvestigationAuditDefaultArgs instead
+     */
+    export type InvestigationAuditArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = InvestigationAuditDefaultArgs<ExtArgs>
+    /**
+     * @deprecated Use ValidationNonceDefaultArgs instead
+     */
+    export type ValidationNonceArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = ValidationNonceDefaultArgs<ExtArgs>
+    /**
+     * @deprecated Use ValidationTokenAuditDefaultArgs instead
+     */
+    export type ValidationTokenAuditArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = ValidationTokenAuditDefaultArgs<ExtArgs>
+    /**
+     * @deprecated Use BannedUserDefaultArgs instead
+     */
+    export type BannedUserArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = BannedUserDefaultArgs<ExtArgs>
 
   /**
    * Batch Payload for updateMany & deleteMany & createMany

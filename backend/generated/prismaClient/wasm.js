@@ -247,6 +247,57 @@ exports.Prisma.SignatureScalarFieldEnum = {
   updatedAt: 'updatedAt'
 };
 
+exports.Prisma.ValidationTokenScalarFieldEnum = {
+  id: 'id',
+  tokenId: 'tokenId',
+  fileId: 'fileId',
+  fileMetadataHash: 'fileMetadataHash',
+  userPublicKeyHash: 'userPublicKeyHash',
+  issuedAt: 'issuedAt',
+  expiresAt: 'expiresAt',
+  signature: 'signature',
+  adjudicatorPublicKey: 'adjudicatorPublicKey',
+  createdAt: 'createdAt'
+};
+
+exports.Prisma.InvestigationAuditScalarFieldEnum = {
+  id: 'id',
+  investigationId: 'investigationId',
+  fileId: 'fileId',
+  reason: 'reason',
+  adminApproval: 'adminApproval',
+  legalAuthorization: 'legalAuthorization',
+  decryptedPublicKey: 'decryptedPublicKey',
+  createdAt: 'createdAt'
+};
+
+exports.Prisma.ValidationNonceScalarFieldEnum = {
+  id: 'id',
+  nonce: 'nonce',
+  createdAt: 'createdAt'
+};
+
+exports.Prisma.ValidationTokenAuditScalarFieldEnum = {
+  id: 'id',
+  tokenId: 'tokenId',
+  userPublicKey: 'userPublicKey',
+  userPublicKeyHash: 'userPublicKeyHash',
+  fileMetadataHash: 'fileMetadataHash',
+  requestNonce: 'requestNonce',
+  issuedAt: 'issuedAt',
+  expiresAt: 'expiresAt',
+  signature: 'signature',
+  createdAt: 'createdAt'
+};
+
+exports.Prisma.BannedUserScalarFieldEnum = {
+  id: 'id',
+  publicKey: 'publicKey',
+  reason: 'reason',
+  bannedByAdmin: 'bannedByAdmin',
+  bannedAt: 'bannedAt'
+};
+
 exports.Prisma.SortOrder = {
   asc: 'asc',
   desc: 'desc'
@@ -267,7 +318,12 @@ exports.Prisma.ModelName = {
   AnonymousFileAccess: 'AnonymousFileAccess',
   AnonymousAuditLog: 'AnonymousAuditLog',
   AnonymousSharingRequest: 'AnonymousSharingRequest',
-  Signature: 'Signature'
+  Signature: 'Signature',
+  ValidationToken: 'ValidationToken',
+  InvestigationAudit: 'InvestigationAudit',
+  ValidationNonce: 'ValidationNonce',
+  ValidationTokenAudit: 'ValidationTokenAudit',
+  BannedUser: 'BannedUser'
 };
 
 /**

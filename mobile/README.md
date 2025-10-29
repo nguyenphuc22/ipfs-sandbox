@@ -111,6 +111,11 @@ Or open the `android/` folder in Android Studio and run.
 - **Auto-Reconnect**: Automatic connection recovery after network issues
 - **Error Handling**: Graceful degradation when gateway is unavailable
 
+#### Hybrid Adjudicator Upload (NEW)
+- Before pushing a manifest, the app requests a ValidationToken from the adjudicator service (`/api/validate-upload`).
+- The uploader’s real public key is wrapped into an `EscrowedIdentity` envelope (XChaCha20-Poly1305) stored alongside the file.
+- Upload requests include `{ validationToken, nonce, timestamp, escrowedIdentity }` ensuring backend rejects unsigned or replayed uploads.
+
 #### File Operations (CRUD)
 ```typescript
 // Example usage in online mode

@@ -165,6 +165,82 @@ wait_for_service "Backend API" 3000 "/health" "GET"
 wait_for_service "IPFS API" 5001 "/api/v0/version" "POST"
 wait_for_service "IPFS Gateway" 8080 "/" "GET"
 
+# Ensure backend DATABASE_URL is correct
+if [ -f "./backend/.env" ]; then
+    if grep -q "^DATABASE_URL=" ./backend/.env; then
+        sed -i '' 's|^DATABASE_URL=.*|DATABASE_URL="file:./data/database.db"|' ./backend/.env
+    fi
+fi
+
+# Initialize database with Prisma migrations
+echo -e "\n${YELLOW}💾 Initializing database...${NC}"
+if [ -d "./backend" ]; then
+    cd backend
+
+    # Run Prisma migrations
+    echo -e "${YELLOW}🔄 Running database migrations...${NC}"
+    npx prisma migrate deploy > /dev/null 2>&1 && echo -e "${GREEN}✅ Database migrations applied${NC}" || echo -e "${YELLOW}⚠️  Migration warnings (may be normal)${NC}"
+
+    # Sync users from JSON to database
+    if [ -f "scripts/sync-users.js" ]; then
+        echo -e "${YELLOW}👥 Syncing users to database...${NC}"
+        node scripts/sync-users.js > /dev/null 2>&1 && echo -e "${GREEN}✅ Users synced${NC}" || echo -e "${YELLOW}⚠️  User sync completed with warnings${NC}"
+    fi
+
+    cd ..
+fi
+
+# Start Adjudicator Service
+echo -e "\n${YELLOW}🔐 Starting Adjudicator Service...${NC}"
+if [ -d "./adjudicator" ]; then
+    cd adjudicator
+
+    # Check if .env exists and has required keys
+    if [ ! -f ".env" ] || ! grep -q "ADJUDICATOR_PRIVATE_KEY=.\+" .env || ! grep -q "ADMIN_HMAC_SECRET=.\+" .env; then
+        echo -e "${YELLOW}🔑 Generating adjudicator keys...${NC}"
+        npm run generate:keys > /dev/null 2>&1 || true
+
+        # Generate ADMIN_HMAC_SECRET if missing
+        if ! grep -q "ADMIN_HMAC_SECRET=.\+" .env 2>/dev/null; then
+            ADMIN_SECRET=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
+            echo "ADMIN_HMAC_SECRET=${ADMIN_SECRET}" >> .env
+        fi
+    fi
+
+    # Ensure DATABASE_URL points to correct database file
+    PROJECT_ROOT=$(pwd | sed 's/\/adjudicator$//')
+    DB_PATH="${PROJECT_ROOT}/backend/data/database.db"
+    if [ -f ".env" ]; then
+        # Update DATABASE_URL to use absolute path
+        if grep -q "^DATABASE_URL=" .env; then
+            sed -i '' "s|^DATABASE_URL=.*|DATABASE_URL=\"file:${DB_PATH}\"|" .env
+        else
+            echo "DATABASE_URL=\"file:${DB_PATH}\"" >> .env
+        fi
+    fi
+
+    # Kill any existing adjudicator process
+    pkill -f "node dist/index.js" 2>/dev/null || true
+
+    # Build if needed
+    if [ ! -d "dist" ] || [ ! -f "dist/index.js" ]; then
+        echo -e "${YELLOW}🏗️  Building adjudicator...${NC}"
+        npm run build > /dev/null 2>&1
+    fi
+
+    # Start in background
+    nohup npm start > ../adjudicator.log 2>&1 &
+    ADJUDICATOR_PID=$!
+    echo $ADJUDICATOR_PID > ../adjudicator.pid
+
+    cd ..
+
+    # Wait for adjudicator to be ready
+    wait_for_service "Adjudicator" 4000 "/health" "GET"
+else
+    echo -e "${RED}❌ Adjudicator directory not found${NC}"
+fi
+
 # Show container status
 echo -e "\n${YELLOW}📦 Container Status:${NC}"
 docker compose ps
@@ -194,16 +270,19 @@ fi
 echo -e "\n${BLUE}🌐 System URLs:${NC}"
 echo "  Backend API:       http://localhost:3000"
 echo "  Health Check:      http://localhost:3000/health"
+echo "  Adjudicator:       http://localhost:4000"
+echo "  Adjudicator Health: http://localhost:4000/health"
 echo "  IPFS API:          http://localhost:5001"
 echo "  IPFS Gateway:      http://localhost:8080"
 
 echo -e "\n${BLUE}📋 Quick Commands:${NC}"
-echo "  View logs:         docker compose logs -f"
-echo "  View gateway logs: docker compose logs -f gateway"
-echo "  Check IPFS peers:  docker exec ipfs-sandbox-gateway-1 ipfs swarm peers"
-echo "  Test APIs:         curl http://localhost:3000/api/users"
-echo "  Stop system:       docker compose down"
-echo "  Clean system:      ./clean-docker.sh"
+echo "  View logs:            docker compose logs -f"
+echo "  View gateway logs:    docker compose logs -f gateway"
+echo "  View adjudicator logs: tail -f adjudicator.log"
+echo "  Check IPFS peers:     docker exec ipfs-sandbox-gateway-1 ipfs swarm peers"
+echo "  Test APIs:            curl http://localhost:3000/api/users"
+echo "  Stop system:          docker compose down && pkill -f 'node dist/index.js'"
+echo "  Clean system:         ./clean-docker.sh"
 
 echo -e "\n${GREEN}🎉 System started successfully!${NC}"
 

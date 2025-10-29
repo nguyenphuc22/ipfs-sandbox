@@ -1,6 +1,6 @@
 import type { CryptoLike } from './webcrypto';
 
-declare module '@noble/hashes/sha2' {
+declare module '@noble/hashes/sha2.js' {
   export function sha256(data: Uint8Array | ArrayBuffer | string): Uint8Array;
 }
 

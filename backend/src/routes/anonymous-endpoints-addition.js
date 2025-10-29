@@ -5,12 +5,15 @@
 
 const express = require('express');
 const crypto = require('crypto');
-const { getSchnorr } = require('../utils/schnorr');
 const { FileAccessService } = require('../services/FileAccessService');
 const { RingSignatureService } = require('../services/RingSignatureService');
 const { AccessManagementService, AccessManagementEvents } = require('../services/AccessManagementService');
 const { secureLog, maskHashForLogging } = require('../utils/monitoring');
 const { verifyLsagRingSignature } = require('../utils/ringSignature');
+const { verifyValidationToken, ensureNonceUnique } = require('../services/ValidationTokenVerifier');
+const { getSchnorr } = require('../utils/schnorr');
+
+const ADJUDICATOR_PUBLIC_KEY = process.env.ADJUDICATOR_PUBLIC_KEY || null;
 
 // Properly declare Router at the top
 const router = express.Router();
@@ -680,6 +683,9 @@ router.post('/client-chunked-upload', async (req, res) => {
             ringSignature,
             escrowedIdentity,
             ringMembers,
+            validationToken,
+            timestamp,
+            nonce,
             schnorr: ownershipProof
         } = req.body;
 
@@ -717,6 +723,27 @@ router.post('/client-chunked-upload', async (req, res) => {
             });
         }
 
+        if (!validationToken) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required field: validationToken'
+            });
+        }
+
+        if (!escrowedIdentity) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required field: escrowedIdentity'
+            });
+        }
+
+        if (!timestamp || !nonce) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required fields: timestamp, nonce'
+            });
+        }
+
         if (chunks.length !== chunkCount) {
             return res.status(400).json({
                 success: false,
@@ -735,8 +762,54 @@ router.post('/client-chunked-upload', async (req, res) => {
             }
         }
 
+        const metadataSource = JSON.stringify({
+            fileName,
+            fileSize,
+            chunkCount,
+        });
+        const recomputedMetadataHash = crypto.createHash('sha256').update(metadataSource).digest('hex');
+        if (recomputedMetadataHash !== metadataHash) {
+            return res.status(400).json({
+                success: false,
+                error: 'metadataHash does not match provided payload',
+            });
+        }
+
+        let normalizedToken;
+        try {
+            normalizedToken = typeof validationToken === 'string'
+                ? JSON.parse(validationToken)
+                : validationToken;
+        } catch (parseError) {
+            console.error('[Client Chunked Upload] Failed to parse validationToken', parseError);
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid validationToken format',
+            });
+        }
+
         // ====================================================================
-        // 2. VERIFY OWNERSHIP PROOFS
+        // 2. VERIFY VALIDATION TOKEN & NONCE
+        // ====================================================================
+        try {
+            await verifyValidationToken({
+                token: normalizedToken,
+                metadataHash,
+                ownershipPublicKey,
+                nonce,
+                adjudicatorPublicKey: ADJUDICATOR_PUBLIC_KEY,
+            });
+            await ensureNonceUnique({ prisma: prismaInstance, nonce });
+        } catch (tokenError) {
+            console.error('[Client Chunked Upload] ValidationToken verification failed:', tokenError);
+            return res.status(403).json({
+                success: false,
+                error: tokenError instanceof Error ? tokenError.message : 'ValidationToken verification failed',
+            });
+        }
+
+        // ====================================================================
+        // 3. VERIFY OWNERSHIP PROOFS
         // ====================================================================
         console.log('[Client Chunked Upload] Verifying ownership proofs...');
 
@@ -784,7 +857,7 @@ router.post('/client-chunked-upload', async (req, res) => {
         }
 
         // ====================================================================
-        // 3. SAVE FILE RECORD
+        // 4. SAVE FILE RECORD
         // ====================================================================
         console.log('[Client Chunked Upload] Creating file record...');
 
@@ -812,7 +885,19 @@ router.post('/client-chunked-upload', async (req, res) => {
                     clientChunked: true,
                     keyPackageFingerprint,
                     uploadTimestamp: new Date().toISOString(),
-                })
+                    validationTokenId: normalizedToken.tokenId,
+                }),
+                validationToken: {
+                    create: {
+                        tokenId: normalizedToken.tokenId,
+                        fileMetadataHash: normalizedToken.fileMetadataHash,
+                        userPublicKeyHash: normalizedToken.userPublicKeyHash,
+                        issuedAt: new Date(Number(normalizedToken.issuedAt)),
+                        expiresAt: new Date(Number(normalizedToken.expiresAt)),
+                        signature: normalizedToken.signature,
+                        adjudicatorPublicKey: normalizedToken.adjudicatorPublicKey,
+                    },
+                },
             }
         });
 
@@ -866,6 +951,8 @@ router.post('/client-chunked-upload', async (req, res) => {
                     ownershipPublicKey, // ✅ Include publicKey instead of userId
                     clientChunked: true,
                     uploadedAt: new Date().toISOString(),
+                    validationTokenId: normalizedToken.tokenId,
+                    validationTokenExpiresAt: new Date(Number(normalizedToken.expiresAt)).toISOString(),
                 }),
             }
         });
@@ -906,6 +993,13 @@ router.post('/client-chunked-upload', async (req, res) => {
     } catch (error) {
         const duration = Date.now() - startTime;
         console.error('[Client Chunked Upload] Error:', error);
+
+        if (error?.code === 'P2002' && Array.isArray(error?.meta?.target) && error.meta.target.includes('ValidationToken_signature_key')) {
+            return res.status(409).json({
+                success: false,
+                error: 'ValidationToken already used',
+            });
+        }
 
         secureLog(
             'ClientChunkedUpload',

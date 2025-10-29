@@ -19,6 +19,23 @@ check_docker() {
 # Check Docker status
 check_docker
 
+# Stop Adjudicator Service first
+echo -e "${YELLOW}🔐 Stopping Adjudicator Service...${NC}"
+if [ -f "adjudicator.pid" ]; then
+    ADJUDICATOR_PID=$(cat adjudicator.pid)
+    if kill -0 $ADJUDICATOR_PID 2>/dev/null; then
+        kill $ADJUDICATOR_PID 2>/dev/null || true
+        echo -e "${GREEN}✅ Adjudicator service stopped (PID: $ADJUDICATOR_PID)${NC}"
+    fi
+    rm -f adjudicator.pid
+fi
+
+# Kill any remaining adjudicator processes
+pkill -f "node dist/index.js" 2>/dev/null && echo -e "${GREEN}✅ Stopped remaining adjudicator processes${NC}" || true
+
+# Remove adjudicator log
+rm -f adjudicator.log 2>/dev/null || true
+
 # Stop all containers from this project
 echo -e "${YELLOW}📦 Stopping project containers...${NC}"
 docker compose -f docker-compose.yml down -v --remove-orphans 2>/dev/null || true
@@ -51,7 +68,14 @@ if [ -d "./backend/data" ]; then
     rm -f ./backend/data/aot-records.json
     rm -f ./backend/data/aot-records-backup.json
     rm -f ./backend/data/*.log
-    echo -e "${GREEN}✅ Local backend data directory reset${NC}"
+    echo -e "${GREEN}✅ Local backend data directory reset (shared with adjudicator)${NC}"
+fi
+
+# Clean adjudicator build artifacts
+if [ -d "./adjudicator/dist" ]; then
+    echo -e "${YELLOW}🧹 Removing adjudicator build artifacts...${NC}"
+    rm -rf ./adjudicator/dist
+    echo -e "${GREEN}✅ Adjudicator build artifacts removed${NC}"
 fi
 
 # Remove project images

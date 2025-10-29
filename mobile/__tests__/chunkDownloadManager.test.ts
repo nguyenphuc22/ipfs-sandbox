@@ -34,7 +34,7 @@ jest.mock('../src/services/crypto/hash', () => ({
 }));
 
 // Mock @noble/hashes for integrity verification
-jest.mock('@noble/hashes/sha2', () => ({
+jest.mock('@noble/hashes/sha2.js', () => ({
   sha256: jest.fn((data?: Uint8Array) => {
     if (data instanceof Uint8Array) {
       return new Uint8Array(require('crypto').createHash('sha256').update(Buffer.from(data)).digest());

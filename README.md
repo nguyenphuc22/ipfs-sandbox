@@ -39,6 +39,23 @@ cd ipfs-sandbox
 ./start-system.sh
 ```
 
+### 1b. Start Hybrid Adjudicator Service
+```bash
+# In a new terminal
+cd adjudicator
+npm install    # requires local Node.js 20+
+npm run dev    # serves on http://localhost:4000
+
+# (Optional) generate fresh keypair
+npm run generate:keys
+```
+> 🔐 Export the printed keys to `adjudicator/.env` và cấu hình `ADJUDICATOR_PUBLIC_KEY`, `ADJUDICATOR_SERVICE_URL`, `ADMIN_HMAC_SECRET` trong `backend/.env`.
+
+### 1c. Seed Demo Data (optional)
+```bash
+node scripts/seed-investigation-demo.js
+```
+
 ### 2. Setup Mobile Development
 
 #### 📱 For Android Development
@@ -124,6 +141,19 @@ curl http://localhost:3000/api/files/YOUR_HASH
   - Stores metadata without accessing raw file data
   - Backend never receives decryption keys
   - See `TASK_B_C_IMPLEMENTATION_SUMMARY.md` for payload schema
+
+### Adjudicator Service (Port 4000)
+- `POST /api/validate-upload` – Issues ValidationToken after policy checks (rate limit, ban list)
+- `POST /api/decrypt-escrow` – Decrypts escrowed identity + returns investigation report
+- `GET /health` – Service heartbeat (for docker/monitoring)
+
+### Admin Tools
+- `GET /admin/index.html` – Lightweight dashboard to trigger investigations and manage banned keys
+- `POST /api/admin/investigate` – Backend proxy to adjudicator with optional `X-Admin-Key`
+- `POST /api/admin/ban` / `DELETE /api/admin/ban/:publicKey` – Manage entries in `BannedUser`
+- `POST /api/admin/files/:fileId/flag` – Record admin flag events in `AnonymousAuditLog`
+
+📘 See `docs/adjudicator_runbook.md` for full operations guide.
 
 ### IPFS Services
 - **IPFS API**: `http://localhost:5001` ✅ WORKING (Gateway exclusive access)

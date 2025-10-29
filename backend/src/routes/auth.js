@@ -8,6 +8,7 @@ const {
     setAdjudicatorPublicKey,
     getAdjudicatorPublicKey,
 } = require('../utils/aotStorage');
+const prisma = require('../config/database');
 
 const router = express.Router();
 
@@ -37,7 +38,7 @@ router.get('/users', (req, res) => {
     }
 });
 
-router.post('/register', (req, res) => {
+router.post('/register', async (req, res) => {
     try {
         const { displayName, publicKey, escrowedIdentity, identifier } = req.body || {};
 
@@ -48,12 +49,29 @@ router.post('/register', (req, res) => {
             });
         }
 
+        // Register in JSON storage (legacy)
         const record = registerUser({
             identifier: identifier ? String(identifier).trim() : undefined,
             displayName: String(displayName).trim(),
             publicKey: String(publicKey).trim(),
             escrowedIdentity: escrowedIdentity ? String(escrowedIdentity) : null,
         });
+
+        // Also register in Prisma database for Adjudicator
+        try {
+            await prisma.user.create({
+                data: {
+                    publicKey: String(publicKey).trim(),
+                    displayLabel: String(displayName).trim(),
+                    role: 'user',
+                },
+            });
+        } catch (dbError) {
+            // If user already exists in DB, that's okay - continue
+            if (!dbError.message || !dbError.message.includes('Unique constraint')) {
+                console.warn('[Auth] Failed to save user to database:', dbError.message);
+            }
+        }
 
         const context = getRingContext();
         res.status(201).json({ success: true, user: record, context });
