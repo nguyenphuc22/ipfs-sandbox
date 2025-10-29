@@ -1,4 +1,4 @@
-const { PrismaClient } = require('@prisma/client');
+const { PrismaClient } = require('../src/config/prismaClient');
 const fs = require('fs');
 const path = require('path');
 

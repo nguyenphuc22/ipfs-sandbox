@@ -4,7 +4,7 @@
  * Provides logging masking, dashboard metrics, and monitoring for the anonymous system
  */
 
-const { PrismaClient } = require('@prisma/client');
+const { PrismaClient } = require('../config/prismaClient');
 const prisma = new PrismaClient();
 
 // Configuration for hash truncation

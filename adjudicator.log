@@ -1,0 +1,5 @@
+
+> adjudicator-service@1.0.0 start
+> node dist/index.js
+
+🔐 Adjudicator service listening on port 4000

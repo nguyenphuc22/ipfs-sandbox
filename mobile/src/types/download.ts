@@ -1,6 +1,6 @@
 import type { FileAccessManifest } from '../services/AnonymousFileAccessService';
 
-export type DownloadPhase = 'idle' | 'access' | 'waitingKey' | 'keys' | 'chunks' | 'ready';
+export type DownloadPhase = 'idle' | 'access' | 'waitingKey' | 'keys' | 'chunks' | 'assembling' | 'ready';
 
 export type ChunkStatus = 'pending' | 'downloading' | 'verifying' | 'completed' | 'error';
 

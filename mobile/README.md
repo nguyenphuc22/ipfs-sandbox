@@ -26,6 +26,7 @@ A complete mobile app featuring document picker, image picker, file validation, 
 - **File Validation**: Type checking, size limits, and security validation
 - **File List Management**: Display, organize, and manage selected files
 - **Mixed File Support**: Documents, images, media files, and custom types
+- **Persistent Downloads**: Reassembled files are saved to an on-device sandbox with optional shared export
 
 ### IPFS Integration
 - **Gateway Connection**: Direct integration with IPFS gateway at `localhost:3000`
@@ -109,6 +110,11 @@ Or open the `android/` folder in Android Studio and run.
 - **Health Monitoring**: Real-time connection status and health checks
 - **Auto-Reconnect**: Automatic connection recovery after network issues
 - **Error Handling**: Graceful degradation when gateway is unavailable
+
+#### Hybrid Adjudicator Upload (NEW)
+- Before pushing a manifest, the app requests a ValidationToken from the adjudicator service (`/api/validate-upload`).
+- The uploader’s real public key is wrapped into an `EscrowedIdentity` envelope (XChaCha20-Poly1305) stored alongside the file.
+- Upload requests include `{ validationToken, nonce, timestamp, escrowedIdentity }` ensuring backend rejects unsigned or replayed uploads.
 
 #### File Operations (CRUD)
 ```typescript
@@ -205,6 +211,123 @@ mobile/
 - `npm run ios` - Run on iOS simulator
 - `npm run lint` - Run ESLint
 - `npm test` - Run tests with Jest
+
+## Download Persistence
+
+Anonymous downloads are automatically written to the app sandbox so you can revisit them later:
+
+- **Sandbox location**: `DocumentDirectoryPath/anonymous-downloads/<fileId>-<timestamp>-<originalName>` (displayed in the Secure Download success banner and File Viewer)
+- **iOS export (optional)**: When export is enabled, a Finder-accessible copy is placed in `DocumentDirectoryPath/anonymous-downloads/shared-downloads/`
+- **Android export (optional)**: When export is enabled, a duplicate is copied to the system `Downloads/` directory using the same filename
+
+Exporting to a shared location is guarded by the `ENABLE_DOWNLOAD_EXPORT` feature flag, which is **off by default** to avoid unnecessary permission prompts. Enable it using either approach:
+
+1. **Global flag (recommended for development)**
+   ```ts
+   // In App.tsx or AppWithIPFS.tsx before rendering
+   (globalThis as any).__IPFSSandboxFlags__ = {
+     ENABLE_DOWNLOAD_EXPORT: true,
+   };
+   ```
+
+2. **Environment variable** – if your bundler injects `process.env` values (e.g. via Babel plugins):
+   ```bash
+   ENABLE_DOWNLOAD_EXPORT=true npm start
+   ```
+
+When the flag is active, the download summary card will show both the sandbox path and the exported location (if the copy succeeds). If the export fails—because of permissions or missing directories—the sandbox copy remains intact and the app logs the reason.
+
+## 🤝 Two-Device Secure Sharing Demo
+
+Walk through this flow to demonstrate one device uploading an encrypted file while a second device consumes it through the secure download pipeline.
+
+### Overview
+
+- **Device A – owner/uploader**: Creates an Anonymous Ownership Token (AOT) identity, uploads an encrypted file, and captures the generated secure key package.
+- **Device B – recipient**: Uses its own anonymous identity to discover the shared file, imports the key package, and runs the four-phase secure download.
+- **Backend**: IPFS gateway (`docker compose up` from the repo root) must remain reachable from both devices through the same base URL.
+
+### 0. Pre-flight checklist
+
+1. Start the backend: `./start-system.sh` or `docker compose up -d` from the project root.
+2. Confirm each device (simulator, emulator, or physical) can reach the gateway.
+   - iOS simulator → `http://localhost:3000`
+   - Android emulator → `http://10.0.2.2:3000`
+   - Physical hardware → `http://<your-mac-ip>:3000`
+3. (Optional but recommended) expose key data by running Metro with `KEY_MONITOR_DEMO=true` so the storage monitor shows master/chunk keys:
+   ```bash
+   KEY_MONITOR_DEMO=true npm start
+   ```
+4. Make sure Device B has been initialized at least once so `AnonymousFileAccessService` can mint an identity and ring context (`InitScreen` → **Khởi tạo** button).
+
+### 1. Upload and capture keys on Device A
+
+1. Launch the app, complete identity onboarding, and verify the home screen shows your identifier and compressed public key.
+2. In the **IPFS Upload** card, select **Upload with AOT** (chunked + encrypted path) and choose any test file.
+3. Wait for the upload dialog to finish. The modal logs `Key package saved locally` in Metro/Flipper and persists data via `KeyPackageStorage`.
+4. Open the new file from the list → tap **View** → switch to the **Monitor** tab.
+5. With `KEY_MONITOR_DEMO` enabled, the Storage Monitor exposes:
+   - Master key (Copy button available)
+   - Chunk key table (`Chunk #0`, `Chunk #1`, ... each copyable)
+   - Key package fingerprint (used for tamper detection)
+6. Ngay sau khi modal báo lưu thành công, console Metro (hoặc Flipper) sẽ in sẵn JSON chia sẻ và cả câu lệnh `saveKeyPackage(...)` để bạn copy/paste trực tiếp.
+7. Copy các giá trị này (từ console hoặc tab Monitor) và build payload chuyển cho Device B. Expected JSON structure:
+8. Share this JSON with Device B through a secure side channel (AirDrop, Signal, local clipboard sync, etc.).
+   ```json
+   {
+     "fileId": "<from upload response>",
+     "masterKey": "<copied master key>",
+     "chunkKeys": {
+       "0": "<chunk key 0>",
+       "1": "<chunk key 1>"
+       /* ...additional chunk indexes if present */
+     },
+     "fingerprint": "<optional fingerprint>"
+   }
+   ```
+9. Share this JSON with Device B through a secure side channel (AirDrop, Signal, local clipboard sync, etc.).
+
+> **Tip:** If you prefer working in a console, enable the React Native developer menu → *Open JS Debugging* → run:
+> ```js
+> import AsyncStorage from '@react-native-async-storage/async-storage';
+> const raw = await AsyncStorage.getItem('ipfs_key_packages_v1');
+> console.log(JSON.parse(raw));
+> ```
+> The resulting object contains every stored package keyed by `fileId`.
+
+### 2. Import the key package on Device B
+
+1. Launch the app, initialize identity, and confirm **IPFS Connection** shows green.
+2. Fetch accessible files by tapping **Pull to Refresh** on the file list. Any shares granted to this identity via the backend will appear.
+3. Open the React Native developer menu → enable JS debugging (Chrome or Flipper) and execute:
+   ```js
+   const { saveKeyPackage } = require('./src/services/KeyPackageStorage');
+   await saveKeyPackage('<fileId>', {
+     masterKey: '<master key from owner>',
+     chunkKeys: {
+       '0': '<chunk key 0>'
+       // ...other chunk indices
+     },
+     fingerprint: '<fingerprint if provided>'
+   });
+   ```
+   This mirrors what the uploader already stored via `AOTUploadModal`, so the secure download flow can hydrate keys automatically.
+4. Close and reopen the file viewer (or tap **Refresh** again) so `KeyPackageStorage` data is rehydrated locally.
+
+### 3. Complete the secure download
+
+1. From the file list, tap **View** on the shared file.
+2. Choose **Download** → the `SecureDownloadScreen` opens.
+3. Tap **Start Download**. Because the key package now exists in AsyncStorage, the flow advances directly to **Key Orchestration** without waiting for manual import.
+4. Once chunk verification hits 100 %, note the sandbox/export paths in the success banner and tap **Open File** to confirm decryption succeeded on Device B.
+
+### Troubleshooting & validation
+
+- **File not visible on Device B:** Ensure the backend grants access to the recipient’s public key. Use `AnonymousFileAccessService.listAccessibleFiles()` in the debugging console to confirm the server response.
+- **Still stuck on “Awaiting secure key package”:** Verify that `saveKeyPackage` ran with the exact `fileId` and that chunk keys are neither the placeholder `mock_chunk_key_*` values nor truncated.
+- **Fingerprint mismatch:** The Secure Download UI will reset to “waitingKey” if the fingerprint differs. Re-copy the fingerprint from Device A and double-check JSON formatting.
+- **AES key length errors:** Chunk keys must be 32-byte base64/hex strings. If someone accidentally pasted a URL-safe variant, re-normalise on Device A (the upload path already performs SHA-256 normalization for short keys).
+- **Access token expired:** If the backend revokes access, regenerate the ring signature by refreshing the file list or re-running onboarding to rebuild the ring context.
 
 ### App Configuration
 

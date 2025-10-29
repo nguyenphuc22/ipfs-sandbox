@@ -3,6 +3,7 @@ import { API_CONFIG } from '../config/api';
 
 export interface GatewayApiConfig {
   baseUrl: string;
+  adjudicatorUrl: string;
   timeout?: number;
 }
 
@@ -76,6 +77,17 @@ export interface ChunkedUploadResponse {
   };
 }
 
+export interface ValidationTokenPayload {
+  tokenId: string;
+  fileMetadataHash: string;
+  userPublicKeyHash: string;
+  issuedAt: number;
+  expiresAt: number;
+  signature: string;
+  adjudicatorPublicKey: string;
+  requestNonce: string;
+}
+
 export interface ClientChunkedUploadPayload {
   fileName: string;
   fileSize: number;
@@ -98,6 +110,9 @@ export interface ClientChunkedUploadPayload {
   ringSignature?: string;
   escrowedIdentity?: string;
   ringMembers?: string[];
+  validationToken: ValidationTokenPayload;
+  timestamp: number;
+  nonce: string;
   schnorr: {
     R: string;
     s: string;
@@ -109,6 +124,7 @@ export interface ClientChunkedUploadPayload {
 export interface GatewayUserFileRecord {
   id: string;
   cid?: string;
+  chunkHash?: string | null;
   fileName?: string;
   name?: string;
   totalSize?: number;
@@ -216,6 +232,19 @@ export interface IPFSTestResponse {
   };
 }
 
+export interface ValidationTokenResponse {
+  success: boolean;
+  validationToken?: ValidationTokenPayload;
+  error?: string;
+}
+
+export interface ValidationTokenRequestPayload {
+  userPublicKey: string;
+  fileMetadataHash: string;
+  timestamp: number;
+  nonce: string;
+}
+
 export interface FileViewResponse {
   success: boolean;
   content: string | ArrayBuffer;
@@ -234,12 +263,19 @@ export interface FileMetadataResponse {
 
 export class GatewayApiService {
   private config: GatewayApiConfig;
+  private adjudicatorUrl: string;
 
   constructor(config: GatewayApiConfig) {
     this.config = {
       timeout: 30000,
       ...config,
     };
+
+    if (!this.config.adjudicatorUrl) {
+      throw new Error('adjudicatorUrl is required to initialize GatewayApiService');
+    }
+
+    this.adjudicatorUrl = this.config.adjudicatorUrl;
   }
 
   private async makeRequest<T>(
@@ -274,6 +310,41 @@ export class GatewayApiService {
         throw error;
       }
       throw new Error('Network request failed');
+    }
+  }
+
+  private async makeAdjudicatorRequest<T>(
+    endpoint: string,
+    options: RequestInit = {}
+  ): Promise<T> {
+    const url = `${this.adjudicatorUrl}${endpoint}`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
+
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          ...options.headers,
+        },
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Adjudicator error ${response.status}: ${errorBody}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error('Adjudicator request failed');
     }
   }
 
@@ -767,6 +838,24 @@ export class GatewayApiService {
     return response.files || [];
   }
 
+  async requestValidationToken(
+    payload: ValidationTokenRequestPayload
+  ): Promise<ValidationTokenPayload> {
+    const response = await this.makeAdjudicatorRequest<ValidationTokenResponse>(
+      '/api/validate-upload',
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }
+    );
+
+    if (!response.success || !response.validationToken) {
+      throw new Error(response.error || 'Failed to obtain ValidationToken');
+    }
+
+    return response.validationToken;
+  }
+
   /**
    * Upload file with client-side chunking (Task A implementation)
    *
@@ -789,13 +878,20 @@ export class GatewayApiService {
     const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
 
     try {
+      const payloadString = JSON.stringify(payload);
+      console.log('[Gateway API] Payload size:', {
+        bytes: payloadString.length,
+        kb: (payloadString.length / 1024).toFixed(2),
+        url: `${this.config.baseUrl}/api/files/client-chunked-upload`,
+      });
+
       const response = await fetch(`${this.config.baseUrl}/api/files/client-chunked-upload`, {
         method: 'POST',
         signal: controller.signal,
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(payload),
+        body: payloadString,
       });
 
       clearTimeout(timeoutId);
@@ -815,7 +911,12 @@ export class GatewayApiService {
       return json;
     } catch (error) {
       clearTimeout(timeoutId);
-      console.error('[Gateway API] Client-chunked upload error:', error);
+      console.error('[Gateway API] Client-chunked upload error:', {
+        error,
+        errorName: error instanceof Error ? error.name : 'unknown',
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorStack: error instanceof Error ? error.stack : undefined,
+      });
 
       if (error instanceof Error) {
         if (error.name === 'AbortError') {
@@ -830,13 +931,22 @@ export class GatewayApiService {
 
 // Default configuration using auto-detected API config
 export const createDefaultGatewayService = () => {
-  return new GatewayApiService(API_CONFIG);
+  return new GatewayApiService({
+    baseUrl: API_CONFIG.baseUrl,
+    adjudicatorUrl: API_CONFIG.adjudicatorUrl,
+    timeout: API_CONFIG.timeout,
+  });
 };
 
 // Configuration for production or custom endpoints
-export const createGatewayService = (baseUrl: string, timeout?: number) => {
+export const createGatewayService = (
+  baseUrl: string,
+  adjudicatorUrl: string,
+  timeout?: number
+) => {
   return new GatewayApiService({
     baseUrl,
+    adjudicatorUrl,
     timeout,
   });
 };

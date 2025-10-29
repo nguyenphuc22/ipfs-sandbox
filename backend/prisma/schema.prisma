@@ -1,5 +1,7 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-arm64-openssl-3.0.x"]
+  output        = "../generated/prismaClient"
 }
 
 datasource db {
@@ -46,6 +48,7 @@ model File {
   chunks               FileChunk[]
   integrityAlerts      IntegrityAlert[]
   signatures           Signature[]
+  validationToken      ValidationToken?
 
   @@index([ownershipPublicKey])
   @@index([uploaderId])
@@ -119,12 +122,15 @@ model AnonymousFileAccess {
   keyStatus             String    @default("client-managed")
   keyPackageFingerprint String?
   status                String    @default("active")
+  revokedAt             DateTime?
+  lastOwnerProof        String?
   file                  File      @relation(fields: [fileId], references: [id], onDelete: Cascade)
 
   @@unique([accessorPublicKeyHash, fileId])
   @@index([accessorPublicKeyHash])
   @@index([fileId])
   @@index([status])
+  @@index([fileId, accessorPublicKeyHash])
 }
 
 model AnonymousAuditLog {
@@ -137,6 +143,9 @@ model AnonymousAuditLog {
   ringPublicKeys    String?
   metadata          String?
   timestamp         DateTime @default(now())
+  status            String?
+  revokedAt         DateTime?
+  lastOwnerProof    String?
 
   @@index([publicKeyHash])
   @@index([eventType])
@@ -175,4 +184,70 @@ model Signature {
   updatedAt    DateTime @updatedAt
   signer       User     @relation(fields: [signerId], references: [id])
   file         File     @relation(fields: [fileId], references: [id])
+}
+
+model ValidationToken {
+  id                   String   @id @default(uuid())
+  tokenId              String   @unique
+  fileId               String   @unique
+  file                 File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  fileMetadataHash     String
+  userPublicKeyHash    String
+  issuedAt             DateTime
+  expiresAt            DateTime
+  signature            String   @unique
+  adjudicatorPublicKey String
+  createdAt            DateTime @default(now())
+
+  @@index([userPublicKeyHash])
+  @@index([fileMetadataHash])
+}
+
+model InvestigationAudit {
+  id                 String   @id @default(uuid())
+  investigationId    String   @unique
+  fileId             String
+  reason             String
+  adminApproval      String
+  legalAuthorization String
+  decryptedPublicKey String?
+  createdAt          DateTime @default(now())
+
+  @@index([fileId])
+  @@index([decryptedPublicKey])
+}
+
+model ValidationNonce {
+  id        String   @id @default(uuid())
+  nonce     String   @unique
+  createdAt DateTime @default(now())
+
+  @@index([nonce])
+}
+
+model ValidationTokenAudit {
+  id                String   @id @default(uuid())
+  tokenId           String   @unique
+  userPublicKey     String
+  userPublicKeyHash String
+  fileMetadataHash  String
+  requestNonce      String
+  issuedAt          DateTime
+  expiresAt         DateTime
+  signature         String
+  createdAt         DateTime @default(now())
+
+  @@index([userPublicKey])
+  @@index([userPublicKeyHash])
+  @@index([requestNonce])
+}
+
+model BannedUser {
+  id            String   @id @default(uuid())
+  publicKey     String   @unique
+  reason        String
+  bannedByAdmin String
+  bannedAt      DateTime @default(now())
+
+  @@index([publicKey])
 }

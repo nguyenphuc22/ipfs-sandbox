@@ -19,6 +19,7 @@ import {
   ClientChunkedUploadPayload,
 } from '../../services/GatewayApiService';
 import { saveKeyPackage } from '../../services/KeyPackageStorage';
+import { createEscrowedIdentity } from '../../services/crypto/escrow';
 import {
   computeMetadataHash,
   createLsagRingSignature,
@@ -30,6 +31,7 @@ import {
 } from '../../utils/aotCrypto';
 import { API_CONFIG } from '../../config/api';
 import { processAndUploadFile, ProgressCallback } from '../../services/ChunkEncryptionService';
+import { bytesToHex, randomBytes } from '@noble/hashes/utils';
 
 interface AOTUploadModalProps {
   visible: boolean;
@@ -242,6 +244,7 @@ export const AOTUploadModal: React.FC<AOTUploadModalProps> = ({
     try {
       setSubmitting(true);
       setLocalError(null);
+      setUploadProgress('Đang chuẩn bị...');
 
       // Normalize owner key to compressed format
       const ownerKey = toCompressedPublicKey(identity.publicKey);
@@ -263,58 +266,62 @@ export const AOTUploadModal: React.FC<AOTUploadModalProps> = ({
       console.log('[AOT Upload Modal] Using pre-sorted ring members:', {
         totalCount: orderedRing.length,
         allKeysAreCompressed: orderedRing.every(k => k.length === 66),
-        members: orderedRing.map((key, idx) => ({
-          index: idx,
-          prefix: key.substring(0, 20),
-          suffix: key.substring(key.length - 10),
-          length: key.length,
-        })),
       });
 
-      const metadataPayload = {
-        fileName: file.name || 'unnamed',
-        fileSize: file.size ?? 0,
-        mimeType: file.type || 'application/octet-stream',
-        createdAt: new Date().toISOString(),
-        ownerIdentifier: identity.identifier,
-        ownerPublicKey: ownerKey,
-        ringMembers: orderedRing,
+      // ========================================================================
+      // CLIENT-SIDE CHUNKING & ENCRYPTION (Task A Implementation)
+      // ========================================================================
+      console.log('[AOT Upload Modal] Starting client-side chunking and encryption...');
+
+      // Progress callback
+      const onProgress: ProgressCallback = (progress) => {
+        if (progress.stage === 'reading') {
+          setUploadProgress('Đang đọc file...');
+        } else if (progress.stage === 'chunking') {
+          setUploadProgress('Đang chia nhỏ file...');
+        } else if (progress.stage === 'encrypting') {
+          setUploadProgress(
+            `Đang mã hóa (${progress.chunkIndex! + 1}/${progress.totalChunks})...`
+          );
+        } else if (progress.stage === 'uploading') {
+          setUploadProgress(
+            `Đang tải lên IPFS (${progress.chunkIndex! + 1}/${progress.totalChunks})...`
+          );
+        }
       };
 
-      console.log('[AOT Upload Modal] Metadata payload:', {
-        fileName: metadataPayload.fileName,
-        ownerPublicKeyLength: ownerKey.length,
-        ownerPublicKeyPrefix: ownerKey.substring(0, 20),
-        ringMembersCount: orderedRing.length,
+      // Process file: chunk, encrypt, and upload to IPFS
+      const chunkUploadResult = await processAndUploadFile(
+        file,
+        API_CONFIG.ipfsGatewayUrl,
+        undefined, // Use default chunk size
+        onProgress
+      );
+
+      console.log('[AOT Upload Modal] Client-side chunking complete:', {
+        chunkCount: chunkUploadResult.manifest.length,
+        masterKeyLength: chunkUploadResult.masterKey.length,
+        keyPackageFingerprint: chunkUploadResult.keyPackageFingerprint,
       });
 
-      const { metadataHash: computedHash } = await computeMetadataHash(metadataPayload);
+      const metadataForHash = {
+        fileName: file.name || 'unnamed',
+        fileSize: file.size ?? 0,
+        chunkCount: chunkUploadResult.manifest.length,
+      };
+
+      const { metadataHash: computedHash } = await computeMetadataHash(metadataForHash);
       const schnorrProof = await createSchnorrProof(computedHash, identity.privateKey);
 
       console.log('[AOT Upload Modal] Schnorr proof created:', {
         metadataHash: computedHash,
-        RLength: schnorrProof.R.length,
-        sLength: schnorrProof.s.length,
       });
 
       let ringSignaturePayload: Record<string, any> | null = null;
       if (orderedRing.length >= 2) {
-        // Find signer index using compressed key comparison
         const signerIndex = orderedRing.findIndex(
           (key) => normalizeHex(key) === normalizeHex(ownerKey),
         );
-
-        console.log('[AOT Upload Modal] Creating ring signature:', {
-          ringSize: orderedRing.length,
-          signerIndex,
-          message: computedHash,
-          allKeysAreCompressed: orderedRing.every(k => k.length === 66),
-          ringMembersInOrder: orderedRing.map((k, idx) => ({
-            index: idx,
-            prefix: k.substring(0, 20),
-            suffix: k.substring(k.length - 10),
-          })),
-        });
 
         if (signerIndex === -1) {
           throw new Error('Owner key not found in ring members');
@@ -327,122 +334,139 @@ export const AOTUploadModal: React.FC<AOTUploadModalProps> = ({
           signerPrivateKey: identity.privateKey,
         });
 
-        console.log('[AOT Upload Modal] Ring signature created:', {
-          hasKeyImage: !!ringSignaturePayload?.keyImage,
-          keyImageLength: ringSignaturePayload?.keyImage?.length,
-          hasC0: !!ringSignaturePayload?.c0,
-          sCount: ringSignaturePayload?.s?.length,
-        });
+        console.log('[AOT Upload Modal] Ring signature created');
       }
 
-      const masterKeyValue = generateMasterKey();
 
-      console.log('[AOT Upload Modal] About to send upload request with:', {
-        fileSize: file.size,
-        fileName: file.name,
-        metadataHashLength: computedHash.length,
-        ownershipPublicKeyLength: ownerKey.length,
-        hasRingSignature: !!ringSignaturePayload,
-        ringMembersCount: orderedRing.length,
+      // ========================================================================
+      // Send manifest to backend
+      // ========================================================================
+      setUploadProgress('Đang gửi thông tin đến server...');
+
+      const { createDefaultGatewayService } = await import('../../services/GatewayApiService');
+      const gatewayService = createDefaultGatewayService();
+
+      setUploadProgress('Đang xin ValidationToken...');
+      const nonce = bytesToHex(randomBytes(16));
+      const tokenTimestamp = Date.now();
+      const validationToken = await gatewayService.requestValidationToken({
+        userPublicKey: ownerKey,
+        fileMetadataHash: computedHash,
+        timestamp: tokenTimestamp,
+        nonce,
       });
 
-      // Test connectivity before upload
-      console.log('[AOT Upload Modal] Testing backend connectivity...');
-      try {
-        const testResponse = await fetch(API_CONFIG.baseUrl + '/health', {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
-        });
-        console.log('[AOT Upload Modal] Health check response:', {
-          status: testResponse.status,
-          ok: testResponse.ok,
-        });
-        if (!testResponse.ok) {
-          throw new Error(`Backend not reachable: ${testResponse.status}`);
-        }
-      } catch (connectError) {
-        console.error('[AOT Upload Modal] Backend connectivity test failed:', connectError);
-        throw new Error(
-          `Không thể kết nối đến backend tại ${API_CONFIG.baseUrl}. ` +
-          `Vui lòng kiểm tra: (1) Backend đang chạy, (2) URL cấu hình đúng, (3) Network connectivity. ` +
-          `Lỗi: ${connectError instanceof Error ? connectError.message : String(connectError)}`
-        );
-      }
+      setUploadProgress('Đang mã hóa danh tính...');
+      const escrowedIdentity = await createEscrowedIdentity(
+        identity.publicKey,
+        validationToken.adjudicatorPublicKey,
+      );
 
-      // Use chunked upload (new thesis implementation)
-      const response = await uploadFileWithAOT({
-        file,
+      const uploadPayload: ClientChunkedUploadPayload = {
+        fileName: file.name || 'unnamed',
+        fileSize: file.size ?? 0,
+        mimeType: file.type || 'application/octet-stream',
+        chunkCount: chunkUploadResult.manifest.length,
+        chunks: chunkUploadResult.manifest,
         metadataHash: computedHash,
         ownershipPublicKey: ownerKey,
+        encryptedChunkKeys: chunkUploadResult.encryptedChunkKeys,
+        keyPackageFingerprint: chunkUploadResult.keyPackageFingerprint,
         ringSignature: ringSignaturePayload ? JSON.stringify(ringSignaturePayload) : undefined,
-        escrowedIdentity: identity.escrowedIdentity || `escrow:${identity.identifier}`,
+        escrowedIdentity,
         ringMembers: orderedRing,
+        validationToken,
+        timestamp: tokenTimestamp,
+        nonce,
         schnorr: {
           R: schnorrProof.R,
           s: schnorrProof.s,
           message: computedHash,
           publicKey: ownerKey,
         },
+      };
+
+      console.log('[AOT Upload Modal] About to call uploadWithClientChunking, payload keys:', Object.keys(uploadPayload));
+      const uploadResponse = await gatewayService.uploadWithClientChunking(uploadPayload);
+
+      console.log('[AOT Upload Modal] Backend response received:', {
+        fileId: uploadResponse.fileId,
+        success: uploadResponse.success,
       });
 
-      if (!response.success || !response.response) {
-        throw new Error(response.error || 'Upload thất bại');
+      // ========================================================================
+      // Save key package locally (IMPORTANT for decryption)
+      // ========================================================================
+      if (shouldPersistKeyPackage) {
+        try {
+          const keyPackageForSharing = {
+            fileId: uploadResponse.fileId,
+            masterKey: chunkUploadResult.masterKey,
+            chunkKeys: chunkUploadResult.chunkKeys,
+            fingerprint: chunkUploadResult.keyPackageFingerprint,
+          };
+          await saveKeyPackage(uploadResponse.fileId, {
+            masterKey: chunkUploadResult.masterKey,
+            chunkKeys: chunkUploadResult.chunkKeys,
+            fingerprint: chunkUploadResult.keyPackageFingerprint,
+          });
+          console.log('[AOT Upload Modal] Key package saved locally');
+          if (__DEV__) {
+            console.log('[AOT Upload Modal] Share this key package JSON:\n', JSON.stringify(keyPackageForSharing, null, 2));
+            console.log('[AOT Upload Modal] Paste on device B console:\n',
+              `await saveKeyPackage("${uploadResponse.fileId}", ${JSON.stringify({
+                masterKey: chunkUploadResult.masterKey,
+                chunkKeys: chunkUploadResult.chunkKeys,
+                fingerprint: chunkUploadResult.keyPackageFingerprint,
+              }, null, 2)});`
+            );
+          }
+        } catch (storageError) {
+          console.warn('[AOT Upload Modal] Failed to persist key package', storageError);
+        }
       }
 
-      const uploadResponse = response.response;
-      const secureKeyPackage = uploadResponse.secureKeyPackage;
-      const persistedMasterKey = secureKeyPackage?.masterKey ?? masterKeyValue;
+      // Create file data for UI
       const fileData: FileData = {
-        id: uploadResponse.fileId || `${Date.now()}`,
-        name: uploadResponse.fileName || uploadResponse.name || file.name || 'unnamed',
-        size: uploadResponse.totalSize || uploadResponse.size || file.size || 0,
+        id: uploadResponse.fileId,
+        name: uploadResponse.fileName,
+        size: uploadResponse.totalSize,
         uploadTime: new Date(),
         status: 'completed',
-        ipfsHash: uploadResponse.cid, // Legacy support
+        ipfsHash: uploadResponse.chunks?.[0]?.cid,
         metadataHash: computedHash,
         ownershipPublicKey: ownerKey,
-        masterKey: persistedMasterKey,
-        hasLocalKey: !!secureKeyPackage,
-        keyStatus: secureKeyPackage ? 'client-managed' : undefined,
-        keyPackageFingerprint: secureKeyPackage?.keyPackageFingerprint,
-        localKeyPackage: secureKeyPackage
-          ? {
-              masterKey: secureKeyPackage.masterKey,
-              chunkKeys: secureKeyPackage.chunkKeys,
-              fingerprint: secureKeyPackage.keyPackageFingerprint,
-              storedAt: new Date().toISOString(),
-            }
-          : undefined,
+        masterKey: chunkUploadResult.masterKey,
+        hasLocalKey: true,
+        keyStatus: 'client-managed',
+        keyPackageFingerprint: chunkUploadResult.keyPackageFingerprint,
+        localKeyPackage: {
+          masterKey: chunkUploadResult.masterKey,
+          chunkKeys: chunkUploadResult.chunkKeys,
+          fingerprint: chunkUploadResult.keyPackageFingerprint,
+          storedAt: new Date().toISOString(),
+        },
         ringMembers: orderedRing,
-        // New chunked upload fields
         chunkCount: uploadResponse.chunkCount,
         chunks: uploadResponse.chunks,
       };
 
-      if (secureKeyPackage && shouldPersistKeyPackage) {
-        try {
-          await saveKeyPackage(fileData.id, {
-            masterKey: secureKeyPackage.masterKey,
-            chunkKeys: secureKeyPackage.chunkKeys,
-            fingerprint: secureKeyPackage.keyPackageFingerprint,
-          });
-        } catch (storageError) {
-          console.warn('[AOT Upload Modal] Failed to persist secure key package', storageError);
-        }
-      }
-
       setMetadataHash(computedHash);
-      setMasterKey(persistedMasterKey);
+      setMasterKey(chunkUploadResult.masterKey);
+      setUploadProgress('Hoàn tất!');
+
       onUploaded?.(fileData);
-      Alert.alert('AOT', 'Upload thành công với AOT!');
+      Alert.alert('AOT', 'Upload thành công với AOT!\n\nFile đã được chia nhỏ, mã hóa và lưu trữ an toàn trên IPFS.');
       onClose();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Upload thất bại';
       setLocalError(message);
       onError?.(message);
       Alert.alert('AOT', message);
+      console.error('[AOT Upload Modal] Upload error:', err);
     } finally {
       setSubmitting(false);
+      setUploadProgress('');
     }
   };
 
@@ -584,6 +608,11 @@ export const AOTUploadModal: React.FC<AOTUploadModalProps> = ({
           color: colors.warning,
           marginBottom: 12,
         },
+        progressText: {
+          color: colors.info,
+          marginBottom: 12,
+          fontWeight: '500',
+        },
         pill: {
           alignSelf: 'flex-start',
           borderRadius: 999,
@@ -625,6 +654,7 @@ export const AOTUploadModal: React.FC<AOTUploadModalProps> = ({
             {identityError ? <Text style={styles.errorText}>{identityError}</Text> : null}
             {localError ? <Text style={styles.errorText}>{localError}</Text> : null}
             {ringWarning ? <Text style={styles.warningText}>{ringWarning}</Text> : null}
+            {uploadProgress ? <Text style={styles.progressText}>{uploadProgress}</Text> : null}
 
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Khóa của bạn</Text>

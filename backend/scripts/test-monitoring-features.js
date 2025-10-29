@@ -13,7 +13,7 @@
  *   node backend/scripts/test-monitoring-features.js
  */
 
-const { PrismaClient } = require('@prisma/client');
+const { PrismaClient } = require('../src/config/prismaClient');
 const { RingSignatureService } = require('../src/services/RingSignatureService');
 const {
   getDashboardMetrics,

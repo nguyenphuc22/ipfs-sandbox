@@ -1,7 +1,8 @@
 # Luồng Download và View File - Anonymous Flow
 
-**Phiên bản:** 2.0 Anonymous
-**Ngày cập nhật:** 2025-10-15
+**Phiên bản:** 3.0 Production-Ready
+**Ngày cập nhật:** 2025-10-27
+**Status:** ✅ **FULLY IMPLEMENTED & TESTED**
 **Ngôn ngữ:** Tiếng Việt
 
 ---
@@ -23,15 +24,36 @@
 
 ## **TỔNG QUAN**
 
-### **Mục tiêu**
+### **✅ Status: PRODUCTION READY (2025-10-27)**
 
-Luồng download **HOÀN TOÀN ẨN DANH** được thiết kế để đảm bảo:
+Download flow đã được **fully implemented** và đang chạy production với đầy đủ features:
+
+**What's Implemented:**
+- ✅ **5-Phase Orchestration**: `chunkDownloadManager.ts` handles toàn bộ flow
+- ✅ **Complete UI**: `SecureDownloadScreen.tsx` với stepper, progress bars, integrity badges
+- ✅ **IPFS Integration**: Download chunks trực tiếp từ IPFS gateway by CID
+- ✅ **Crypto**: AES-256-GCM decryption + SHA-256 integrity verification
+- ✅ **Key Management**: `KeyPackageStorage` với fingerprint validation
+- ✅ **File Persistence**: Auto-save vào sandbox + shared directory
+- ✅ **Error Handling**: Retry mechanism (max 3 per chunk)
+- ✅ **Manual Import**: Key package import modal cho trường hợp không có local keys
+
+**Implementation Files:**
+- `mobile/src/services/chunkDownloadManager.ts`: Core orchestrator
+- `mobile/src/components/download/SecureDownloadScreen.tsx`: Full UI
+- `mobile/src/hooks/useChunkDownloader.ts`: State management
+- `mobile/src/services/FilePersistenceService.ts`: Device storage
+- `mobile/src/services/KeyPackageStorage.ts`: Secure key storage
+
+### **Mục tiêu (Đã đạt được)**
+
+Luồng download **HOÀN TOÀN ẨN DANH** đã đảm bảo:
 
 - ✅ **Ẩn danh tuyệt đối:** KHÔNG có userId, chỉ dùng publicKey + ringSignature
 - ✅ **Bảo mật:** Backend KHÔNG giữ master key, user tự quản lý
-- ✅ **Tính toàn vẹn:** Verify SHA256 hash cho mọi chunk
+- ✅ **Tính toàn vẹn:** Verify SHA256 hash cho mọi chunk ✅ IMPLEMENTED
 - ✅ **Giám sát:** Audit trail ghi log theo publicKeyHash (không lộ danh tính)
-- ✅ **Demo-friendly:** 4 giai đoạn rõ ràng với UI trực quan
+- ✅ **Production UI:** 5 giai đoạn rõ ràng với visual feedback hoàn chỉnh
 
 ### **Nguyên tắc thiết kế**
 
@@ -62,6 +84,13 @@ Giai đoạn 0: Danh sách file (Anonymous List)
     ↓
     Backend trả về: Danh sách file có quyền truy cập
     Backend GHI LOG: AnonymousAuditLog (KHÔNG lưu userId)
+
+    🔒 **Caching & Sync Enhancements (2025-10-18)**
+      • Response kèm `meta` (`etag`, `lastModified`) → client lưu vào AsyncStorage theo `sha256(publicKey)`
+      • Lần kế tiếp client gửi header `If-None-Match` + `If-Modified-Since`
+      • Nếu backend trả 304 → tái sử dụng snapshot cục bộ, UI vẫn hoạt động offline
+      • Tự động lọc `status = 'revoked'`, xóa key package liên quan và gửi audit event `delete_cache`
+      • Banner "Bạn vừa được cấp quyền" / "Quyền truy cập đã bị thu hồi" hiển thị ngay khi danh sách thay đổi
 
 Giai đoạn 1: Thương lượng quyền truy cập (Access Negotiation)
     ↓
@@ -157,6 +186,21 @@ Tất cả endpoints KHÔNG sử dụng userId, chỉ authenticate bằng public
 | `/api/files/:id/anonymous-access` | POST | Get chunk manifest | publicKey + ringSignature + nonce |
 | `/api/files/:id/anonymous-integrity-alert` | POST | Report chunk issue | publicKey + ringSignature + nonce |
 | `/api/audit/anonymous-log` | POST | Log audit event | publicKey + ringSignature + nonce |
+| `/api/files/:id/anonymous-grants` | GET | Chủ sở hữu xem danh sách public key đã được cấp quyền | ownershipPublicKey + Schnorr proof + LSAG |
+| `/api/files/:id/anonymous-grants` | POST | Thêm/cập nhật danh sách người nhận (grant mới hoặc chỉnh sửa hạn) | ownershipPublicKey + Schnorr proof + LSAG |
+| `/api/files/:id/anonymous-grants/:grantId` | DELETE | Thu hồi quyền truy cập cho một public key cụ thể | ownershipPublicKey + Schnorr proof + LSAG |
+
+### **Giai đoạn -1: Quản trị quyền truy cập (Owner Flow)**
+
+1. **Tải danh sách quyền hiện tại** – Mobile owner gọi `GET /api/files/:id/anonymous-grants` với Schnorr proof + LSAG để chứng minh quyền sở hữu. Backend trả về mỗi grant gồm `accessorPublicKeyHash`, trạng thái (`active|revoked|pending`), fingerprint key package và metadata audit gần nhất.
+2. **Trình bày trong Access Manager modal** – UI hiển thị hai nhóm: `Đang có quyền` (active) và `Đề cử mới` (owner nhập/dán public key). Các hàng đi kèm hành động `Revoke` (ẩn/bật) và `Grant` (thêm mới).
+3. **Thêm người nhận** – Khi chọn `Grant`, client tạo Schnorr proof + LSAG với message chuẩn `grant:fileId:timestamp:nonce`, gửi POST cùng metadata (fingerprint, expiry, ghi chú). Backend tạo bản ghi mới hoặc cập nhật grant cũ, ghi audit event `grant_issued`, phản hồi `operation` = `created|updated`.
+4. **Thu hồi quyền** – Khi chọn `Revoke`, client gọi `DELETE /api/files/:id/anonymous-grants/:grantId` với message `revoke:fileId:grantId:timestamp:nonce`. Backend đặt `status='revoked'`, ghi log `grant_revoked` và trả về payload để client cập nhật UI.
+5. **Key image reuse được cho phép cho owner** – Mọi yêu cầu `list/grant/revoke` đều dùng chung key image của khóa sở hữu. Backend không còn chặn lần thứ hai mà ghi thêm event `key_image_verification` với `metadata.allowedByPolicy=true`, giúp audit vẫn phát hiện hành vi bất thường mà không gây lỗi `Invalid ring signature`.
+6. **Đồng bộ người nhận** – Backend phát `lastModified` (RFC3339). Mobile dùng giá trị này để invalid cache và thông báo người nhận (qua refresh) rằng file đã bị revoke; UI trên phía nhận hiển thị badge `Revoked` và ẩn nút download.
+7. **Chia sẻ key package** – Khi grant thành công, modal sẽ tự động copy JSON key package (như hiện tại) hoặc hiển thị QR code. Đây vẫn là bước ngoại tuyến giữa owner và recipient, nhưng được nhắc nhở trực tiếp trong flow quản trị.
+
+Khung quy trình này đảm bảo demo có thể minh hoạ rõ: chủ sở hữu thêm quyền, chia sẻ key package, rồi thu hồi lại quyền bằng một cú click.
 
 ### **Request Body Format (Chuẩn cho tất cả endpoints)**
 

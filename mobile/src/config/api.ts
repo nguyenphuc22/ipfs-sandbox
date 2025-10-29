@@ -14,6 +14,8 @@ const API_PORT = 3000;
 const IPFS_PORT = 5001;
 const PRODUCTION_BASE_URL = 'https://your-production-domain.com';
 const PRODUCTION_IPFS_URL = 'https://your-ipfs-gateway.com';
+const PRODUCTION_ADJUDICATOR_URL = 'https://your-adjudicator-service.com';
+const ADJUDICATOR_PORT = 4000;
 
 // Allow developers to override at runtime (useful for debugging sessions)
 const globalOverride = (globalThis as any)?.__IPFS_API_BASE_URL__;
@@ -77,11 +79,21 @@ function resolveDevelopmentIPFSUrl(): string {
   return `http://${resolvedHost}:${IPFS_PORT}`;
 }
 
+function resolveDevelopmentAdjudicatorUrl(): string {
+  const packagerHost = getPackagerHost();
+  const resolvedHost = packagerHost
+    ? normaliseHost(packagerHost)
+    : (DEFAULT_HOSTS[Platform.OS as 'android' | 'ios'] || DEFAULT_HOSTS.default);
+
+  return `http://${resolvedHost}:${ADJUDICATOR_PORT}`;
+}
+
 function getApiConfig() {
   if (!isDevelopment) {
     return {
       baseUrl: PRODUCTION_BASE_URL,
       ipfsGatewayUrl: PRODUCTION_IPFS_URL,
+      adjudicatorUrl: PRODUCTION_ADJUDICATOR_URL,
       timeout: 30000,
     };
   }
@@ -89,6 +101,7 @@ function getApiConfig() {
   return {
     baseUrl: resolveDevelopmentBaseUrl(),
     ipfsGatewayUrl: resolveDevelopmentIPFSUrl(),
+    adjudicatorUrl: resolveDevelopmentAdjudicatorUrl(),
     timeout: 30000,
   };
 }

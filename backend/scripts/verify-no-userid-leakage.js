@@ -7,7 +7,7 @@
  * 3. All access grants and revocations use publicKeyHash
  */
 
-const { PrismaClient } = require('@prisma/client');
+const { PrismaClient } = require('../src/config/prismaClient');
 const prisma = new PrismaClient();
 
 // ANSI color codes for terminal output

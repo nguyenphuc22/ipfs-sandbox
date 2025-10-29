@@ -10,6 +10,7 @@ import {
   Modal,
   Dimensions,
   SafeAreaView,
+  Platform,
 } from 'react-native';
 import { useTheme } from '../../styles';
 import { FileData, LocalKeyPackage } from '../../types';
@@ -22,6 +23,7 @@ import { useChunkDownloader } from '../../hooks';
 import { ChunkMonitorPanel } from './ChunkMonitorPanel';
 import { getKeyPackage } from '../../services/KeyPackageStorage';
 import type { ChunkProgressState } from '../../types/download';
+import { SecureDownloadScreen } from '../download';
 
 type FileViewerProps = {
   file: FileData;
@@ -49,6 +51,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   const [localKeyPackage, setLocalKeyPackage] = useState<LocalKeyPackage | null>(
     file.localKeyPackage ?? null,
   );
+  const [secureDownloadVisible, setSecureDownloadVisible] = useState(false);
 
   const demoModeEnabled = useMemo(
     () => __DEV__ || (typeof process !== 'undefined' && process.env?.KEY_MONITOR_DEMO === 'true'),
@@ -77,7 +80,8 @@ export const FileViewer: React.FC<FileViewerProps> = ({
 
   useEffect(() => {
     if (visible) {
-      const chunkCount = file.chunkCount ?? 0;
+      const resolvedIpfsHash = file.ipfsHash || file.chunks?.[0]?.cid;
+      const chunkCount = file.chunkCount ?? file.chunks?.length ?? 0;
       const isChunkedFileSession = chunkCount > 1;
       const totalSize = file.size ?? 0;
       const statusLabel = file.status ?? 'unknown';
@@ -103,7 +107,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
         );
       }
 
-      if (!file.ipfsHash) {
+      if (!resolvedIpfsHash && !isChunkedFileSession) {
         setIsLoading(false);
         setError('No IPFS hash available for this file');
         return;
@@ -117,7 +121,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
 
         try {
           const response: FileViewResponse = await gatewayService.viewFile(
-            file.ipfsHash as string,
+            resolvedIpfsHash as string,
             file.name
           );
 
@@ -154,7 +158,11 @@ export const FileViewer: React.FC<FileViewerProps> = ({
         }
       };
 
-      fetchFileContent();
+      if (!isChunkedFileSession && resolvedIpfsHash) {
+        fetchFileContent();
+      } else {
+        setIsLoading(false);
+      }
 
       let cancelledManifest = false;
 
@@ -235,6 +243,12 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     hasLoggedView,
     downloadActions,
   ]);
+
+  useEffect(() => {
+    if (downloadSession.phase !== 'idle' && !secureDownloadVisible) {
+      setSecureDownloadVisible(true);
+    }
+  }, [downloadSession.phase, secureDownloadVisible]);
 
   useEffect(() => {
     if (manifest) {
@@ -469,6 +483,12 @@ export const FileViewer: React.FC<FileViewerProps> = ({
       fontFamily: 'monospace',
       marginTop: 4,
     },
+    filePathInfo: {
+      fontSize: 12,
+      color: colors.textSecondary,
+      fontFamily: 'monospace',
+      marginTop: 4,
+    },
     contentContainer: {
       flex: 1,
       padding: 16,
@@ -575,6 +595,29 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     textScroll: {
       flex: 1,
     },
+    downloadActions: {
+      paddingHorizontal: 16,
+      paddingBottom: 24,
+      gap: 12,
+      backgroundColor: colors.background,
+    },
+    downloadHint: {
+      fontSize: 12,
+      color: colors.textSecondary,
+      lineHeight: 18,
+    },
+    primaryButton: {
+      backgroundColor: colors.primary,
+      paddingVertical: 12,
+      borderRadius: 8,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    primaryButtonText: {
+      color: colors.onPrimary,
+      fontSize: 15,
+      fontWeight: '600',
+    },
   });
 
   return (
@@ -604,6 +647,14 @@ export const FileViewer: React.FC<FileViewerProps> = ({
             </Text>
             {file.ipfsHash ? (
               <Text style={styles.fileHash}>IPFS: {file.ipfsHash}</Text>
+            ) : null}
+            {downloadSession.sandboxPath ? (
+              <Text style={styles.filePathInfo}>Saved: {downloadSession.sandboxPath}</Text>
+            ) : null}
+            {downloadSession.exportPath ? (
+              <Text style={styles.filePathInfo}>
+                {Platform.OS === 'android' ? 'Downloads' : 'Shared Copy'}: {downloadSession.exportPath}
+              </Text>
             ) : null}
           </View>
 
@@ -661,8 +712,41 @@ export const FileViewer: React.FC<FileViewerProps> = ({
               renderPreviewContent()
             )}
           </View>
+
+          <View style={styles.downloadActions}>
+            <Text style={styles.downloadHint}>
+              Quy trình 4 bước sẽ tái tạo file và lưu về máy (bao gồm đường dẫn sandbox hiển thị bên trên).
+            </Text>
+            <TouchableOpacity
+              style={styles.primaryButton}
+              onPress={() => setSecureDownloadVisible(true)}
+            >
+              <Text style={styles.primaryButtonText}>
+                {downloadSession.phase === 'ready'
+                  ? 'Xem đường dẫn tải xuống'
+                  : 'Bắt đầu tải xuống an toàn'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </SafeAreaView>
       </View>
+
+      {secureDownloadVisible ? (
+        <Modal
+          visible
+          animationType="slide"
+          onRequestClose={() => setSecureDownloadVisible(false)}
+        >
+          <SecureDownloadScreen
+            file={file}
+            onCancel={() => setSecureDownloadVisible(false)}
+            onComplete={(path) => {
+              setSecureDownloadVisible(false);
+              Alert.alert('Tải xuống hoàn tất', `File đã được lưu tại:\n${path}`);
+            }}
+          />
+        </Modal>
+      ) : null}
     </Modal>
   );
 };

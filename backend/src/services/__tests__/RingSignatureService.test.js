@@ -390,16 +390,16 @@ describe('RingSignatureService', () => {
       expect(result2).toBe(true);
     });
 
-    it('should allow reused key images but record reuse metadata', async () => {
+    it('should reject reused key images but record reuse metadata', async () => {
       const keyImage = 'reused-key-image';
 
       // First use of key image should be accepted and stored
       const firstResult = await ringSignatureService.checkKeyImage(keyImage);
       expect(firstResult).toBe(true);
 
-      // Second use should also succeed, but mark the reuse in audit log
+      // Second use should be rejected but mark the reuse in audit log
       const secondResult = await ringSignatureService.checkKeyImage(keyImage);
-      expect(secondResult).toBe(true);
+      expect(secondResult).toBe(false);
 
       const createCalls = mockPrisma.anonymousAuditLog.create.mock.calls;
       expect(createCalls.length).toBeGreaterThanOrEqual(2);
@@ -487,7 +487,7 @@ describe('RingSignatureService', () => {
           message,
           ringPublicKeys,
         });
-        expect(result2).toBe(true);
+  expect(result2).toBe(false);
 
         const createCalls = mockPrisma.anonymousAuditLog.create.mock.calls;
         const reuseEntry = createCalls[createCalls.length - 1][0];

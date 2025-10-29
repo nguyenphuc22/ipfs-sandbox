@@ -12,15 +12,30 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  Platform,
+  Modal,
+  TextInput,
 } from 'react-native';
 import type { ViewStyle } from 'react-native';
 import { useTheme } from '../../styles';
 import type { FileData } from '../../types';
 import { anonymousFileAccessService } from '../../services/AnonymousFileAccessService';
 import type { FileAccessManifest } from '../../services/AnonymousFileAccessService';
-import { saveKeyPackage } from '../../services/KeyPackageStorage';
+import { getKeyPackage, saveKeyPackage } from '../../services/KeyPackageStorage';
 import { useChunkDownloader } from '../../hooks';
 import type { ChunkStatus, DownloadPhase, SecureKeyPackage } from '../../types/download';
+import { chunkDownloadManager } from '../../services/chunkDownloadManager';
+
+const KEY_PACKAGE_PLACEHOLDER = `{
+  "fileId": "...",
+  "masterKey": "...",
+  "chunkKeys": { "0": "..." }
+}`;
+
+const openManualModalDefaults = {
+  draft: '',
+  error: null as string | null,
+};
 
 interface SecureDownloadScreenProps {
   file: FileData;
@@ -44,6 +59,17 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
     [],
   );
   const combinedError = error ?? sessionError;
+  const sandboxPath = session.sandboxPath;
+  const exportPath = session.exportPath;
+  const [manualKeyModalVisible, setManualKeyModalVisible] = useState(false);
+  const [manualKeyDraft, setManualKeyDraft] = useState(openManualModalDefaults.draft);
+  const [manualKeyError, setManualKeyError] = useState<string | null>(openManualModalDefaults.error);
+
+  const openManualKeyModal = () => {
+    setManualKeyDraft(openManualModalDefaults.draft);
+    setManualKeyError(openManualModalDefaults.error);
+    setManualKeyModalVisible(true);
+  };
 
   // Phase 1: Access Negotiation
   const requestAccess = async () => {
@@ -60,6 +86,22 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
         ? Math.round((file.size ?? 0) / inferredChunkCount)
         : 0;
 
+      const storedPackage = await getKeyPackage(file.id);
+      const storedSecurePackage: SecureKeyPackage | null = storedPackage && Object.keys(storedPackage.chunkKeys).length > 0
+        ? {
+            masterKey: storedPackage.masterKey,
+            chunkKeys: storedPackage.chunkKeys,
+            fingerprint: storedPackage.fingerprint,
+          }
+        : null;
+      const localPackage: SecureKeyPackage | null = file.localKeyPackage
+        ? {
+            masterKey: file.localKeyPackage.masterKey,
+            chunkKeys: file.localKeyPackage.chunkKeys,
+            fingerprint: file.localKeyPackage.fingerprint,
+          }
+        : null;
+      const hydratedPackage: SecureKeyPackage | null = storedSecurePackage ?? localPackage;
       const chunkManifest = (providedChunks ?? Array.from({ length: inferredChunkCount }, (_, index) => ({
         index,
         cid: `demo_cid_${index}`,
@@ -71,7 +113,11 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
         hash: chunk.hash,
       }));
 
-      const hasLocalKey = Boolean(file.localKeyPackage || file.hasLocalKey);
+  const hasLocalKeyMaterial = Boolean(hydratedPackage);
+  const hasLocalKeyFlag = Boolean(file.hasLocalKey);
+  const manifestHasLocalKey = hasLocalKeyMaterial || hasLocalKeyFlag;
+
+      const resolvedFingerprint = hydratedPackage?.fingerprint ?? file.keyPackageFingerprint ?? undefined;
 
       const mockManifest: FileAccessManifest = {
         success: true,
@@ -92,23 +138,33 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
           grantedAt: new Date().toISOString(),
           expiresAt: null,
           accessCount: 1,
-          hasLocalKey,
-          keyPackageFingerprint: file.keyPackageFingerprint ?? 'mock_fingerprint',
+          hasLocalKey: manifestHasLocalKey,
+          keyPackageFingerprint: resolvedFingerprint,
           keyStatus: 'client-managed',
         },
       };
 
       setAccessInfo(mockManifest);
-      setSecureKeyPackage(null);
-      actions.setSecureKeyPackage(null);
-    actions.resetSession();
+      if (hydratedPackage) {
+        setSecureKeyPackage(hydratedPackage);
+        actions.setSecureKeyPackage(hydratedPackage);
+      } else {
+        setSecureKeyPackage(null);
+        actions.setSecureKeyPackage(null);
+      }
+      actions.resetSession();
       actions.ensureSession(mockManifest);
 
-      const nextPhase: DownloadPhase = hasLocalKey ? 'keys' : 'waitingKey';
+      const nextPhase: DownloadPhase = hasLocalKeyMaterial ? 'keys' : 'waitingKey';
       actions.setPhase(nextPhase);
 
-      if (hasLocalKey) {
-        resolveKeys();
+      if (hasLocalKeyMaterial && hydratedPackage) {
+        resolveKeys(hydratedPackage);
+      } else if (!hasLocalKeyMaterial) {
+        const missingMessage = 'Secure key package not available. Import the package provided by the owner.';
+        setError(missingMessage);
+        actions.setError(missingMessage);
+        openManualKeyModal();
       }
 
     } catch (err) {
@@ -120,42 +176,85 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
     }
   };
 
-  const importSecureKeyPackage = async () => {
+  const importSecureKeyPackage = () => {
     if (!accessInfo) {
       return;
     }
 
+    setError(null);
+    actions.setError(null);
+    actions.setPhase('waitingKey');
+    openManualKeyModal();
+  };
+
+  const handleManualKeyImport = async () => {
+    if (!accessInfo) {
+      return;
+    }
+
+    if (!manualKeyDraft || manualKeyDraft.trim().length === 0) {
+      setManualKeyError('Vui lòng dán JSON key package do chủ sở hữu cung cấp.');
+      return;
+    }
+
     try {
-      setError(null);
-      actions.setPhase('waitingKey');
+      const parsed = JSON.parse(manualKeyDraft.trim());
+      const masterKey = typeof parsed.masterKey === 'string' ? parsed.masterKey.trim() : '';
+      const rawChunkKeys = parsed.chunkKeys;
 
-      // Simulate user scanning/importing secure key package (QR / file)
-      await new Promise(resolve => setTimeout(resolve, 1200));
+      if (!masterKey) {
+        throw new Error('Key package thiếu masterKey.');
+      }
 
-      const mockPackage: SecureKeyPackage = {
-        masterKey: 'mock_master_key',
-        chunkKeys: Object.fromEntries(
-          (accessInfo.chunkManifest || []).map((chunk: FileAccessManifest['chunkManifest'][number]) => [
-            chunk.index,
-            `mock_chunk_key_${chunk.index}`,
-          ])
-        ),
-        fingerprint: accessInfo.grantContext?.keyPackageFingerprint,
+      if (!rawChunkKeys || typeof rawChunkKeys !== 'object') {
+        throw new Error('Key package thiếu chunkKeys hợp lệ.');
+      }
+
+      const normalizedEntries = Object.entries(rawChunkKeys).map(([index, value]) => {
+        const numericIndex = Number(index);
+        if (!Number.isInteger(numericIndex)) {
+          throw new Error(`Chunk key index không hợp lệ: ${index}`);
+        }
+        if (typeof value !== 'string' || value.trim().length === 0) {
+          throw new Error(`Chunk key trống tại index ${index}`);
+        }
+        return [numericIndex, value];
+      });
+
+      const normalizedChunkKeys: Record<number, string> = Object.fromEntries(normalizedEntries);
+
+      const fingerprint = typeof parsed.fingerprint === 'string' && parsed.fingerprint.trim().length > 0
+        ? parsed.fingerprint.trim()
+        : undefined;
+
+      if (parsed.fileId && String(parsed.fileId) !== file.id) {
+        console.warn('[SecureDownloadScreen] Imported key package fileId mismatch', {
+          expected: file.id,
+          received: parsed.fileId,
+        });
+      }
+
+      const importedPackage: SecureKeyPackage = {
+        masterKey,
+        chunkKeys: normalizedChunkKeys,
+        fingerprint,
       };
 
-      setSecureKeyPackage(mockPackage);
-      actions.setSecureKeyPackage(mockPackage);
+      setSecureKeyPackage(importedPackage);
+      actions.setSecureKeyPackage(importedPackage);
+
       if (shouldPersistKeyPackage) {
         try {
           await saveKeyPackage(file.id, {
-            masterKey: mockPackage.masterKey,
-            chunkKeys: mockPackage.chunkKeys,
-            fingerprint: mockPackage.fingerprint,
+            masterKey: importedPackage.masterKey,
+            chunkKeys: importedPackage.chunkKeys,
+            fingerprint: importedPackage.fingerprint,
           });
         } catch (storageError) {
           console.warn('[SecureDownloadScreen] Failed to persist imported key package', storageError);
         }
       }
+
       setAccessInfo((prev: FileAccessManifest | null) =>
         prev
           ? {
@@ -165,25 +264,34 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
                 hasLocalKey: true,
               },
             }
-          : prev
+          : prev,
       );
 
-      actions.setPhase('keys');
-      resolveKeys();
+    setManualKeyModalVisible(false);
+    setManualKeyError(null);
+
+      await resolveKeys(importedPackage);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to import key package';
-      setError(message);
-      Alert.alert('Key Package Error', message);
+      const message = err instanceof Error ? err.message : 'Key package không hợp lệ.';
+      setManualKeyError(message);
     }
   };
 
+  const handleManualKeyCancel = () => {
+    setManualKeyModalVisible(false);
+    setManualKeyDraft(openManualModalDefaults.draft);
+    setManualKeyError(openManualModalDefaults.error);
+  };
+
   // Phase 2: Key Orchestration
-  const resolveKeys = async () => {
+  const resolveKeys = async (packageOverride: SecureKeyPackage | null = null) => {
     if (!accessInfo) {
       return;
     }
 
-    if (!secureKeyPackage) {
+    const activePackage = packageOverride ?? secureKeyPackage;
+
+    if (!activePackage) {
       actions.setPhase('waitingKey');
       const message = 'Secure key package not available. Import the package provided by the owner.';
       setError(message);
@@ -197,13 +305,21 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
       actions.setError(null);
       setError(null);
 
-      // TODO: Validate fingerprint with Secure Storage fingerprint hash
-      if (
-        accessInfo.grantContext?.keyPackageFingerprint &&
-        secureKeyPackage.fingerprint &&
-        accessInfo.grantContext.keyPackageFingerprint !== secureKeyPackage.fingerprint
-      ) {
-        throw new Error('Secure key package fingerprint mismatch');
+      // Validate fingerprint when both manifest and package provide consistent values
+      const expectedFingerprint = accessInfo.grantContext?.keyPackageFingerprint;
+      const incomingFingerprint = activePackage.fingerprint;
+      if (expectedFingerprint && incomingFingerprint) {
+        const normalizedExpected = expectedFingerprint.trim().toLowerCase();
+        const normalizedIncoming = incomingFingerprint.trim().toLowerCase();
+
+        if (
+          normalizedExpected.length > 0 &&
+          normalizedIncoming.length > 0 &&
+          !normalizedExpected.startsWith('mock_') &&
+          normalizedExpected !== normalizedIncoming
+        ) {
+          throw new Error('Secure key package fingerprint mismatch');
+        }
       }
 
       // TODO: Persist master key + chunk keys into Secure Storage
@@ -213,12 +329,37 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
       // Simulate key resolution
       await new Promise(resolve => setTimeout(resolve, 1500));
 
+      if (!packageOverride && activePackage !== secureKeyPackage) {
+        setSecureKeyPackage(activePackage);
+        actions.setSecureKeyPackage(activePackage);
+      }
+
       actions.setPhase('chunks');
-      await actions.simulateDownload();
-      Alert.alert('Download Complete', 'File is ready. All chunks verified ✓');
+      await actions.downloadFile();
+      const latestSession = chunkDownloadManager.getState(file.id);
+      const successParts = ['File is ready. All chunks verified ✓'];
+
+      if (latestSession.sandboxPath) {
+        successParts.push(`Sandbox: ${latestSession.sandboxPath}`);
+      }
+
+      if (latestSession.exportPath) {
+        successParts.push(`Export: ${latestSession.exportPath}`);
+      }
+
+      Alert.alert('Download Complete', successParts.join('\n\n'));
 
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to resolve keys';
+      const extracted = err instanceof Error
+        ? err.message
+        : typeof err === 'string'
+          ? err
+          : (err as Record<string, unknown>)?.error?.toString?.();
+      const message = extracted && extracted.trim().length > 0
+        ? extracted.includes("Property 'error' doesn't exist")
+          ? 'Secure key package metadata is malformed. Please refresh access or re-import the package.'
+          : extracted
+        : 'Failed to resolve keys';
       setError(message);
       actions.setError(message);
       Alert.alert('Key Resolution Error', message);
@@ -295,6 +436,35 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
       default:
         return '•';
     }
+  };
+
+  const renderPersistenceSummary = () => {
+    if (!sandboxPath && !exportPath) {
+      return null;
+    }
+
+    return (
+      <View style={styles.persistenceContainer}>
+        <Text style={styles.persistenceTitle}>Saved Paths</Text>
+        {sandboxPath ? (
+          <View style={styles.persistenceRow}>
+            <Text style={styles.persistenceLabel}>Sandbox</Text>
+            <Text style={styles.persistenceValue}>{sandboxPath}</Text>
+          </View>
+        ) : null}
+        {exportPath ? (
+          <View style={styles.persistenceRow}>
+            <Text style={styles.persistenceLabel}>
+              {Platform.OS === 'android' ? 'Downloads' : 'Shared Copy'}
+            </Text>
+            <Text style={styles.persistenceValue}>{exportPath}</Text>
+          </View>
+        ) : null}
+        <Text style={styles.persistenceHint}>
+          Use the paths above with adb run-as / adb pull or simctl get_app_container to retrieve the decrypted file for QA.
+        </Text>
+      </View>
+    );
   };
 
   const completedChunks = chunkProgress.filter(c => c.status === 'completed').length;
@@ -435,6 +605,41 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
       color: colors.error,
       marginTop: 4,
     },
+    persistenceContainer: {
+      marginTop: 24,
+      padding: 16,
+      borderRadius: 8,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    persistenceTitle: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.text,
+      marginBottom: 10,
+    },
+    persistenceRow: {
+      marginBottom: 8,
+    },
+    persistenceLabel: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.textSecondary,
+      textTransform: 'uppercase',
+      marginBottom: 4,
+    },
+    persistenceValue: {
+      fontSize: 12,
+      color: colors.text,
+      fontFamily: 'monospace',
+    },
+    persistenceHint: {
+      fontSize: 12,
+      color: colors.textSecondary,
+      marginTop: 12,
+      lineHeight: 16,
+    },
     retryButton: {
       paddingHorizontal: 12,
       paddingVertical: 6,
@@ -506,6 +711,56 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
       fontSize: 16,
       fontWeight: '600',
     },
+    manualModalBackdrop: {
+      flex: 1,
+      backgroundColor: '#00000088',
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 24,
+    },
+    manualModalContainer: {
+      width: '100%',
+      maxHeight: '85%',
+      borderRadius: 20,
+      padding: 20,
+    },
+    manualModalTitle: {
+      fontSize: 18,
+      fontWeight: '700',
+      color: colors.text,
+      marginBottom: 8,
+    },
+    manualModalSubtitle: {
+      fontSize: 13,
+      color: colors.textSecondary,
+      marginBottom: 12,
+      lineHeight: 18,
+    },
+    manualModalInput: {
+      minHeight: 190,
+      borderWidth: 1,
+      borderRadius: 12,
+      padding: 12,
+      fontSize: 13,
+      textAlignVertical: 'top',
+      marginBottom: 12,
+      fontFamily: 'monospace',
+    },
+    manualModalError: {
+      color: colors.error,
+      fontSize: 12,
+      marginBottom: 12,
+    },
+    manualModalButtonRow: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+    },
+    manualModalButton: {
+      minWidth: 120,
+    },
+    manualModalButtonPrimary: {
+      marginLeft: 12,
+    },
   });
 
   const renderPhaseStepper = () => {
@@ -517,7 +772,7 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
       { key: 'ready', label: 'Ready' },
     ];
 
-    const phaseOrder: DownloadPhase[] = ['idle', 'access', 'waitingKey', 'keys', 'chunks', 'ready'];
+    const phaseOrder: DownloadPhase[] = ['idle', 'access', 'waitingKey', 'keys', 'chunks', 'assembling', 'ready'];
     const currentIndex = phaseOrder.indexOf(phase);
 
     return (
@@ -628,6 +883,8 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
           </View>
         ) : null}
 
+  {renderPersistenceSummary()}
+
         {/* Action Buttons */}
         <View style={styles.buttonRow}>
           <TouchableOpacity
@@ -668,7 +925,7 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
                 styles.buttonPrimary,
                 !secureKeyPackage && styles.buttonDisabled,
               ]}
-              onPress={secureKeyPackage ? resolveKeys : undefined}
+              onPress={secureKeyPackage ? () => resolveKeys(secureKeyPackage) : undefined}
             >
               <Text style={styles.buttonText}>Resolve Keys</Text>
             </TouchableOpacity>
@@ -678,8 +935,15 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
             <TouchableOpacity
               style={[styles.button, styles.buttonPrimary]}
               onPress={() => {
-                Alert.alert('Success', 'File is ready to view');
-                onComplete?.('/path/to/file');
+                const latestSession = chunkDownloadManager.getState(file.id);
+                const callbackPath = latestSession.exportPath ?? latestSession.sandboxPath ?? exportPath ?? sandboxPath;
+                const message = callbackPath
+                  ? `File is ready to view from:\n${callbackPath}`
+                  : 'File is ready to view';
+                Alert.alert('Success', message);
+                if (callbackPath) {
+                  onComplete?.(callbackPath);
+                }
               }}
             >
               <Text style={styles.buttonText}>Open File</Text>
@@ -687,6 +951,54 @@ export const SecureDownloadScreen: React.FC<SecureDownloadScreenProps> = ({
           )}
         </View>
       </ScrollView>
+
+      <Modal
+        visible={manualKeyModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={handleManualKeyCancel}
+      >
+        <View style={styles.manualModalBackdrop}>
+          <View style={[styles.manualModalContainer, { backgroundColor: colors.surface }] }>
+            <Text style={styles.manualModalTitle}>Import Key Package</Text>
+            <Text style={styles.manualModalSubtitle}>
+              Dán JSON key package do chủ sở hữu cung cấp vào khung bên dưới rồi chọn "Import".
+            </Text>
+            <TextInput
+              value={manualKeyDraft}
+              onChangeText={setManualKeyDraft}
+              multiline
+              style={[
+                styles.manualModalInput,
+                {
+                  color: colors.text,
+                  borderColor: colors.border,
+                  backgroundColor: colors.background,
+                },
+              ]}
+              placeholder={KEY_PACKAGE_PLACEHOLDER}
+              placeholderTextColor={colors.textSecondary}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            {manualKeyError ? <Text style={styles.manualModalError}>{manualKeyError}</Text> : null}
+            <View style={styles.manualModalButtonRow}>
+              <TouchableOpacity
+                style={[styles.button, styles.buttonSecondary, styles.manualModalButton]}
+                onPress={handleManualKeyCancel}
+              >
+                <Text style={styles.buttonTextSecondary}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.button, styles.buttonPrimary, styles.manualModalButton, styles.manualModalButtonPrimary]}
+                onPress={handleManualKeyImport}
+              >
+                <Text style={styles.buttonText}>Import</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };

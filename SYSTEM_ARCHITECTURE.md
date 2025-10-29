@@ -374,6 +374,14 @@ graph TB
     style Middleware fill:#f3e5f5
 ```
 
+#### Anonymous Access Management Enhancements (2025-10-18)
+
+- **AccessManagementService**: gom logic cho `anonymous-grants` (list/grant/revoke) và tái sử dụng `RingSignatureService` + `SchnorrOwnershipService` nhằm xác thực chủ sở hữu file trước khi thao tác.
+- **OwnerControlRoutes**: nhóm route REST mới `GET/POST/DELETE /api/files/:fileId/anonymous-grants` đặt cạnh các anonymous endpoint hiện hữu, kèm middleware chống replay (nonce store) và audit log (`grant_issued`, `grant_revoked`).
+- **Schema cập nhật**: bảng `AnonymousFileAccess` thêm các trường `status`, `revokedAt`, `lastOwnerProof`, đồng thời tạo composite index `fileId + accessorPublicKeyHash` để truy vấn nhanh. Audit log lưu thêm metadata `operation`, `previousStatus`.
+- **Event hooks**: sự kiện nội bộ `AccessGrantChanged` giúp đồng bộ cache và chuẩn bị broadcast tới mobile; giai đoạn demo có thể đẩy vào bảng `AnonymousGrantJournal` để client polling.
+- **Mobile Access Manager**: component chuyên dụng trên React Native tiêu chuẩn hóa API call grant/revoke và điều khiển chia sẻ key package ngay sau khi backend xác nhận.
+
 ## CRUD Operations Flow
 
 ### File Upload Operation (CREATE)

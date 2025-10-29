@@ -7,7 +7,7 @@
 
 const { FileAccessService } = require('../FileAccessService');
 const { RingSignatureService } = require('../RingSignatureService');
-const { PrismaClient } = require('@prisma/client');
+const { PrismaClient } = require('../../config/prismaClient');
 
 describe('File Access Service - Replay Protection', () => {
   let fileAccessService;

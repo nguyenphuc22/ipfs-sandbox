@@ -3,6 +3,8 @@
 export interface PickedFile {
   id: string;
   uri: string;
+  fileCopyUri?: string | null;
+  originalUri?: string | null;
   name: string | null;
   error: string | null;
   type: string | null;

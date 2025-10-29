@@ -10,9 +10,12 @@
  * - issue_plan.md Task A (requirements)
  */
 
-import { sha256 } from '@noble/hashes/sha2';
+import RNFS from 'react-native-fs';
+import { Platform } from 'react-native';
 import { generateMasterKey as generateAOTMasterKey } from '../utils/aotCrypto';
 import { PickedFile } from '../types';
+import { ensureCryptoRandomSupport, ensureWebCryptoSupport } from './crypto/webCryptoSupport';
+import { sha256Hex } from './crypto/hash';
 
 // ============================================================================
 // Configuration
@@ -97,7 +100,7 @@ export interface ProgressCallback {
 /**
  * Convert hex string to Uint8Array
  */
-function hexToBytes(hex: string): Uint8Array {
+export function hexToBytes(hex: string): Uint8Array {
   const cleaned = hex.trim().toLowerCase().replace(/^0x/, '');
   if (cleaned.length % 2 !== 0) {
     throw new Error('Hex string must have even length');
@@ -112,7 +115,7 @@ function hexToBytes(hex: string): Uint8Array {
 /**
  * Convert Uint8Array to hex string
  */
-function bytesToHex(bytes: Uint8Array): string {
+export function bytesToHex(bytes: Uint8Array): string {
   return Array.from(bytes)
     .map(b => b.toString(16).padStart(2, '0'))
     .join('');
@@ -129,6 +132,62 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+async function appendChunkToFormData(
+  formData: FormData,
+  encryptedChunk: Uint8Array,
+  fileName: string,
+  chunkIndex: number
+): Promise<() => Promise<void>> {
+  const chunkFileName = `${fileName}.chunk${chunkIndex}`;
+  const mimeType = 'application/octet-stream';
+
+  const BlobCtor = typeof Blob !== 'undefined'
+    ? (Blob as unknown as { new (parts?: unknown[], options?: { type?: string }): Blob })
+    : undefined;
+
+  if (BlobCtor) {
+    try {
+      const blob = new BlobCtor([encryptedChunk], { type: mimeType });
+      formData.append('file', blob, chunkFileName);
+      return async () => {};
+    } catch (blobError) {
+      console.warn('[ChunkEncryption] Blob creation failed, falling back to file upload:', blobError);
+    }
+  }
+
+  const base64Data = bytesToBase64(encryptedChunk);
+  const baseTempDir =
+    Platform.OS === 'ios'
+      ? RNFS.TemporaryDirectoryPath
+      : RNFS.CachesDirectoryPath || RNFS.TemporaryDirectoryPath;
+
+  if (!baseTempDir) {
+    throw new Error('No temporary directory available for chunk upload');
+  }
+
+  const sanitizedBaseName = fileName?.replace(/[^a-zA-Z0-9_.-]/g, '_') || 'chunk';
+  const normalizedTempDir = baseTempDir.replace(/\/$/, '');
+  const tempFilePath = `${normalizedTempDir}/${sanitizedBaseName}-chunk-${chunkIndex}-${Date.now()}.bin`;
+
+  await RNFS.writeFile(tempFilePath, base64Data, 'base64');
+
+  const uri = Platform.OS === 'ios' ? tempFilePath : `file://${tempFilePath}`;
+
+  formData.append('file', {
+    uri,
+    type: mimeType,
+    name: chunkFileName,
+  } as any);
+
+  return async () => {
+    try {
+      await RNFS.unlink(tempFilePath);
+    } catch (cleanupError) {
+      console.warn('[ChunkEncryption] Failed to remove temp chunk file:', cleanupError);
+    }
+  };
+}
+
 /**
  * Convert base64 string to Uint8Array
  */
@@ -141,10 +200,48 @@ function base64ToBytes(base64: string): Uint8Array {
   return bytes;
 }
 
+function shouldUseFileSystem(uri: string): boolean {
+  if (!uri) {
+    return false;
+  }
+  return uri.startsWith('file://')
+    || uri.startsWith('/')
+    || (Platform.OS === 'android' && uri.startsWith('content://'));
+}
+
+function normalizeFsPath(uri: string): string {
+  if (!uri) {
+    return uri;
+  }
+
+  if (uri.startsWith('file://')) {
+    return decodeURI(uri.replace('file://', ''));
+  }
+
+  if (Platform.OS === 'android' && uri.startsWith('content://')) {
+    return uri;
+  }
+
+  return decodeURI(uri);
+}
+
+function resolveReadableUri(file: PickedFile): string {
+  if (file.fileCopyUri) {
+    return file.fileCopyUri;
+  }
+
+  if (file.uri) {
+    return file.uri;
+  }
+
+  throw new Error('File không có URI hợp lệ để đọc dữ liệu');
+}
+
 /**
  * Generate random bytes using crypto.getRandomValues
  */
 function getRandomBytes(length: number): Uint8Array {
+  ensureCryptoRandomSupport();
   const bytes = new Uint8Array(length);
   if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
     crypto.getRandomValues(bytes);
@@ -161,7 +258,7 @@ function getRandomBytes(length: number): Uint8Array {
  * Compute SHA-256 hash of data
  */
 function computeHash(data: Uint8Array): string {
-  return bytesToHex(sha256(data));
+  return sha256Hex(data);
 }
 
 // ============================================================================
@@ -176,9 +273,14 @@ function computeHash(data: Uint8Array): string {
  */
 async function readFileFromURI(uri: string): Promise<Uint8Array> {
   try {
-    console.log('[ChunkEncryption] Reading file from URI:', uri);
+    console.log('[ChunkEncryption] Reading file từ URI:', uri);
 
-    // Use fetch to read file (works with file:// URIs in React Native)
+    if (shouldUseFileSystem(uri)) {
+      const path = normalizeFsPath(uri);
+      const base64Data = await RNFS.readFile(path, 'base64');
+      return base64ToBytes(base64Data);
+    }
+
     const response = await fetch(uri);
     if (!response.ok) {
       throw new Error(`Failed to read file: ${response.statusText}`);
@@ -260,8 +362,9 @@ async function encryptChunkWithAESGCM(
   const iv = getRandomBytes(12);
 
   try {
+    const subtle = ensureWebCryptoSupport();
     // Import key
-    const cryptoKey = await crypto.subtle.importKey(
+    const cryptoKey = await subtle.importKey(
       'raw',
       chunkKey,
       { name: 'AES-GCM' },
@@ -270,7 +373,7 @@ async function encryptChunkWithAESGCM(
     );
 
     // Encrypt
-    const encrypted = await crypto.subtle.encrypt(
+    const encrypted = await subtle.encrypt(
       {
         name: 'AES-GCM',
         iv,
@@ -308,13 +411,14 @@ export async function decryptChunkWithAESGCM(
   authTag: Uint8Array
 ): Promise<Uint8Array> {
   try {
+    const subtle = ensureWebCryptoSupport();
     // Combine encrypted data and auth tag
     const combined = new Uint8Array(encryptedData.length + authTag.length);
     combined.set(encryptedData, 0);
     combined.set(authTag, encryptedData.length);
 
     // Import key
-    const cryptoKey = await crypto.subtle.importKey(
+    const cryptoKey = await subtle.importKey(
       'raw',
       chunkKey,
       { name: 'AES-GCM' },
@@ -323,7 +427,7 @@ export async function decryptChunkWithAESGCM(
     );
 
     // Decrypt
-    const decrypted = await crypto.subtle.decrypt(
+    const decrypted = await subtle.decrypt(
       {
         name: 'AES-GCM',
         iv,
@@ -344,7 +448,7 @@ export async function decryptChunkWithAESGCM(
  * Create encrypted chunk package ready for IPFS upload
  * Format: [12 bytes IV][16 bytes AuthTag][N bytes EncryptedData]
  */
-async function createEncryptedChunkPackage(
+export async function createEncryptedChunkPackage(
   chunkData: Uint8Array,
   chunkKey: Uint8Array
 ): Promise<{
@@ -447,7 +551,8 @@ export async function processFileForChunking(
   try {
     // 1. Read file
     onProgress?.({ stage: 'reading', percentage: 0 });
-    const fileBuffer = await readFileFromURI(file.uri);
+    const sourceUri = resolveReadableUri(file);
+    const fileBuffer = await readFileFromURI(sourceUri);
 
     // 2. Split into chunks
     onProgress?.({ stage: 'chunking', percentage: 10 });
@@ -540,33 +645,41 @@ async function uploadChunkToIPFS(
 
     // Create form data
     const formData = new FormData();
-
-    // Convert Uint8Array to Blob
-    const blob = new Blob([encryptedChunk], { type: 'application/octet-stream' });
-
-    // Append file to form data
-    formData.append('file', blob, `${fileName}.chunk${chunkIndex}`);
+    const cleanup = await appendChunkToFormData(formData, encryptedChunk, fileName, chunkIndex);
 
     // Upload to IPFS via HTTP API
-    const response = await fetch(`${ipfsGatewayUrl}/api/v0/add`, {
-      method: 'POST',
-      body: formData,
-    });
+    try {
+      const response = await fetch(`${ipfsGatewayUrl}/api/v0/add`, {
+        method: 'POST',
+        body: formData,
+      });
 
-    if (!response.ok) {
-      throw new Error(`IPFS upload failed with status: ${response.status}`);
+      if (!response.ok) {
+        throw new Error(`IPFS upload failed with status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      const cid = result.Hash;
+
+      console.log(`[ChunkEncryption] Chunk ${chunkIndex} uploaded: ${cid}`);
+
+      return cid;
+    } finally {
+      await cleanup();
     }
-
-    const result = await response.json();
-    const cid = result.Hash;
-
-    console.log(`[ChunkEncryption] Chunk ${chunkIndex} uploaded: ${cid}`);
-
-    return cid;
   } catch (error) {
     console.error(`[ChunkEncryption] Failed to upload chunk ${chunkIndex}:`, error);
     throw new Error(`Chunk ${chunkIndex} upload failed: ${error instanceof Error ? error.message : String(error)}`);
   }
+}
+
+export async function uploadEncryptedChunkBuffer(
+  encryptedChunk: Uint8Array,
+  chunkIndex: number,
+  fileName: string,
+  ipfsGatewayUrl: string
+): Promise<string> {
+  return uploadChunkToIPFS(encryptedChunk, chunkIndex, fileName, ipfsGatewayUrl);
 }
 
 /**

@@ -1,8 +1,57 @@
 import { chunkDownloadManager } from '../src/services/chunkDownloadManager';
 import type { FileAccessManifest } from '../src/services/AnonymousFileAccessService';
 
+// Mock dependencies for real download
+jest.mock('../src/services/KeyPackageStorage', () => ({
+  getKeyPackage: jest.fn().mockResolvedValue({
+    masterKey: 'mock_master_key',
+    chunkKeys: {
+      0: '0'.repeat(64),
+      1: '1'.repeat(64),
+      2: '2'.repeat(64),
+    },
+    fingerprint: 'fingerprint',
+  }),
+}));
+
+jest.mock('../src/services/ChunkEncryptionService', () => ({
+  decryptChunkWithAESGCM: jest.fn().mockResolvedValue(new Uint8Array(512)),
+  parseEncryptedChunkPackage: jest.fn().mockReturnValue({
+    iv: new Uint8Array(12),
+    authTag: new Uint8Array(16),
+    encryptedData: new Uint8Array(512),
+  }),
+}));
+
+jest.mock('../src/services/crypto/hash', () => ({
+  sha256Hex: jest.fn(() => '076a27c79e5ace2a3d47f9dd2e83e4ff6ea8872b3c2218f66c92b89b55f36560'),
+  sha256Bytes: jest.fn(input => {
+    if (input instanceof Uint8Array) {
+      return input.length >= 32 ? input.slice(0, 32) : new Uint8Array(32).fill(0);
+    }
+    return new Uint8Array(32).fill(0);
+  }),
+}));
+
+// Mock @noble/hashes for integrity verification
+jest.mock('@noble/hashes/sha2.js', () => ({
+  sha256: jest.fn((data?: Uint8Array) => {
+    if (data instanceof Uint8Array) {
+      return new Uint8Array(require('crypto').createHash('sha256').update(Buffer.from(data)).digest());
+    }
+    return new Uint8Array(32).fill(0);
+  }),
+}));
+
+// Mock fetch for IPFS download
+global.fetch = jest.fn().mockResolvedValue({
+  ok: true,
+  arrayBuffer: jest.fn().mockResolvedValue(new ArrayBuffer(544)), // IV + AuthTag + Data
+}) as any;
+
 describe('chunkDownloadManager', () => {
   const fileId = 'test-file';
+  const MOCK_CHUNK_HASH = '076a27c79e5ace2a3d47f9dd2e83e4ff6ea8872b3c2218f66c92b89b55f36560';
 
   const createManifest = (chunkCount = 2): FileAccessManifest => ({
     success: true,
@@ -17,7 +66,7 @@ describe('chunkDownloadManager', () => {
       index,
       cid: `cid-${index}`,
       size: 512,
-      hash: `hash-${index}`,
+      hash: MOCK_CHUNK_HASH,
     })),
     ownershipPolicy: {
       publicKey: 'owner-public-key',
@@ -49,11 +98,11 @@ describe('chunkDownloadManager', () => {
     expect(state.chunkProgress.every(chunk => chunk.status === 'pending')).toBe(true);
   });
 
-  it('simulates download and marks chunks as completed', async () => {
+  it('downloads file and marks chunks as completed', async () => {
     const manifest = createManifest(2);
 
     chunkDownloadManager.ensureSession(fileId, manifest);
-    await chunkDownloadManager.simulateDownload(fileId);
+    await chunkDownloadManager.downloadFile(fileId);
 
     const state = chunkDownloadManager.getState(fileId);
 

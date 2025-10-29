@@ -6,7 +6,7 @@
  */
 
 const { RingSignatureService } = require('../RingSignatureService');
-const { PrismaClient } = require('@prisma/client');
+const { PrismaClient } = require('../../config/prismaClient');
 
 describe('Ring Signature Service - Replay Protection Database Tests', () => {
   let ringSignatureService;

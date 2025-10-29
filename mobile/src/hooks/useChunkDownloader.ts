@@ -12,7 +12,9 @@ export type ChunkDownloaderActions = {
   setError: (error: string | null) => void;
   setSecureKeyPackage: (secureKeyPackage: SecureKeyPackage | null) => void;
   resetSession: () => void;
-  simulateDownload: () => Promise<void>;
+  downloadFile: () => Promise<void>;
+  getAssembledFile: () => Promise<Uint8Array | null>;
+  clearDownloadCache: () => void;
   retryChunk: (chunkIndex: number) => Promise<void>;
 };
 
@@ -48,7 +50,9 @@ export const useChunkDownloader = (
       setSecureKeyPackage: (secureKeyPackage: SecureKeyPackage | null) =>
         chunkDownloadManager.setSecureKeyPackage(fileId, secureKeyPackage),
       resetSession: () => chunkDownloadManager.resetSession(fileId),
-      simulateDownload: () => chunkDownloadManager.simulateDownload(fileId),
+      downloadFile: () => chunkDownloadManager.downloadFile(fileId),
+      getAssembledFile: () => chunkDownloadManager.getAssembledFile(fileId),
+      clearDownloadCache: () => chunkDownloadManager.clearDownloadCache(fileId),
       retryChunk: (chunkIndex: number) => chunkDownloadManager.retryChunk(fileId, chunkIndex),
     }),
     [fileId],

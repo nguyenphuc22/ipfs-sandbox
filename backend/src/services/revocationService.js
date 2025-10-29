@@ -3,22 +3,52 @@
  * Implements thesis architecture for efficient revocation
  */
 
-const { PrismaClient } = require('@prisma/client');
-const axios = require('axios');
-const FormData = require('form-data');
+const { PrismaClient } = require('../config/prismaClient');
 const crypto = require('crypto');
+const { RingSignatureService, ringSignatureService } = require('./RingSignatureService');
 const {
-  parseEncryptedChunkPackage,
-  decryptChunk,
-  createEncryptedChunkPackage,
-  generateChunkKey,
   encryptChunkKeys,
   decryptChunkKeys,
-  computeChunkHash,
 } = require('../utils/chunkingUtils');
 const { maskHashForLogging, secureLog } = require('../utils/monitoring');
+const { getRingContext } = require('../utils/aotStorage');
+const { verifySchnorrOwnership, computeSha256Hex } = require('../utils/ownershipProof');
 
-const IPFS_API_URL = process.env.IPFS_API_URL || 'http://127.0.0.1:5001';
+function normalizeHex(value) {
+  if (typeof value !== 'string') {
+    throw new Error('Invalid hex value');
+  }
+  const trimmed = value.trim().toLowerCase();
+  return trimmed.startsWith('0x') ? trimmed.slice(2) : trimmed;
+}
+
+function normalizeChunkKeyRecord(record = {}) {
+  const normalized = {};
+  for (const [index, value] of Object.entries(record)) {
+    if (typeof value !== 'string') {
+      throw new Error(`Chunk key for index ${index} must be a hex string`);
+    }
+    const normalizedHex = normalizeHex(value);
+    if (normalizedHex.length !== 64) {
+      throw new Error(`Chunk key for index ${index} must be 32-byte hex string`);
+    }
+    normalized[String(index)] = normalizedHex;
+  }
+  return normalized;
+}
+
+function hashChunkKeyHex(keyHex) {
+  const buffer = Buffer.from(normalizeHex(keyHex), 'hex');
+  return crypto.createHash('sha256').update(buffer).digest('hex');
+}
+
+function buildChunkKeyHashMap(chunkKeys = {}) {
+  const hashMap = {};
+  for (const [index, keyHex] of Object.entries(chunkKeys)) {
+    hashMap[String(index)] = hashChunkKeyHex(keyHex);
+  }
+  return hashMap;
+}
 
 /**
  * Select chunks for re-encryption based on strategy
@@ -75,19 +105,64 @@ function selectChunksForReencryption(chunkCount, securityLevel = 'standard') {
  * @param {Object} prismaClient - Prisma client instance (optional, for dependency injection)
  * @returns {Promise<Object>} Revocation result
  */
-async function executePartialReencryption(
-  fileId,
-  revokedPublicKeyHash,
-  ownershipProof,
-  securityLevel = 'standard',
-  prismaClient
-) {
-  try {
-    secureLog('RevocationService', `Starting partial re-encryption for file ${fileId}`, 'info', { fileId });
+async function prepareClientReencryption(params = {}) {
+  let prisma;
+  let ownPrisma = false;
+  const {
+    fileId,
+    revokedPublicKeyHash = null,
+    message,
+    ringSignature,
+    ownershipProof = {},
+    securityLevel = 'standard',
+    keyPackage,
+    prismaClient,
+    ringService: providedRingService,
+  } = params || {};
 
-    // 1. Get file and chunks
-    const prisma = prismaClient || new PrismaClient();
-    const ownPrisma = !prismaClient; // Track if we created our own instance
+  try {
+    if (!fileId || typeof fileId !== 'string') {
+      throw new Error('fileId is required for revocation');
+    }
+
+    if (!message || typeof message !== 'string') {
+      throw new Error('Revocation message is required');
+    }
+
+    if (!ownershipProof || typeof ownershipProof !== 'object') {
+      throw new Error('Schnorr ownership proof is required');
+    }
+
+    if (!keyPackage || typeof keyPackage !== 'object') {
+      throw new Error('Key package is required for client-side re-encryption');
+    }
+
+    secureLog('RevocationService', `Preparing client-side re-encryption manifest for file ${fileId}`, 'info', {
+      fileId,
+      revokedPublicKeyHash,
+      securityLevel,
+    });
+
+    const { masterKey: masterKeyHex, chunkKeys } = keyPackage;
+
+    if (!masterKeyHex || typeof masterKeyHex !== 'string') {
+      throw new Error('Key package missing masterKey');
+    }
+
+    if (!chunkKeys || typeof chunkKeys !== 'object') {
+      throw new Error('Key package missing chunkKeys');
+    }
+
+    const masterKeyBuffer = Buffer.from(normalizeHex(masterKeyHex), 'hex');
+    if (masterKeyBuffer.length !== 32) {
+      throw new Error('masterKey must be a 32-byte hex string');
+    }
+
+    const providedChunkKeys = normalizeChunkKeyRecord(chunkKeys);
+
+    prisma = prismaClient || new PrismaClient();
+    ownPrisma = !prismaClient;
+
     const file = await prisma.file.findUnique({
       where: { id: fileId },
       include: {
@@ -104,242 +179,640 @@ async function executePartialReencryption(
       throw new Error('File not found');
     }
 
-    // 2. Select chunks for re-encryption
-    const chunksToReencrypt = selectChunksForReencryption(
-      file.chunkCount,
-      securityLevel
-    );
+    if (file.chunkCount <= 0) {
+      throw new Error('File does not contain chunk metadata');
+    }
 
-    secureLog('RevocationService', `Selected ${chunksToReencrypt.length}/${file.chunkCount} chunks for re-encryption`, 'info', { fileId, chunksCount: chunksToReencrypt.length, totalChunks: file.chunkCount });
+    let encryptedChunkKeysData;
+    try {
+      encryptedChunkKeysData = JSON.parse(file.encryptedChunkKeys);
+    } catch (error) {
+      throw new Error('Stored chunk key package is corrupted');
+    }
 
-    // 3. Decrypt current encrypted chunk keys
-    const encryptedChunkKeysData = JSON.parse(file.encryptedChunkKeys);
+    let existingChunkKeys;
+    try {
+      existingChunkKeys = decryptChunkKeys(
+        encryptedChunkKeysData.encryptedData,
+        encryptedChunkKeysData.iv,
+        encryptedChunkKeysData.authTag,
+        masterKeyBuffer,
+      );
+    } catch (error) {
+      throw new Error('Failed to decrypt stored chunk keys with provided master key');
+    }
 
-    // TODO: In production, should get master key from secure storage
-    // For demo, we'll generate new keys for selected chunks
-    const oldChunkKeysObject = {}; // Will be populated when we have master key
+    const normalizedExistingChunkKeys = normalizeChunkKeyRecord(existingChunkKeys);
 
-    // 4. Download, decrypt, and re-encrypt selected chunks
-    const reencryptedChunks = [];
-    const newChunkKeys = {};
-
-    for (const chunkIndex of chunksToReencrypt) {
-      const chunk = file.chunks.find(c => c.chunkIndex === chunkIndex);
-      if (!chunk) {
-        secureLog('RevocationService', `Chunk ${chunkIndex} not found, skipping`, 'warn', { fileId, chunkIndex });
+    const missingIndices = [];
+    for (let i = 0; i < file.chunkCount; i += 1) {
+      const indexKey = String(i);
+      const providedKey = providedChunkKeys[indexKey];
+      const storedKey = normalizedExistingChunkKeys[indexKey];
+      if (!providedKey || !storedKey) {
+        missingIndices.push(i);
         continue;
       }
-
-      secureLog('RevocationService', `Re-encrypting chunk ${chunkIndex}`, 'info', { fileId, chunkIndex });
-
-      try {
-        // Download encrypted chunk from IPFS
-        const response = await axios.get(
-          `${IPFS_API_URL}/api/v0/cat?arg=${chunk.ipfsCid}`,
-          { responseType: 'arraybuffer' }
-        );
-
-        const encryptedBuffer = Buffer.from(response.data);
-
-        // Parse encrypted package
-        const { iv, authTag, encryptedData } = parseEncryptedChunkPackage(encryptedBuffer);
-
-        // TODO: Decrypt with old key (need master key to get chunk key)
-        // For demo, we'll create new encrypted version
-        // In production: const decryptedData = decryptChunk(encryptedData, oldChunkKey, iv, authTag);
-
-        // For demo: Use encrypted data as "decrypted" (skip actual decryption)
-        const pseudoDecryptedData = encryptedData;
-
-        // Generate new chunk key
-        const newChunkKey = generateChunkKey();
-        newChunkKeys[chunkIndex] = newChunkKey.toString('hex');
-
-        // Create new encrypted package
-        const { encryptedBuffer: newEncryptedBuffer } = createEncryptedChunkPackage(
-          pseudoDecryptedData,
-          newChunkKey
-        );
-
-        // Upload new encrypted chunk to IPFS
-        const formData = new FormData();
-        formData.append('file', newEncryptedBuffer, {
-          filename: `${file.fileName}.chunk${chunkIndex}.reenc`,
-          contentType: 'application/octet-stream',
-        });
-
-        const uploadResponse = await axios.post(
-          `${IPFS_API_URL}/api/v0/add`,
-          formData,
-          {
-            headers: formData.getHeaders(),
-            maxContentLength: Infinity,
-            maxBodyLength: Infinity,
-          }
-        );
-
-        const newCid = uploadResponse.data.Hash;
-        secureLog('RevocationService', `Chunk ${chunkIndex} re-uploaded to IPFS`, 'info', { fileId, chunkIndex, newCid });
-
-        reencryptedChunks.push({
-          index: chunkIndex,
-          oldCid: chunk.ipfsCid,
-          newCid,
-          hash: chunk.chunkHash, // Keep same hash (plaintext unchanged)
-        });
-
-      } catch (error) {
-        secureLog('RevocationService', `Failed to re-encrypt chunk ${chunkIndex}: ${error.message}`, 'error', { fileId, chunkIndex, error: error.message });
-        // Continue with other chunks
+      if (providedKey !== storedKey) {
+        throw new Error(`Chunk key mismatch detected at index ${i}`);
       }
     }
 
-    // 5. Update chunk records in database
-    for (const chunk of reencryptedChunks) {
-      await prisma.fileChunk.update({
-        where: {
-          fileId_chunkIndex: {
-            fileId,
-            chunkIndex: chunk.index,
-          },
-        },
-        data: {
-          ipfsCid: chunk.newCid,
-        },
+    if (missingIndices.length > 0) {
+      throw new Error(`Key package missing chunk keys for indices: ${missingIndices.join(', ')}`);
+    }
+
+    let authContext;
+    try {
+      authContext = await verifySchnorrOwnership({
+        proof: ownershipProof,
+        expectedPublicKey: file.ownershipPublicKey,
+        expectedMessage: message,
       });
-    }
-
-    // 6. Generate new master key and re-encrypt chunk keys
-    const newMasterKey = crypto.randomBytes(32);
-    const newKeyFingerprint = crypto
-      .createHash('sha256')
-      .update(`${fileId}:${newMasterKey.toString('hex')}`)
-      .digest('hex');
-
-    // Merge old keys with new keys for re-encrypted chunks
-    const updatedChunkKeysObject = { ...oldChunkKeysObject, ...newChunkKeys };
-
-    const newEncryptedChunkKeys = encryptChunkKeys(updatedChunkKeysObject, newMasterKey);
-
-    // 7. Update file record
-    await prisma.file.update({
-      where: { id: fileId },
-      data: {
-        encryptedChunkKeys: JSON.stringify(newEncryptedChunkKeys),
-      },
-    });
-
-    // 8. Revoke anonymous access using the provided publicKeyHash
-    if (revokedPublicKeyHash) {
-      await prisma.anonymousFileAccess.updateMany({
-        where: {
-          fileId,
-          accessorPublicKeyHash: revokedPublicKeyHash,
-          status: 'active',
-        },
-        data: {
-          status: 'revoked',
-        },
-      });
-    }
-
-    // 9. Update key status for remaining users with anonymous access
-    let remainingAccess = file.anonymousAccess;
-    if (revokedPublicKeyHash) {
-      remainingAccess = file.anonymousAccess.filter(
-        access => access.accessorPublicKeyHash !== revokedPublicKeyHash
-      );
-    }
-
-    for (const access of remainingAccess) {
-      await prisma.anonymousFileAccess.update({
-        where: { id: access.id },
-        data: {
-          keyStatus: 'awaiting-offline-redistribution',
-          keyPackageFingerprint: newKeyFingerprint,
-        },
-      });
-    }
-
-    // 10. Create revocation record
-    const revocationId = crypto.randomUUID();
-    await prisma.anonymousRevocation.create({
-      data: {
-        id: revocationId,
+    } catch (error) {
+      secureLog('RevocationService', `Schnorr verification failed during manifest preparation: ${error.message}`, 'warn', {
         fileId,
         revokedPublicKeyHash,
+        error: error.message,
+      });
+      throw new Error(`Schnorr verification failed: ${error.message}`);
+    }
+
+    if (!Array.isArray(authContext.segments) || authContext.segments.length < 5) {
+      throw new Error('Revocation message format is invalid');
+    }
+
+    const actionSegment = authContext.segments[0];
+    if (actionSegment !== 'revoke-reencrypt') {
+      throw new Error('Revocation message action mismatch');
+    }
+
+    const messageFileId = authContext.segments[1];
+    if (messageFileId !== fileId) {
+      throw new Error('Revocation message does not target the requested file');
+    }
+
+    const messageTargetHash = authContext.segments[2] || null;
+    let resolvedRevokedHash = revokedPublicKeyHash || messageTargetHash || null;
+    if (revokedPublicKeyHash && messageTargetHash && revokedPublicKeyHash !== messageTargetHash) {
+      throw new Error('Revocation message target does not match revoked public key hash');
+    }
+
+    const existingProof = await prisma.anonymousRevocation.findFirst({
+      where: {
+        fileId,
+        proofMessage: authContext.messageHash,
+      },
+    });
+
+    if (existingProof) {
+      throw new Error('Schnorr proof message has already been used (possible replay)');
+    }
+
+    const ringContext = getRingContext();
+    const ringMembers = Array.isArray(ringContext.ringMemberPublicKeys)
+      ? ringContext.ringMemberPublicKeys
+      : [];
+    let messageDigest = null;
+
+    if (ringMembers.length >= 2) {
+      if (!ringSignature) {
+        throw new Error('Ring signature is required for revocation');
+      }
+
+      const ringService = providedRingService || ringSignatureService || new RingSignatureService(prisma);
+      messageDigest = computeSha256Hex(message);
+      const ringValid = await ringService.verifyRingSignature({
+        publicKey: file.ownershipPublicKey,
+        signature: ringSignature,
+        message,
+        ringPublicKeys: ringMembers,
+        keyImageContext: {
+          usageContext: 'owner-revocation',
+          scopeId: fileId,
+          activityType: 'revocation',
+          actorPublicKey: file.ownershipPublicKey,
+          messageDigest,
+        },
+      });
+
+      if (!ringValid) {
+        secureLog('RevocationService', 'Ring signature verification failed for client manifest preparation', 'warn', {
+          fileId,
+          revokedPublicKeyHash,
+          messageDigest,
+        });
+        throw new Error('Invalid ring signature for revocation');
+      }
+    }
+
+    const chunksToReencrypt = selectChunksForReencryption(
+      file.chunkCount,
+      securityLevel,
+    );
+
+    if (chunksToReencrypt.length === 0) {
+      throw new Error('Failed to select chunks for re-encryption');
+    }
+
+    const manifestChunks = chunksToReencrypt.map((index) => {
+      const chunk = file.chunks.find((entry) => entry.chunkIndex === index);
+      if (!chunk) {
+        throw new Error(`Chunk metadata missing for index ${index}`);
+      }
+      return {
+        index,
+        cid: chunk.ipfsCid,
+        size: chunk.size,
+        originalHash: chunk.chunkHash,
+      };
+    });
+
+    const chunkKeyHashes = buildChunkKeyHashMap(normalizedExistingChunkKeys);
+    const preparedAt = new Date().toISOString();
+
+    const revocationStrategy = {
+      type: 'client-reencryption',
+      status: 'pending',
+      securityLevel,
+      totalChunks: file.chunkCount,
+      selectedChunkIndices: chunksToReencrypt,
+      chunkKeyHashes,
+      preparedAt,
+      messageDigest,
+    };
+
+    const revocationRecord = await prisma.anonymousRevocation.create({
+      data: {
+        fileId,
+        revokedPublicKeyHash: resolvedRevokedHash,
         proofR: ownershipProof.R,
         proofS: ownershipProof.s,
-        proofMessage: ownershipProof.message,
-        proofTimestamp: new Date(),
-        chunksReencrypted: JSON.stringify(reencryptedChunks.map(c => c.index)),
-        revocationStrategy: JSON.stringify({
-          securityLevel,
-          totalChunks: file.chunkCount,
-          reencryptedCount: reencryptedChunks.length,
-          percentage: Math.round((reencryptedChunks.length / file.chunkCount) * 100),
-        }),
+        proofMessage: authContext.messageHash,
+        proofTimestamp: new Date(authContext.timestamp || Date.now()),
+        ringSignature: ringSignature || null,
+        ringPublicKeys: ringMembers.length > 0 ? JSON.stringify(ringMembers) : null,
+        chunksReencrypted: JSON.stringify([]),
+        revocationStrategy: JSON.stringify(revocationStrategy),
       },
     });
 
-    // 11. Update file last revocation info
-    await prisma.file.update({
-      where: { id: fileId },
-      data: {
-        lastRevocationId: revocationId,
-        lastRevocationAt: new Date(),
+    secureLog('RevocationService', `Prepared client manifest ${revocationRecord.id} for file ${fileId}`, 'info', {
+      fileId,
+      revocationId: revocationRecord.id,
+      revokedPublicKeyHash: resolvedRevokedHash,
+      selectedChunks: chunksToReencrypt.length,
+      totalChunks: file.chunkCount,
+    });
+
+    return {
+      success: true,
+      revocationId: revocationRecord.id,
+      fileId,
+      revokedPublicKeyHash: resolvedRevokedHash,
+      messageHash: authContext.messageHash,
+      timestamp: authContext.timestamp,
+      nonce: authContext.nonce,
+      ringMembers,
+      manifest: {
+        fileId,
+        securityLevel,
+        chunkCount: file.chunkCount,
+        preparedAt,
+        selectedChunks: manifestChunks,
+      },
+    };
+  } catch (error) {
+    secureLog('RevocationService', `Client manifest preparation error: ${error.message}`, 'error', {
+      fileId,
+      revokedPublicKeyHash,
+      error: error.message,
+    });
+    throw error;
+  } finally {
+    if (ownPrisma && prisma) {
+      await prisma.$disconnect().catch(() => {});
+    }
+  }
+}
+
+async function finalizeClientReencryption(params = {}) {
+  let prisma;
+  let ownPrisma = false;
+  const {
+    revocationId,
+    fileId,
+    message,
+    ringSignature,
+    ownershipProof = {},
+    keyPackage,
+    reencryptedChunks = [],
+    prismaClient,
+    ringService: providedRingService,
+  } = params || {};
+
+  try {
+    if (!revocationId || typeof revocationId !== 'string') {
+      throw new Error('revocationId is required');
+    }
+
+    if (!fileId || typeof fileId !== 'string') {
+      throw new Error('fileId is required');
+    }
+
+    if (!message || typeof message !== 'string') {
+      throw new Error('Revocation message is required');
+    }
+
+    if (!ownershipProof || typeof ownershipProof !== 'object') {
+      throw new Error('Schnorr ownership proof is required');
+    }
+
+    if (!keyPackage || typeof keyPackage !== 'object') {
+      throw new Error('Key package is required to finalize re-encryption');
+    }
+
+    const { masterKey: newMasterKeyHex, chunkKeys } = keyPackage;
+
+    if (!newMasterKeyHex || typeof newMasterKeyHex !== 'string') {
+      throw new Error('Key package missing masterKey');
+    }
+
+    if (!chunkKeys || typeof chunkKeys !== 'object') {
+      throw new Error('Key package missing chunkKeys');
+    }
+
+    const normalizedNewMasterKeyHex = normalizeHex(newMasterKeyHex);
+    const newMasterKeyBuffer = Buffer.from(normalizedNewMasterKeyHex, 'hex');
+    if (newMasterKeyBuffer.length !== 32) {
+      throw new Error('masterKey must be a 32-byte hex string');
+    }
+
+    const providedChunkKeys = normalizeChunkKeyRecord(chunkKeys);
+
+    prisma = prismaClient || new PrismaClient();
+    ownPrisma = !prismaClient;
+
+    const revocation = await prisma.anonymousRevocation.findUnique({
+      where: { id: revocationId },
+      include: {
+        file: {
+          include: {
+            chunks: {
+              orderBy: { chunkIndex: 'asc' },
+            },
+            anonymousAccess: true,
+          },
+        },
       },
     });
 
-    // 12. Create audit log for revocation event with masked publicKeyHash
-    const maskedPublicKeyHash = revokedPublicKeyHash ? maskHashForLogging(revokedPublicKeyHash, 'publicKeyHash') : 'ALL_USERS';
-    await prisma.anonymousAuditLog.create({
-      data: {
-        eventType: 'revocation',
-        fileId: fileId,
-        publicKeyHash: revokedPublicKeyHash || null,
-        metadata: JSON.stringify({
-          revocationId,
-          revokedPublicKeyHash: revokedPublicKeyHash || 'full_revocation',
-          chunksReencrypted: reencryptedChunks.length,
-          totalChunks: file.chunkCount,
-          percentage: Math.round((reencryptedChunks.length / file.chunkCount) * 100),
-          securityLevel,
-        })
+    if (!revocation || !revocation.file) {
+      throw new Error('Revocation manifest not found');
+    }
+
+    if (revocation.fileId !== fileId) {
+      throw new Error('Revocation manifest does not belong to the specified file');
+    }
+
+    let strategy;
+    try {
+      strategy = JSON.parse(revocation.revocationStrategy || '{}');
+    } catch (error) {
+      strategy = {};
+    }
+
+    if (strategy?.type !== 'client-reencryption') {
+      throw new Error('Revocation record was not prepared for client-side re-encryption');
+    }
+
+    if (strategy?.status && strategy.status !== 'pending') {
+      throw new Error('Revocation manifest has already been finalized');
+    }
+
+    const file = revocation.file;
+
+    let authContext;
+    try {
+      authContext = await verifySchnorrOwnership({
+        proof: ownershipProof,
+        expectedPublicKey: file.ownershipPublicKey,
+        expectedMessage: message,
+      });
+    } catch (error) {
+      secureLog('RevocationService', `Schnorr verification failed during manifest finalization: ${error.message}`, 'warn', {
+        fileId,
+        revocationId,
+        error: error.message,
+      });
+      throw new Error(`Schnorr verification failed: ${error.message}`);
+    }
+
+    if (authContext.messageHash !== revocation.proofMessage) {
+      throw new Error('Schnorr proof message does not match prepared manifest');
+    }
+
+    if (!Array.isArray(authContext.segments) || authContext.segments.length < 5) {
+      throw new Error('Revocation message format is invalid');
+    }
+
+    const actionSegment = authContext.segments[0];
+    if (actionSegment !== 'revoke-reencrypt') {
+      throw new Error('Revocation message action mismatch');
+    }
+
+    const messageFileId = authContext.segments[1];
+    if (messageFileId !== fileId) {
+      throw new Error('Revocation message does not target the requested file');
+    }
+
+    const messageTargetHash = authContext.segments[2] || null;
+    if (revocation.revokedPublicKeyHash && messageTargetHash && revocation.revokedPublicKeyHash !== messageTargetHash) {
+      throw new Error('Revocation message target does not match prepared manifest');
+    }
+
+    const ringContext = getRingContext();
+    const ringMembers = Array.isArray(ringContext.ringMemberPublicKeys)
+      ? ringContext.ringMemberPublicKeys
+      : [];
+    let messageDigest = null;
+
+    if (ringMembers.length >= 2) {
+      if (!ringSignature) {
+        throw new Error('Ring signature is required to finalize revocation');
       }
+
+      const ringService = providedRingService || ringSignatureService || new RingSignatureService(prisma);
+      messageDigest = computeSha256Hex(message);
+      const ringValid = await ringService.verifyRingSignature({
+        publicKey: file.ownershipPublicKey,
+        signature: ringSignature,
+        message,
+        ringPublicKeys: ringMembers,
+        keyImageContext: {
+          usageContext: 'owner-revocation',
+          scopeId: fileId,
+          activityType: 'revocation-finalize',
+          actorPublicKey: file.ownershipPublicKey,
+          messageDigest,
+        },
+      });
+
+      if (!ringValid) {
+        throw new Error('Invalid ring signature for revocation finalization');
+      }
+    }
+
+    const selectedChunkIndices = Array.isArray(strategy.selectedChunkIndices)
+      ? strategy.selectedChunkIndices.map((value) => Number(value))
+      : [];
+
+    if (selectedChunkIndices.length === 0) {
+      throw new Error('Revocation manifest does not contain selected chunks');
+    }
+
+    if (!Array.isArray(reencryptedChunks) || reencryptedChunks.length !== selectedChunkIndices.length) {
+      throw new Error('Re-encrypted chunk list does not match manifest selection');
+    }
+
+    const providedIndexSet = new Set();
+    const normalizedReencryptedChunks = reencryptedChunks.map((chunk) => {
+      const index = Number(chunk.index);
+      if (!Number.isInteger(index)) {
+        throw new Error('Re-encrypted chunk index must be an integer');
+      }
+      if (providedIndexSet.has(index)) {
+        throw new Error(`Duplicate re-encrypted chunk index: ${index}`);
+      }
+      providedIndexSet.add(index);
+
+      const manifestChunk = file.chunks.find((entry) => entry.chunkIndex === index);
+      if (!manifestChunk) {
+        throw new Error(`Chunk metadata missing for index ${index}`);
+      }
+
+      if (!chunk.oldCid || typeof chunk.oldCid !== 'string') {
+        throw new Error(`Missing oldCid for chunk ${index}`);
+      }
+      if (chunk.oldCid !== manifestChunk.ipfsCid) {
+        throw new Error(`oldCid mismatch for chunk ${index}`);
+      }
+
+      if (!chunk.newCid || typeof chunk.newCid !== 'string') {
+        throw new Error(`Missing newCid for chunk ${index}`);
+      }
+
+      if (!chunk.hash || typeof chunk.hash !== 'string') {
+        throw new Error(`Missing new hash for chunk ${index}`);
+      }
+
+      return {
+        index,
+        oldCid: chunk.oldCid,
+        newCid: chunk.newCid,
+        hash: chunk.hash,
+        size: Number.isInteger(chunk.size) ? chunk.size : manifestChunk.size,
+      };
     });
 
-    secureLog('RevocationService', `Partial re-encryption completed for publicKeyHash: ${maskedPublicKeyHash} - ${reencryptedChunks.length} chunks`, 'info', {
+    for (const expectedIndex of selectedChunkIndices) {
+      if (!providedIndexSet.has(Number(expectedIndex))) {
+        throw new Error(`Missing re-encrypted data for chunk ${expectedIndex}`);
+      }
+    }
+
+    const chunkKeyHashes = strategy?.chunkKeyHashes || {};
+    const newChunkKeyHashes = buildChunkKeyHashMap(providedChunkKeys);
+
+    for (let i = 0; i < file.chunkCount; i += 1) {
+      const indexKey = String(i);
+      const providedKey = providedChunkKeys[indexKey];
+      if (!providedKey) {
+        throw new Error(`Key package missing chunk key for index ${i}`);
+      }
+
+      const originalHash = chunkKeyHashes[indexKey];
+      const newHash = newChunkKeyHashes[indexKey];
+
+      if (originalHash) {
+        if (selectedChunkIndices.includes(i)) {
+          if (originalHash === newHash) {
+            throw new Error(`Chunk key for index ${i} was not rotated`);
+          }
+        } else if (originalHash !== newHash) {
+          throw new Error(`Chunk key for index ${i} must remain unchanged`);
+        }
+      }
+    }
+
+    const newEncryptedChunkKeys = encryptChunkKeys(providedChunkKeys, newMasterKeyBuffer);
+    const newKeyFingerprint = crypto
+      .createHash('sha256')
+      .update(`${fileId}:${normalizedNewMasterKeyHex}`)
+      .digest('hex');
+
+    const reencryptedIndices = normalizedReencryptedChunks.map((chunk) => chunk.index);
+    const remainingAccess = file.anonymousAccess.filter((access) => access.status === 'active');
+    const remainingAccessIds = remainingAccess
+      .filter((access) => access.accessorPublicKeyHash !== revocation.revokedPublicKeyHash)
+      .map((access) => access.id);
+
+    const maskedPublicKeyHash = revocation.revokedPublicKeyHash
+      ? maskHashForLogging(revocation.revokedPublicKeyHash, 'publicKeyHash')
+      : 'ALL_USERS';
+
+    const finalizedAt = new Date();
+    const updatedStrategy = {
+      ...strategy,
+      status: 'completed',
+      finalizedAt: finalizedAt.toISOString(),
+      reencryptedCount: reencryptedIndices.length,
+      percentage: Math.round((reencryptedIndices.length / file.chunkCount) * 100),
+      newKeyFingerprint,
+    };
+
+    await prisma.$transaction(async (tx) => {
+      for (const chunk of normalizedReencryptedChunks) {
+        await tx.fileChunk.update({
+          where: {
+            fileId_chunkIndex: {
+              fileId,
+              chunkIndex: chunk.index,
+            },
+          },
+          data: {
+            ipfsCid: chunk.newCid,
+            chunkHash: chunk.hash,
+            size: chunk.size,
+          },
+        });
+      }
+
+      await tx.file.update({
+        where: { id: fileId },
+        data: {
+          encryptedChunkKeys: JSON.stringify(newEncryptedChunkKeys),
+          lastRevocationId: revocationId,
+          lastRevocationAt: finalizedAt,
+        },
+      });
+
+      if (revocation.revokedPublicKeyHash) {
+        await tx.anonymousFileAccess.updateMany({
+          where: {
+            fileId,
+            accessorPublicKeyHash: revocation.revokedPublicKeyHash,
+            status: 'active',
+          },
+          data: {
+            status: 'revoked',
+            revokedAt: finalizedAt,
+          },
+        });
+      }
+
+      if (remainingAccessIds.length > 0) {
+        await tx.anonymousFileAccess.updateMany({
+          where: {
+            id: { in: remainingAccessIds },
+          },
+          data: {
+            keyStatus: 'awaiting-offline-redistribution',
+            keyPackageFingerprint: newKeyFingerprint,
+          },
+        });
+      }
+
+      await tx.anonymousRevocation.update({
+        where: { id: revocationId },
+        data: {
+          proofR: ownershipProof.R,
+          proofS: ownershipProof.s,
+          proofTimestamp: new Date(authContext.timestamp || Date.now()),
+          ringSignature: ringSignature || revocation.ringSignature || null,
+          chunksReencrypted: JSON.stringify(reencryptedIndices),
+          revocationStrategy: JSON.stringify(updatedStrategy),
+        },
+      });
+
+      await tx.anonymousAuditLog.create({
+        data: {
+          eventType: 'revocation',
+          fileId,
+          publicKeyHash: revocation.revokedPublicKeyHash || null,
+          metadata: JSON.stringify({
+            revocationId,
+            revokedPublicKeyHash: revocation.revokedPublicKeyHash || 'full_revocation',
+            chunksReencrypted: reencryptedIndices.length,
+            totalChunks: file.chunkCount,
+            percentage: Math.round((reencryptedIndices.length / file.chunkCount) * 100),
+            ownerProofNonce: authContext.nonce,
+            ownerProofTimestamp: authContext.timestamp,
+            messageDigest,
+            newKeyFingerprint,
+            strategy: 'client-reencryption',
+          }),
+        },
+      });
+    });
+
+    secureLog('RevocationService', `Client manifest ${revocationId} finalized for ${maskedPublicKeyHash}`, 'info', {
       fileId,
       revocationId,
-      publicKeyHash: revokedPublicKeyHash,
-      chunksReencrypted: reencryptedChunks.length
+      chunksReencrypted: reencryptedIndices.length,
+      newKeyFingerprint,
     });
 
     return {
       success: true,
       revocationId,
-      chunksReencrypted: reencryptedChunks.map(c => c.index),
+      chunksReencrypted: reencryptedIndices,
       totalChunks: file.chunkCount,
-      percentage: Math.round((reencryptedChunks.length / file.chunkCount) * 100),
-      message: `Successfully revoked access. Re-encrypted ${reencryptedChunks.length} of ${file.chunkCount} chunks (${Math.round((reencryptedChunks.length / file.chunkCount) * 100)}%)`,
+      percentage: Math.round((reencryptedIndices.length / file.chunkCount) * 100),
+      newKeyFingerprint,
+      manifestStatus: 'completed',
+      message: `Client-side re-encryption finalized. Updated ${reencryptedIndices.length} of ${file.chunkCount} chunks`,
     };
-
   } catch (error) {
-    secureLog('RevocationService', `Partial re-encryption error: ${error.message}`, 'error', { fileId, revokedPublicKeyHash, error: error.message });
+    secureLog('RevocationService', `Client manifest finalization error: ${error.message}`, 'error', {
+      fileId,
+      revocationId,
+      error: error.message,
+    });
     throw error;
+  } finally {
+    if (ownPrisma && prisma) {
+      await prisma.$disconnect().catch(() => {});
+    }
   }
+}
+
+async function executePartialReencryption() {
+  throw new Error('Server-side re-encryption flow has been removed. Use prepareClientReencryption and finalizeClientReencryption instead.');
 }
 
 /**
  * Revoke access by publicKeyHash without re-encryption
  * Simple revocation for quick access denial
  */
-async function revokeAccessByPublicKeyHash(fileId, publicKeyHash, reason = 'revoked', prismaClient) {
+async function revokeAccessByPublicKeyHash(fileId, publicKeyHash, reason = 'revoked', prismaClient, options = {}) {
+  let prisma;
+  let ownPrisma = false;
   try {
-    const prisma = prismaClient || new PrismaClient();
+    prisma = prismaClient || new PrismaClient();
+    ownPrisma = !prismaClient;
 
-    secureLog('RevocationService', `Revoking access for publicKeyHash on file ${fileId}`, 'info', { fileId, publicKeyHash });
+    const allowQuickRevoke = options?.adminOverride === true || process.env.ENABLE_QUICK_REVOKE === 'true';
+    if (!allowQuickRevoke) {
+      throw new Error('Quick revoke is disabled. Use partial re-encryption revoke flow.');
+    }
+
+    secureLog('RevocationService', `Quick revoke invoked for file ${fileId}`, 'warn', {
+      fileId,
+      publicKeyHash,
+      reason,
+      adminOverride: options?.adminOverride === true,
+    });
 
     // Revoke anonymous access
     await prisma.anonymousFileAccess.updateMany({
@@ -368,6 +841,8 @@ async function revokeAccessByPublicKeyHash(fileId, publicKeyHash, reason = 'revo
         revocationStrategy: JSON.stringify({
           type: 'quick-revoke',
           reason,
+          adminOverride: options?.adminOverride === true,
+          requestedBy: options?.requestedBy || null,
         }),
       },
     });
@@ -383,6 +858,8 @@ async function revokeAccessByPublicKeyHash(fileId, publicKeyHash, reason = 'revo
           revocationId,
           reason,
           type: 'quick-revoke',
+          adminOverride: options?.adminOverride === true,
+          requestedBy: options?.requestedBy || null,
         })
       }
     });
@@ -401,6 +878,10 @@ async function revokeAccessByPublicKeyHash(fileId, publicKeyHash, reason = 'revo
   } catch (error) {
     secureLog('RevocationService', `Revoke access error: ${error.message}`, 'error', { fileId, publicKeyHash, error: error.message });
     throw error;
+  } finally {
+    if (ownPrisma && prisma) {
+      await prisma.$disconnect().catch(() => {});
+    }
   }
 }
 
@@ -434,6 +915,8 @@ async function getRevocationHistory(fileId, prismaClient) {
 
 const revocationService = {
   selectChunksForReencryption,
+  prepareClientReencryption,
+  finalizeClientReencryption,
   executePartialReencryption,
   revokeAccessByPublicKeyHash,
   getRevocationHistory,
@@ -441,6 +924,8 @@ const revocationService = {
 
 module.exports = {
   selectChunksForReencryption,
+  prepareClientReencryption,
+  finalizeClientReencryption,
   executePartialReencryption,
   revokeAccessByPublicKeyHash,
   getRevocationHistory,

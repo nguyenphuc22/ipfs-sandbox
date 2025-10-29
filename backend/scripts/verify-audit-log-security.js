@@ -15,7 +15,7 @@
  *   --fix      Attempt to fix records that have userId leaks (dangerous!)
  */
 
-const { PrismaClient } = require('@prisma/client');
+const { PrismaClient } = require('../src/config/prismaClient');
 const crypto = require('crypto');
 
 const prisma = new PrismaClient();

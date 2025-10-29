@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, TextInput, StyleSheet, Pressable, ActivityIndicator, Platform } from 'react-native';
 import { IPFSService } from '../../services';
 import { useFilePicker } from '../../hooks/useFilePicker';
@@ -31,9 +31,16 @@ export const AOTDemoCard: React.FC<AOTDemoCardProps> = ({ service }) => {
   const [revocationRingSignature, setRevocationRingSignature] = useState('');
   const [revocationR, setRevocationR] = useState('');
   const [revocationS, setRevocationS] = useState('');
+  const [revocationProofPublicKey, setRevocationProofPublicKey] = useState('');
   const [revocationProofMessage, setRevocationProofMessage] = useState('');
   const [revocationLoading, setRevocationLoading] = useState(false);
   const [revocationResult, setRevocationResult] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (ownershipPublicKey && !revocationProofPublicKey) {
+      setRevocationProofPublicKey(ownershipPublicKey);
+    }
+  }, [ownershipPublicKey, revocationProofPublicKey]);
 
   const handlePickFile = async () => {
     const result = await filePicker.pickFiles({ allowMultiSelection: false });
@@ -93,7 +100,7 @@ export const AOTDemoCard: React.FC<AOTDemoCardProps> = ({ service }) => {
       return;
     }
 
-    if (!revocationR || !revocationS || !revocationProofMessage) {
+    if (!revocationR || !revocationS || !revocationProofMessage || !revocationProofPublicKey) {
       setRevocationResult('Thông tin Schnorr proof cho bước thu hồi còn thiếu.');
       return;
     }
@@ -108,7 +115,7 @@ export const AOTDemoCard: React.FC<AOTDemoCardProps> = ({ service }) => {
           R: revocationR,
           s: revocationS,
           message: revocationProofMessage,
-          publicKey: ownershipPublicKey,
+          publicKey: revocationProofPublicKey,
         },
       });
 
@@ -228,6 +235,13 @@ export const AOTDemoCard: React.FC<AOTDemoCardProps> = ({ service }) => {
         placeholder="s (revocation)"
         value={revocationS}
         onChangeText={setRevocationS}
+        autoCapitalize="none"
+      />
+      <TextInput
+        style={[styles.input, styles.inputMono]}
+        placeholder="publicKey (revocation)"
+        value={revocationProofPublicKey}
+        onChangeText={setRevocationProofPublicKey}
         autoCapitalize="none"
       />
       <TextInput
